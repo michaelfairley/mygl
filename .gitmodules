@@ -1,0 +1,3 @@
+[submodule "VK-GL-CTS"]
+	path = VK-GL-CTS
+	url = git@github.com:michaelfairley/VK-GL-CTS.git

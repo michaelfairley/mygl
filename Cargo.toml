@@ -1,0 +1,15 @@
+[package]
+name = "mygl"
+version = "0.1.0"
+authors = ["Michael Fairley <michaelfairley@gmail.com>"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
