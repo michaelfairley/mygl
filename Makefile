@@ -2,7 +2,10 @@ build:
 	cargo build
 
 test: build
-	cd cts_build && DYLD_LIBRARY_PATH=../target/debug ./external/openglcts/modules/cts-runner --type=es32 --verbose
+	cd cts_build && DYLD_LIBRARY_PATH=../target/debug ./external/openglcts/modules/cts-runner --type=es32
+
+debug: build
+	cd cts_build && lldb -s ../lldb-setup ./external/openglcts/modules/cts-runner -- --type=es32
 
 prepare_cts:
 	mkdir -p cts_build

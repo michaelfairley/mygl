@@ -1,41 +1,67 @@
 use std::os::raw::*;
 // use std::ffi;
 use std::ptr;
+use std::cell::Cell;
 
-// platform-specific aliases are unknown
-// IMPORTANT: these are alises to the same level of the bindings
-// the values must be defined by the user
+// TODO: use references in signatures and ditch ptr
+
+#[repr(C)]
+struct AttribList(*const EGLint);
+
+impl AttribList {
+  pub fn iter(&self) -> AttribListIterator {
+    AttribListIterator{ pos: self.0 }
+  }
+}
+
+struct AttribListIterator {
+  pos: *const EGLint,
+}
+
+impl Iterator for AttribListIterator {
+  type Item = (EGLint, EGLint);
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.pos.is_null() {
+      return None;
+    }
+
+    let first = unsafe { ptr::read(self.pos) };
+    if first == EGL_NONE as EGLint {
+      return None;
+    }
+
+    let second = unsafe { ptr::read(self.pos.offset(1)) };
+    self.pos = unsafe { self.pos.offset(2) };
+
+    Some((first, second))
+  }
+}
+
 
 #[allow(dead_code, non_camel_case_types)]
-// pub type khronos_utime_nanoseconds_t = super::khronos_utime_nanoseconds_t;
 pub type khronos_utime_nanoseconds_t = u64;
 
 #[allow(dead_code, non_camel_case_types)]
-// pub type khronos_uint64_t = super::khronos_uint64_t;
 pub type khronos_uint64_t = u64;
 
 #[allow(dead_code, non_camel_case_types)]
-// pub type khronos_ssize_t = super::khronos_ssize_t;
 pub type khronos_ssize_t = isize;
 
-// pub type EGLNativeDisplayType = super::EGLNativeDisplayType;
 pub struct MyNativeDisplayType;
 #[allow(dead_code)]
 pub type EGLNativeDisplayType = *const MyNativeDisplayType;
 
-// pub type EGLNativePixmapType = super::EGLNativePixmapType;
 pub struct MyNativePixmapType;
 #[allow(dead_code)]
 pub type EGLNativePixmapType = *const MyNativePixmapType;
 
-// pub type EGLNativeWindowType = super::EGLNativeWindowType;
 pub struct MyNativeWindowType;
 #[allow(dead_code)]
 pub type EGLNativeWindowType = *const MyNativeWindowType;
 
-#[allow(dead_code)]
-// pub type EGLint = super::EGLint;
-pub type EGLint = i64;
+// I'd really prefer for this to be i64, but the CTS typedefs its EGLint to 32 bits
+pub type EGLint = i32;
 
 // #[allow(dead_code)]
 // pub type NativeDisplayType = super::NativeDisplayType;
@@ -49,7 +75,26 @@ pub type EGLint = i64;
 pub struct Display;
 static THE_DISPLAY: Display = Display;
 
-#[derive(PartialEq)]
+pub struct Context {
+  config_id: usize,
+}
+
+pub struct Surface {
+  config_id: usize,
+  width: EGLint,
+  height: EGLint,
+  multisample_resolve: EGLenum,
+}
+
+thread_local! {
+  static API: Cell<EGLenum> = Cell::new(EGL_OPENGL_ES_API);
+  static CONTEXT: Cell<EGLContext> = Cell::new(EGL_NO_CONTEXT);
+  static READ_SURFACE: Cell<EGLSurface> = Cell::new(EGL_NO_SURFACE);
+  static DRAW_SURFACE: Cell<EGLSurface> = Cell::new(EGL_NO_SURFACE);
+}
+
+
+#[derive(PartialEq,Debug)]
 pub struct Config {
   red_size: u8,
   green_size: u8,
@@ -60,22 +105,55 @@ pub struct Config {
   samples: u8,
 }
 
-static CONFIGS: &[Config] = &[
-  Config{ red_size: 8, green_size: 8, blue_size: 8, alpha_size: 8, depth_size: 24, stencil_size: 8, samples: 0 },
-  Config{ red_size: 8, green_size: 8, blue_size: 8, alpha_size: 8, depth_size: 24, stencil_size: 8, samples: 4 },
-  Config{ red_size: 5, green_size: 6, blue_size: 5, alpha_size: 0, depth_size: 0, stencil_size: 0, samples: 0 },
-];
+impl Config {
+  fn buffer_size(&self) -> u8 {
+    self.red_size + self.green_size + self.blue_size + self.alpha_size
+  }
 
-// EGL alises
+  fn sample_buffers(&self) -> u8 {
+    if self.samples == 0 { 0 } else { 1 }
+  }
+}
+
+lazy_static! {
+  static ref CONFIGS: Vec<Config> = {
+    let color_sizes = &[
+      (8, 8, 8, 8),
+      (8, 8, 8, 0),
+      (4, 4, 4, 4),
+      (5, 6, 5, 0),
+      (5, 5, 5, 1),
+    ];
+    let depth_sizes = &[0, 24];
+    let stencil_sizes = &[0, 8, 16];
+
+    let samples = &[0, 4];
+
+    color_sizes.iter().flat_map(|&(red_size, green_size, blue_size, alpha_size)| {
+      depth_sizes.iter().flat_map(move |&depth_size| {
+        stencil_sizes.iter().flat_map(move |&stencil_size| {
+          samples.iter().map(move |&samples| {
+            Config{ red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, samples }
+          })
+        })
+      })
+    }).collect::<Vec<_>>()
+  };
+}
+fn config_id(config: &Config) -> usize {
+  CONFIGS.iter().position(|c| c == config).unwrap() + 1
+}
+
+
 pub type EGLBoolean = c_uint;
 pub type EGLenum = c_uint;
 // pub type EGLAttribKHR = isize;
 pub type EGLAttrib = isize;
 pub type EGLConfig = *const Config;
-pub type EGLContext = *const c_void;
+pub type EGLContext = *mut Context;
 // pub type EGLDeviceEXT = *const c_void;
 pub type EGLDisplay = *const Display;
-pub type EGLSurface = *const c_void;
+pub type EGLSurface = *mut Surface;
 pub type EGLClientBuffer = *const c_void;
 // pub type EGLImageKHR = *const c_void;
 pub type EGLImage = *const c_void;
@@ -284,7 +362,11 @@ pub struct EGLClientPixmapHI {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglBindAPI(api: EGLenum) -> EGLBoolean {
-  // unimplemented!()
+  if api != EGL_OPENGL_ES_API {
+    return EGL_FALSE;
+  }
+
+  API.with(|a| a.set(api));
   EGL_TRUE
 }
 
@@ -296,9 +378,161 @@ pub extern "C" fn eglBindTexImage(dpy: EGLDisplay, surface: EGLSurface, buffer: 
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EGLint, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
-  unimplemented!()
+pub unsafe extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EGLint, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
+  if num_config.is_null() {
+    // TODO: set error
+    return EGL_FALSE
+  }
+
+  let attrib_list = AttribList(attrib_list);
+
+  let mut buffer_size = 0;
+  let mut red_size = 0;
+  let mut green_size = 0;
+  let mut blue_size = 0;
+  let mut luminance_size = 0;
+  let mut alpha_size = 0;
+  let mut alpha_mask_size = 0;
+  let mut bind_to_texture_rgb = EGL_DONT_CARE;
+  let mut bind_to_texture_rgba = EGL_DONT_CARE;
+  let mut color_buffer_type = EGL_RGB_BUFFER as EGLint;
+  let mut config_caveat = EGL_DONT_CARE;
+  let mut config_id = EGL_DONT_CARE;
+  let mut conformant = 0;
+  let mut depth_size = 0;
+  let mut level = 0;
+  let mut match_native_pixmap = EGL_NONE as EGLint;
+  let mut max_swap_interval = EGL_DONT_CARE;
+  let mut min_swap_interval = EGL_DONT_CARE;
+  let mut native_renderable = EGL_DONT_CARE;
+  let mut native_visual_type = EGL_DONT_CARE;
+  let mut renderable_type = EGL_OPENGL_ES_BIT as EGLint;
+  let mut sample_buffers = 0;
+  let mut samples = 0;
+  let mut stencil_size = 0;
+  let mut surface_type = EGL_WINDOW_BIT as EGLint;
+  let mut transparent_type = EGL_NONE as EGLint;
+  let mut transparent_red_value = EGL_DONT_CARE;
+  let mut transparent_green_value = EGL_DONT_CARE;
+  let mut transparent_blue_value = EGL_DONT_CARE;
+
+  for (attrib, value) in attrib_list.iter() {
+    match attrib as EGLenum {
+      EGL_BUFFER_SIZE => buffer_size = value,
+      EGL_RED_SIZE => red_size = value,
+      EGL_GREEN_SIZE => green_size = value,
+      EGL_BLUE_SIZE => blue_size = value,
+      EGL_LUMINANCE_SIZE => luminance_size = value,
+      EGL_ALPHA_SIZE => alpha_size = value,
+      EGL_ALPHA_MASK_SIZE => alpha_mask_size = value,
+      EGL_BIND_TO_TEXTURE_RGB => bind_to_texture_rgb = value,
+      EGL_BIND_TO_TEXTURE_RGBA => bind_to_texture_rgba = value,
+      EGL_COLOR_BUFFER_TYPE => color_buffer_type = value,
+      EGL_CONFIG_CAVEAT => config_caveat = value,
+      EGL_CONFIG_ID => config_id = value,
+      EGL_CONFORMANT => conformant = value,
+      EGL_DEPTH_SIZE => depth_size = value,
+      EGL_LEVEL => level = value,
+      EGL_MATCH_NATIVE_PIXMAP => match_native_pixmap = value,
+      EGL_MAX_SWAP_INTERVAL => max_swap_interval = value,
+      EGL_MIN_SWAP_INTERVAL => min_swap_interval = value,
+      EGL_NATIVE_RENDERABLE => native_renderable = value,
+      EGL_NATIVE_VISUAL_TYPE => native_visual_type = value,
+      EGL_RENDERABLE_TYPE => renderable_type = value,
+      EGL_SAMPLE_BUFFERS => sample_buffers = value,
+      EGL_SAMPLES => samples = value,
+      EGL_STENCIL_SIZE => stencil_size = value,
+      EGL_SURFACE_TYPE => surface_type = value,
+      EGL_TRANSPARENT_TYPE => transparent_type = value,
+      EGL_TRANSPARENT_RED_VALUE => transparent_red_value = value,
+      EGL_TRANSPARENT_GREEN_VALUE => transparent_green_value = value,
+      EGL_TRANSPARENT_BLUE_VALUE => transparent_blue_value = value,
+      x => unimplemented!("{:x}", x),
+    }
+  }
+
+  let mut matching_configs: Vec<&'static Config> = if config_id != EGL_DONT_CARE {
+    vec![&CONFIGS[config_id as usize - 1]]
+  } else {
+    CONFIGS.iter().filter(|&config| {
+      (buffer_size == EGL_DONT_CARE || config.buffer_size() as EGLint >= buffer_size)
+        && (red_size == EGL_DONT_CARE || config.red_size as EGLint >= red_size)
+        && (green_size == EGL_DONT_CARE || config.green_size as EGLint >= green_size)
+        && (blue_size == EGL_DONT_CARE || config.blue_size as EGLint >= blue_size)
+        && (luminance_size == EGL_DONT_CARE || 0 >= luminance_size)
+        && (alpha_size == EGL_DONT_CARE || config.alpha_size as EGLint >= alpha_size)
+        && (alpha_mask_size == EGL_DONT_CARE || 0 >= alpha_mask_size)
+        && (bind_to_texture_rgb == EGL_DONT_CARE || bind_to_texture_rgb == EGL_FALSE as EGLint)
+        && (bind_to_texture_rgba == EGL_DONT_CARE || bind_to_texture_rgba == EGL_FALSE as EGLint)
+        && (color_buffer_type == EGL_DONT_CARE || color_buffer_type == EGL_RGB_BUFFER as EGLint)
+        && (config_caveat == EGL_DONT_CARE || config_caveat == EGL_NONE as EGLint)
+        && (config_id == EGL_DONT_CARE || unreachable!())
+        && (conformant == EGL_DONT_CARE || ((EGL_OPENGL_ES3_BIT | EGL_OPENGL_ES2_BIT) as EGLint & conformant) == conformant)
+        && (depth_size == EGL_DONT_CARE || config.depth_size as EGLint >= depth_size)
+        && (level == 0)
+        && (match_native_pixmap == EGL_NONE as EGLint)
+        && (max_swap_interval == EGL_DONT_CARE || 0 == max_swap_interval)
+        && (min_swap_interval == EGL_DONT_CARE || 0 == min_swap_interval)
+        && (native_renderable == EGL_DONT_CARE || EGL_FALSE as EGLint == native_renderable)
+        && (native_visual_type == EGL_DONT_CARE)
+        && (renderable_type == EGL_DONT_CARE || ((EGL_OPENGL_ES3_BIT | EGL_OPENGL_ES2_BIT) as EGLint & renderable_type) == renderable_type)
+        && (sample_buffers == EGL_DONT_CARE || config.sample_buffers() as EGLint >= sample_buffers)
+        && (samples == EGL_DONT_CARE || config.samples as EGLint >= samples)
+        && (stencil_size == EGL_DONT_CARE || config.stencil_size as EGLint >= stencil_size)
+        && (surface_type == EGL_DONT_CARE || (EGL_PBUFFER_BIT as EGLint & surface_type) == surface_type)
+        && (transparent_type == EGL_DONT_CARE || transparent_type == EGL_NONE as EGLint)
+        && (transparent_red_value == EGL_DONT_CARE || transparent_red_value == 0)
+        && (transparent_green_value == EGL_DONT_CARE || transparent_green_value == 0)
+        && (transparent_blue_value == EGL_DONT_CARE || transparent_blue_value == 0)
+    }).collect::<Vec<_>>()
+  };
+
+  ptr::write(num_config, matching_configs.len() as EGLint);
+
+  if !configs.is_null() {
+    let count_red = red_size != EGL_DONT_CARE && red_size > 0;
+    let count_green = green_size != EGL_DONT_CARE && green_size > 0;
+    let count_blue = blue_size != EGL_DONT_CARE && blue_size > 0;
+    let count_alpha = alpha_size != EGL_DONT_CARE && alpha_size > 0;
+
+    matching_configs.sort_by(|a, b| {
+      // 1. EGL_CONFIG_CAVEAT is the same for all configs
+      // 2. EGL_COLOR_BUFFER_TYPE is the same for all configs
+      // 3.
+      let mut a_bits = 0;
+      let mut b_bits = 0;
+      if count_red { a_bits += a.red_size; b_bits += b.red_size }
+      if count_green { a_bits += a.green_size; b_bits += b.green_size }
+      if count_blue { a_bits += a.blue_size; b_bits += b.blue_size }
+      if count_alpha { a_bits += a.alpha_size; b_bits += b.alpha_size }
+
+      a_bits.cmp(&b_bits).reverse()
+        .then_with(|| { // 4.
+          a.buffer_size().cmp(&b.buffer_size())
+        }).then_with(|| { // 5.
+          a.sample_buffers().cmp(&b.sample_buffers())
+        }).then_with(|| { // 6.
+          a.samples.cmp(&b.samples)
+        }).then_with(|| { // 7.
+          a.depth_size.cmp(&b.depth_size)
+        }).then_with(|| { // 8.
+          a.stencil_size.cmp(&b.stencil_size)
+        })
+      // 9. We don't use EGL_ALPHA_MASK_SIZE
+      // 10. We don't use EGL_NATIVE_VISUAL_TYPE
+        .then_with(|| { // 11.
+          self::config_id(a).cmp(&self::config_id(b))
+        })
+    });
+
+    for i in 0..matching_configs.len() {
+      ptr::write(configs.offset(i as _), matching_configs[i as usize]);
+    }
+  }
+
+  EGL_TRUE
 }
+
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
@@ -314,8 +548,11 @@ pub extern "C" fn eglCopyBuffers(dpy: EGLDisplay, surface: EGLSurface, target: E
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglCreateContext(dpy: EGLDisplay, config: EGLConfig, share_context: EGLContext, attrib_list: *const EGLint) -> EGLContext {
-  unimplemented!()
+pub unsafe extern "C" fn eglCreateContext(dpy: EGLDisplay, config: EGLConfig, share_context: EGLContext, attrib_list: *const EGLint) -> EGLContext {
+  let context = Box::new(Context{
+    config_id: config_id(&*config)
+  });
+  Box::into_raw(context)
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -332,8 +569,29 @@ pub extern "C" fn eglCreatePbufferFromClientBuffer(dpy: EGLDisplay, buftype: EGL
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglCreatePbufferSurface(dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
-  unimplemented!()
+pub unsafe extern "C" fn eglCreatePbufferSurface(dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
+  let mut width = 0;
+  let mut height = 0;
+  let mut _texture_format = EGL_NO_TEXTURE;
+
+  let attrib_list = AttribList(attrib_list);
+  for (attrib, value) in attrib_list.iter() {
+    match attrib as EGLenum {
+      EGL_WIDTH => { width = value; },
+      EGL_HEIGHT => { height = value; },
+      EGL_TEXTURE_FORMAT => { _texture_format = value as EGLenum; }
+      x => unimplemented!("{:x}", x),
+    }
+  }
+
+
+  let surface = Box::new(Surface{
+    config_id: config_id(&*config),
+    width,
+    height,
+    multisample_resolve: EGL_MULTISAMPLE_RESOLVE_DEFAULT,
+  });
+  Box::into_raw(surface)
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -368,8 +626,9 @@ pub extern "C" fn eglCreateWindowSurface(dpy: EGLDisplay, config: EGLConfig, win
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglDestroyContext(dpy: EGLDisplay, ctx: EGLContext) -> EGLBoolean {
-  unimplemented!()
+pub unsafe extern "C" fn eglDestroyContext(dpy: EGLDisplay, ctx: EGLContext) -> EGLBoolean {
+  let context = Box::from_raw(ctx);
+  EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -380,8 +639,9 @@ pub extern "C" fn eglDestroyImage(dpy: EGLDisplay, image: EGLImage) -> EGLBoolea
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglDestroySurface(dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
-  unimplemented!()
+pub unsafe extern "C" fn eglDestroySurface(dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
+  let surface = Box::from_raw(surface);
+  EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -392,12 +652,10 @@ pub extern "C" fn eglDestroySync(dpy: EGLDisplay, sync: EGLSync) -> EGLBoolean {
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
-  let config = unsafe{ ptr::read(config) };
+pub unsafe extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+  let config = ptr::read(config);
   let result = match attribute as EGLenum {
-    EGL_CONFIG_ID => {
-      CONFIGS.iter().position(|c| c == &config).unwrap() as EGLint
-    },
+    EGL_CONFIG_ID => { config_id(&config) as EGLint },
     EGL_RENDERABLE_TYPE => {
       // TODO: GLES 1.0?
       (EGL_OPENGL_ES3_BIT | EGL_OPENGL_ES2_BIT) as EGLint
@@ -410,37 +668,58 @@ pub extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, attribu
     EGL_GREEN_SIZE => { config.green_size as EGLint },
     EGL_BLUE_SIZE => { config.blue_size as EGLint },
     EGL_ALPHA_SIZE => { config.alpha_size as EGLint },
-    EGL_BUFFER_SIZE => { (config.red_size + config.green_size + config.blue_size + config.alpha_size) as EGLint },
+    EGL_BUFFER_SIZE => { config.buffer_size() as EGLint },
     EGL_DEPTH_SIZE => { config.depth_size as EGLint },
     EGL_STENCIL_SIZE => { config.stencil_size as EGLint },
     EGL_SAMPLES => { config.samples as EGLint },
     EGL_LUMINANCE_SIZE => { 0 },
     EGL_ALPHA_MASK_SIZE => { 0 },
-    EGL_SURFACE_TYPE => {
-      EGL_PBUFFER_BIT as EGLint
-    },
-    // x => unimplemented!("{:x}", x),
-    _ => { return EGL_FALSE; },
+    EGL_SURFACE_TYPE => { EGL_PBUFFER_BIT as EGLint },
+    EGL_BIND_TO_TEXTURE_RGB => EGL_FALSE as EGLint,
+    EGL_BIND_TO_TEXTURE_RGBA => EGL_FALSE as EGLint,
+    EGL_COLOR_BUFFER_TYPE => EGL_RGB_BUFFER as EGLint,
+    EGL_CONFIG_CAVEAT => EGL_NONE as EGLint,
+    EGL_LEVEL => 0,
+    EGL_MAX_PBUFFER_WIDTH => 4096,
+    EGL_MAX_PBUFFER_HEIGHT => 4096,
+    EGL_MAX_PBUFFER_PIXELS => 4096 * 4096,
+    EGL_MIN_SWAP_INTERVAL => 0,
+    EGL_MAX_SWAP_INTERVAL => 0,
+    EGL_NATIVE_RENDERABLE => EGL_FALSE as EGLint,
+    EGL_SAMPLE_BUFFERS => config.sample_buffers() as EGLint,
+    EGL_TRANSPARENT_TYPE => EGL_NONE as EGLint,
+    EGL_TRANSPARENT_RED_VALUE => 0,
+    EGL_TRANSPARENT_GREEN_VALUE => 0,
+    EGL_TRANSPARENT_BLUE_VALUE => 0,
+    EGL_NATIVE_VISUAL_ID => 0,
+    EGL_NATIVE_VISUAL_TYPE => EGL_NONE as EGLint,
+    x => unimplemented!("{:x}", x),
+    // _ => { return EGL_FALSE; },
   };
 
-  unsafe { ptr::write(value, result); }
+  ptr::write(value, result);
 
   EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglGetConfigs(dpy: EGLDisplay, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
+pub unsafe extern "C" fn eglGetConfigs(dpy: EGLDisplay, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
+  if num_config.is_null() {
+    // TODO: set error
+    return EGL_FALSE
+  }
+
   if configs == ptr::null_mut() {
-    unsafe { ptr::write(num_config, CONFIGS.len() as EGLint); }
+    ptr::write(num_config, CONFIGS.len() as EGLint);
   } else {
-    let num = (CONFIGS.len() as EGLint).min(config_size);
+    let num = (CONFIGS.len() as EGLint).min(config_size).max(0);
 
     // TODO: maybe have CONFIGS store &Config so this is a simple memcpy
     for i in 0..num {
-      unsafe { ptr::write(configs.offset(i as _), &CONFIGS[i as usize]); }
+      ptr::write(configs.offset(i as _), &CONFIGS[i as usize]);
     }
-    unsafe { ptr::write(num_config, num); }
+    ptr::write(num_config, num);
   }
 
   EGL_TRUE
@@ -449,19 +728,23 @@ pub extern "C" fn eglGetConfigs(dpy: EGLDisplay, configs: *mut EGLConfig, config
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentContext() -> EGLContext {
-  unimplemented!()
+  CONTEXT.with(|c| c.get())
 }
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentDisplay() -> EGLDisplay {
-  unimplemented!()
+  &THE_DISPLAY
 }
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentSurface(readdraw: EGLint) -> EGLSurface {
-  unimplemented!()
+  match readdraw as EGLenum {
+    EGL_READ => READ_SURFACE.with(|s| s.get()),
+    EGL_DRAW => DRAW_SURFACE.with(|s| s.get()),
+    _ => EGL_NO_SURFACE, // TODO: set error
+  }
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -500,31 +783,47 @@ pub extern "C" fn eglGetSyncAttrib(dpy: EGLDisplay, sync: EGLSync, attribute: EG
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglInitialize(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean {
-  // unimplemented!()
-  unsafe {
-    ptr::write(major, 1);
-    ptr::write(minor, 5);
-  }
+pub unsafe extern "C" fn eglInitialize(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean {
+  ptr::write(major, 1);
+  ptr::write(minor, 5);
   EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglMakeCurrent(dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext) -> EGLBoolean {
-  unimplemented!()
+  CONTEXT.with(|c| c.set(ctx));
+  READ_SURFACE.with(|s| s.set(read));
+  DRAW_SURFACE.with(|s| s.set(draw));
+
+  EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglQueryAPI() -> EGLenum {
-  unimplemented!()
+  API.with(|a| a.get())
 }
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
-  unimplemented!()
+pub unsafe extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+  let context = &*ctx;
+
+  let result = match attribute as EGLenum {
+    EGL_CONFIG_ID => {
+      context.config_id as EGLint
+    },
+    EGL_CONTEXT_CLIENT_TYPE => EGL_OPENGL_ES_API as EGLint,
+    EGL_CONTEXT_CLIENT_VERSION => 3,
+    EGL_RENDER_BUFFER => EGL_BACK_BUFFER as EGLint,
+    x => unimplemented!("{:x}", x),
+    // _ => { return EGL_FALSE; } // TODO: set error
+  };
+
+  ptr::write(value, result);
+
+  EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -544,8 +843,31 @@ pub extern "C" fn eglQueryString(dpy: EGLDisplay, name: EGLint) -> *const c_char
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglQuerySurface(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
-  unimplemented!()
+pub unsafe extern "C" fn eglQuerySurface(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+  let surface = ptr::read(surface);
+
+  let result = match attribute as EGLenum {
+    EGL_CONFIG_ID => surface.config_id as EGLint,
+    EGL_WIDTH => surface.width,
+    EGL_HEIGHT => surface.height,
+    EGL_HORIZONTAL_RESOLUTION => -1,
+    EGL_VERTICAL_RESOLUTION => -1,
+    EGL_PIXEL_ASPECT_RATIO => -1,
+    EGL_MULTISAMPLE_RESOLVE => surface.multisample_resolve as EGLint,
+    EGL_RENDER_BUFFER => EGL_BACK_BUFFER as EGLint,
+    EGL_SWAP_BEHAVIOR => EGL_BUFFER_DESTROYED as EGLint,
+    EGL_VG_ALPHA_FORMAT => EGL_VG_ALPHA_FORMAT_NONPRE as EGLint,
+    EGL_VG_COLORSPACE => EGL_VG_COLORSPACE_sRGB as EGLint,
+    EGL_LARGEST_PBUFFER => EGL_FALSE as EGLint,
+    EGL_TEXTURE_FORMAT => EGL_NO_TEXTURE as EGLint,
+    EGL_TEXTURE_TARGET => EGL_NO_TEXTURE as EGLint,
+    EGL_MIPMAP_TEXTURE => EGL_FALSE as EGLint,
+    EGL_MIPMAP_LEVEL => 0,
+    x => unimplemented!("{:x}", x),
+  };
+
+  ptr::write(value, result);
+  EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -563,7 +885,12 @@ pub extern "C" fn eglReleaseThread() -> EGLBoolean {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglSurfaceAttrib(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: EGLint) -> EGLBoolean {
-  unimplemented!()
+  match attribute as EGLenum {
+    EGL_MIPMAP_LEVEL => {},
+    x => unimplemented!("{:x}", x),
+  }
+
+  EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -587,7 +914,7 @@ pub extern "C" fn eglTerminate(dpy: EGLDisplay) -> EGLBoolean {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglWaitClient() -> EGLBoolean {
-  unimplemented!()
+  EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]

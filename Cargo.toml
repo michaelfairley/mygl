@@ -7,6 +7,7 @@ authors = ["Michael Fairley <michaelfairley@gmail.com>"]
 crate-type = ["cdylib"]
 
 [dependencies]
+lazy_static = "*"
 
 [profile.dev]
 panic = "abort"
