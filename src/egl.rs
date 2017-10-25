@@ -1,7 +1,10 @@
 use std::os::raw::*;
 // use std::ffi;
+// use std::mem;
 use std::ptr;
 use std::cell::Cell;
+use gl;
+use gl::Context;
 
 // TODO: use references in signatures and ditch ptr
 
@@ -75,41 +78,62 @@ pub type EGLint = i32;
 pub struct Display;
 static THE_DISPLAY: Display = Display;
 
-pub struct Context {
-  config_id: usize,
+#[derive(Clone,Copy,PartialEq,Debug)]
+pub enum ColorFormat {
+  RGB888A8,
+  RGB888,
+  RGB444A4,
+  RGB565,
+  RGB555A1,
+}
+
+impl ColorFormat {
+  fn sizes(self) -> (u8, u8, u8, u8) {
+    match self {
+      ColorFormat::RGB888A8 => (8, 8, 8, 8),
+      ColorFormat::RGB888 => (8, 8, 8, 0),
+      ColorFormat::RGB444A4 => (4, 4, 4, 4),
+      ColorFormat::RGB565 => (5, 6, 5, 0),
+      ColorFormat::RGB555A1 => (5, 5, 5, 1),
+    }
+  }
+
+  fn size(self) -> u8 {
+    let sizes = self.sizes();
+    sizes.0 + sizes.1 + sizes.2 + sizes.3
+  }
+
+  fn byte_size(self) -> usize {
+    let size = self.size();
+    assert!(size % 8 == 0);
+    size as usize / 8
+  }
 }
 
 pub struct Surface {
-  config_id: usize,
-  width: EGLint,
-  height: EGLint,
+  pub config: &'static Config,
+  pub width: EGLint,
+  pub height: EGLint,
   multisample_resolve: EGLenum,
+  pub buffer: Vec<u8>,
 }
 
 thread_local! {
   static API: Cell<EGLenum> = Cell::new(EGL_OPENGL_ES_API);
-  static CONTEXT: Cell<EGLContext> = Cell::new(EGL_NO_CONTEXT);
-  static READ_SURFACE: Cell<EGLSurface> = Cell::new(EGL_NO_SURFACE);
-  static DRAW_SURFACE: Cell<EGLSurface> = Cell::new(EGL_NO_SURFACE);
+  pub static CONTEXT: Cell<EGLContext> = Cell::new(EGL_NO_CONTEXT);
 }
 
 
 #[derive(PartialEq,Debug)]
 pub struct Config {
-  red_size: u8,
-  green_size: u8,
-  blue_size: u8,
-  alpha_size: u8,
-  depth_size: u8,
-  stencil_size: u8,
-  samples: u8,
+  id: EGLint,
+  pub color_format: ColorFormat,
+  pub depth_size: u8,
+  pub stencil_size: u8,
+  pub samples: u8,
 }
 
 impl Config {
-  fn buffer_size(&self) -> u8 {
-    self.red_size + self.green_size + self.blue_size + self.alpha_size
-  }
-
   fn sample_buffers(&self) -> u8 {
     if self.samples == 0 { 0 } else { 1 }
   }
@@ -117,31 +141,36 @@ impl Config {
 
 lazy_static! {
   static ref CONFIGS: Vec<Config> = {
-    let color_sizes = &[
-      (8, 8, 8, 8),
-      (8, 8, 8, 0),
-      (4, 4, 4, 4),
-      (5, 6, 5, 0),
-      (5, 5, 5, 1),
+    let color_formats = &[
+      ColorFormat::RGB888A8,
+      ColorFormat::RGB888,
+      ColorFormat::RGB444A4,
+      ColorFormat::RGB565,
+      ColorFormat::RGB555A1,
     ];
     let depth_sizes = &[0, 24];
     let stencil_sizes = &[0, 8, 16];
 
     let samples = &[0, 4];
 
-    color_sizes.iter().flat_map(|&(red_size, green_size, blue_size, alpha_size)| {
-      depth_sizes.iter().flat_map(move |&depth_size| {
-        stencil_sizes.iter().flat_map(move |&stencil_size| {
-          samples.iter().map(move |&samples| {
-            Config{ red_size, green_size, blue_size, alpha_size, depth_size, stencil_size, samples }
-          })
-        })
-      })
-    }).collect::<Vec<_>>()
+    let mut id = 1;
+
+    let mut result = Vec::with_capacity(color_formats.len() * depth_sizes.len() * stencil_sizes.len() * samples.len());
+
+    for &color_format in color_formats {
+      for &depth_size in depth_sizes {
+        for &stencil_size in stencil_sizes {
+          for &samples in samples {
+            result.push(Config{ id, color_format, depth_size, stencil_size, samples });
+
+            id += 1;
+          }
+        }
+      }
+    }
+
+    result
   };
-}
-fn config_id(config: &Config) -> usize {
-  CONFIGS.iter().position(|c| c == config).unwrap() + 1
 }
 
 
@@ -455,12 +484,12 @@ pub unsafe extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EG
     vec![&CONFIGS[config_id as usize - 1]]
   } else {
     CONFIGS.iter().filter(|&config| {
-      (buffer_size == EGL_DONT_CARE || config.buffer_size() as EGLint >= buffer_size)
-        && (red_size == EGL_DONT_CARE || config.red_size as EGLint >= red_size)
-        && (green_size == EGL_DONT_CARE || config.green_size as EGLint >= green_size)
-        && (blue_size == EGL_DONT_CARE || config.blue_size as EGLint >= blue_size)
+      (buffer_size == EGL_DONT_CARE || config.color_format.size() as EGLint >= buffer_size)
+        && (red_size == EGL_DONT_CARE || config.color_format.sizes().0 as EGLint >= red_size)
+        && (green_size == EGL_DONT_CARE || config.color_format.sizes().1 as EGLint >= green_size)
+        && (blue_size == EGL_DONT_CARE || config.color_format.sizes().2 as EGLint >= blue_size)
         && (luminance_size == EGL_DONT_CARE || 0 >= luminance_size)
-        && (alpha_size == EGL_DONT_CARE || config.alpha_size as EGLint >= alpha_size)
+        && (alpha_size == EGL_DONT_CARE || config.color_format.sizes().3 as EGLint >= alpha_size)
         && (alpha_mask_size == EGL_DONT_CARE || 0 >= alpha_mask_size)
         && (bind_to_texture_rgb == EGL_DONT_CARE || bind_to_texture_rgb == EGL_FALSE as EGLint)
         && (bind_to_texture_rgba == EGL_DONT_CARE || bind_to_texture_rgba == EGL_FALSE as EGLint)
@@ -501,14 +530,26 @@ pub unsafe extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EG
       // 3.
       let mut a_bits = 0;
       let mut b_bits = 0;
-      if count_red { a_bits += a.red_size; b_bits += b.red_size }
-      if count_green { a_bits += a.green_size; b_bits += b.green_size }
-      if count_blue { a_bits += a.blue_size; b_bits += b.blue_size }
-      if count_alpha { a_bits += a.alpha_size; b_bits += b.alpha_size }
+      if count_red {
+        a_bits += a.color_format.sizes().0;
+        b_bits += b.color_format.sizes().0;
+      }
+      if count_green {
+        a_bits += a.color_format.sizes().1;
+        b_bits += b.color_format.sizes().1;
+      }
+      if count_blue {
+        a_bits += a.color_format.sizes().2;
+        b_bits += b.color_format.sizes().2;
+      }
+      if count_alpha {
+        a_bits += a.color_format.sizes().3;
+        b_bits += b.color_format.sizes().3;
+      }
 
       a_bits.cmp(&b_bits).reverse()
         .then_with(|| { // 4.
-          a.buffer_size().cmp(&b.buffer_size())
+          a.color_format.size().cmp(&b.color_format.size())
         }).then_with(|| { // 5.
           a.sample_buffers().cmp(&b.sample_buffers())
         }).then_with(|| { // 6.
@@ -521,7 +562,7 @@ pub unsafe extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EG
       // 9. We don't use EGL_ALPHA_MASK_SIZE
       // 10. We don't use EGL_NATIVE_VISUAL_TYPE
         .then_with(|| { // 11.
-          self::config_id(a).cmp(&self::config_id(b))
+          a.id.cmp(&b.id)
         })
     });
 
@@ -549,9 +590,7 @@ pub extern "C" fn eglCopyBuffers(dpy: EGLDisplay, surface: EGLSurface, target: E
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub unsafe extern "C" fn eglCreateContext(dpy: EGLDisplay, config: EGLConfig, share_context: EGLContext, attrib_list: *const EGLint) -> EGLContext {
-  let context = Box::new(Context{
-    config_id: config_id(&*config)
-  });
+  let context = Box::new(Context::new(&*config));
   Box::into_raw(context)
 }
 
@@ -570,6 +609,7 @@ pub extern "C" fn eglCreatePbufferFromClientBuffer(dpy: EGLDisplay, buftype: EGL
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub unsafe extern "C" fn eglCreatePbufferSurface(dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
+  let config = &*config;
   let mut width = 0;
   let mut height = 0;
   let mut _texture_format = EGL_NO_TEXTURE;
@@ -584,11 +624,15 @@ pub unsafe extern "C" fn eglCreatePbufferSurface(dpy: EGLDisplay, config: EGLCon
     }
   }
 
+  let buffer_size = width as usize * height as usize * config.color_format.byte_size();
+  let mut buffer = Vec::with_capacity(buffer_size);
+  buffer.resize(buffer_size, 0);
 
   let surface = Box::new(Surface{
-    config_id: config_id(&*config),
+    config,
     width,
     height,
+    buffer,
     multisample_resolve: EGL_MULTISAMPLE_RESOLVE_DEFAULT,
   });
   Box::into_raw(surface)
@@ -653,9 +697,9 @@ pub extern "C" fn eglDestroySync(dpy: EGLDisplay, sync: EGLSync) -> EGLBoolean {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub unsafe extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
-  let config = ptr::read(config);
+  let config = &*config;
   let result = match attribute as EGLenum {
-    EGL_CONFIG_ID => { config_id(&config) as EGLint },
+    EGL_CONFIG_ID => { config.id as EGLint },
     EGL_RENDERABLE_TYPE => {
       // TODO: GLES 1.0?
       (EGL_OPENGL_ES3_BIT | EGL_OPENGL_ES2_BIT) as EGLint
@@ -664,11 +708,11 @@ pub unsafe extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, 
       // TODO: GLES 1.0?
       (EGL_OPENGL_ES3_BIT | EGL_OPENGL_ES2_BIT) as EGLint
     },
-    EGL_RED_SIZE => { config.red_size as EGLint },
-    EGL_GREEN_SIZE => { config.green_size as EGLint },
-    EGL_BLUE_SIZE => { config.blue_size as EGLint },
-    EGL_ALPHA_SIZE => { config.alpha_size as EGLint },
-    EGL_BUFFER_SIZE => { config.buffer_size() as EGLint },
+    EGL_RED_SIZE => { config.color_format.sizes().0 as EGLint },
+    EGL_GREEN_SIZE => { config.color_format.sizes().1 as EGLint },
+    EGL_BLUE_SIZE => { config.color_format.sizes().2 as EGLint },
+    EGL_ALPHA_SIZE => { config.color_format.sizes().3 as EGLint },
+    EGL_BUFFER_SIZE => { config.color_format.size() as EGLint },
     EGL_DEPTH_SIZE => { config.depth_size as EGLint },
     EGL_STENCIL_SIZE => { config.stencil_size as EGLint },
     EGL_SAMPLES => { config.samples as EGLint },
@@ -740,9 +784,10 @@ pub extern "C" fn eglGetCurrentDisplay() -> EGLDisplay {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentSurface(readdraw: EGLint) -> EGLSurface {
+  let context = gl::current();
   match readdraw as EGLenum {
-    EGL_READ => READ_SURFACE.with(|s| s.get()),
-    EGL_DRAW => DRAW_SURFACE.with(|s| s.get()),
+    EGL_READ => context.read_surface,
+    EGL_DRAW => context.draw_surface,
     _ => EGL_NO_SURFACE, // TODO: set error
   }
 }
@@ -767,12 +812,386 @@ pub extern "C" fn eglGetPlatformDisplay(platform: EGLenum, native_display: *mut 
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
-pub extern "C" fn eglGetProcAddress(procname: *const c_char) -> Option<extern "system" fn() -> ()> {
-  // let cstr = unsafe { ffi::CStr::from_ptr(procname) };
-  // unimplemented!("{:?}", cstr);
+pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *const c_void {
+  let cstr = ::std::ffi::CStr::from_ptr(procname);
 
-  // ptr::null() as _
-  None
+  match cstr.to_bytes() {
+    b"glActiveShaderProgram" => gl::glActiveShaderProgram as _,
+    b"glActiveTexture" => gl::glActiveTexture as _,
+    b"glAttachShader" => gl::glAttachShader as _,
+    b"glBeginQuery" => gl::glBeginQuery as _,
+    b"glBeginTransformFeedback" => gl::glBeginTransformFeedback as _,
+    b"glBindAttribLocation" => gl::glBindAttribLocation as _,
+    b"glBindBuffer" => gl::glBindBuffer as _,
+    b"glBindBufferBase" => gl::glBindBufferBase as _,
+    b"glBindBufferRange" => gl::glBindBufferRange as _,
+    b"glBindFramebuffer" => gl::glBindFramebuffer as _,
+    b"glBindImageTexture" => gl::glBindImageTexture as _,
+    b"glBindProgramPipeline" => gl::glBindProgramPipeline as _,
+    b"glBindRenderbuffer" => gl::glBindRenderbuffer as _,
+    b"glBindSampler" => gl::glBindSampler as _,
+    b"glBindTexture" => gl::glBindTexture as _,
+    b"glBindTransformFeedback" => gl::glBindTransformFeedback as _,
+    b"glBindVertexArray" => gl::glBindVertexArray as _,
+    b"glBindVertexBuffer" => gl::glBindVertexBuffer as _,
+    b"glBlendBarrier" => gl::glBlendBarrier as _,
+    b"glBlendColor" => gl::glBlendColor as _,
+    b"glBlendEquation" => gl::glBlendEquation as _,
+    b"glBlendEquationSeparate" => gl::glBlendEquationSeparate as _,
+    b"glBlendEquationSeparatei" => gl::glBlendEquationSeparatei as _,
+    b"glBlendEquationi" => gl::glBlendEquationi as _,
+    b"glBlendFunc" => gl::glBlendFunc as _,
+    b"glBlendFuncSeparate" => gl::glBlendFuncSeparate as _,
+    b"glBlendFuncSeparatei" => gl::glBlendFuncSeparatei as _,
+    b"glBlendFunci" => gl::glBlendFunci as _,
+    b"glBlitFramebuffer" => gl::glBlitFramebuffer as _,
+    b"glBufferData" => gl::glBufferData as _,
+    b"glBufferSubData" => gl::glBufferSubData as _,
+    b"glCheckFramebufferStatus" => gl::glCheckFramebufferStatus as _,
+    b"glClear" => gl::glClear as _,
+    b"glClearBufferfi" => gl::glClearBufferfi as _,
+    b"glClearBufferfv" => gl::glClearBufferfv as _,
+    b"glClearBufferiv" => gl::glClearBufferiv as _,
+    b"glClearBufferuiv" => gl::glClearBufferuiv as _,
+    b"glClearColor" => gl::glClearColor as _,
+    b"glClearDepthf" => gl::glClearDepthf as _,
+    b"glClearStencil" => gl::glClearStencil as _,
+    b"glClientWaitSync" => gl::glClientWaitSync as _,
+    b"glColorMask" => gl::glColorMask as _,
+    b"glColorMaski" => gl::glColorMaski as _,
+    b"glCompileShader" => gl::glCompileShader as _,
+    b"glCompressedTexImage2D" => gl::glCompressedTexImage2D as _,
+    b"glCompressedTexImage3D" => gl::glCompressedTexImage3D as _,
+    b"glCompressedTexSubImage2D" => gl::glCompressedTexSubImage2D as _,
+    b"glCompressedTexSubImage3D" => gl::glCompressedTexSubImage3D as _,
+    b"glCopyBufferSubData" => gl::glCopyBufferSubData as _,
+    b"glCopyImageSubData" => gl::glCopyImageSubData as _,
+    b"glCopyTexImage2D" => gl::glCopyTexImage2D as _,
+    b"glCopyTexSubImage2D" => gl::glCopyTexSubImage2D as _,
+    b"glCopyTexSubImage3D" => gl::glCopyTexSubImage3D as _,
+    b"glCreateProgram" => gl::glCreateProgram as _,
+    b"glCreateShader" => gl::glCreateShader as _,
+    b"glCreateShaderProgramv" => gl::glCreateShaderProgramv as _,
+    b"glCullFace" => gl::glCullFace as _,
+    b"glDebugMessageCallback" => gl::glDebugMessageCallback as _,
+    b"glDebugMessageControl" => gl::glDebugMessageControl as _,
+    b"glDebugMessageInsert" => gl::glDebugMessageInsert as _,
+    b"glDeleteBuffers" => gl::glDeleteBuffers as _,
+    b"glDeleteFramebuffers" => gl::glDeleteFramebuffers as _,
+    b"glDeleteProgram" => gl::glDeleteProgram as _,
+    b"glDeleteProgramPipelines" => gl::glDeleteProgramPipelines as _,
+    b"glDeleteQueries" => gl::glDeleteQueries as _,
+    b"glDeleteRenderbuffers" => gl::glDeleteRenderbuffers as _,
+    b"glDeleteSamplers" => gl::glDeleteSamplers as _,
+    b"glDeleteShader" => gl::glDeleteShader as _,
+    b"glDeleteSync" => gl::glDeleteSync as _,
+    b"glDeleteTextures" => gl::glDeleteTextures as _,
+    b"glDeleteTransformFeedbacks" => gl::glDeleteTransformFeedbacks as _,
+    b"glDeleteVertexArrays" => gl::glDeleteVertexArrays as _,
+    b"glDepthFunc" => gl::glDepthFunc as _,
+    b"glDepthMask" => gl::glDepthMask as _,
+    b"glDepthRangef" => gl::glDepthRangef as _,
+    b"glDetachShader" => gl::glDetachShader as _,
+    b"glDisable" => gl::glDisable as _,
+    b"glDisableVertexAttribArray" => gl::glDisableVertexAttribArray as _,
+    b"glDisablei" => gl::glDisablei as _,
+    b"glDispatchCompute" => gl::glDispatchCompute as _,
+    b"glDispatchComputeIndirect" => gl::glDispatchComputeIndirect as _,
+    b"glDrawArrays" => gl::glDrawArrays as _,
+    b"glDrawArraysIndirect" => gl::glDrawArraysIndirect as _,
+    b"glDrawArraysInstanced" => gl::glDrawArraysInstanced as _,
+    b"glDrawBuffers" => gl::glDrawBuffers as _,
+    b"glDrawElements" => gl::glDrawElements as _,
+    b"glDrawElementsBaseVertex" => gl::glDrawElementsBaseVertex as _,
+    b"glDrawElementsIndirect" => gl::glDrawElementsIndirect as _,
+    b"glDrawElementsInstanced" => gl::glDrawElementsInstanced as _,
+    b"glDrawElementsInstancedBaseVertex" => gl::glDrawElementsInstancedBaseVertex as _,
+    b"glDrawRangeElements" => gl::glDrawRangeElements as _,
+    b"glDrawRangeElementsBaseVertex" => gl::glDrawRangeElementsBaseVertex as _,
+    b"glEnable" => gl::glEnable as _,
+    b"glEnableVertexAttribArray" => gl::glEnableVertexAttribArray as _,
+    b"glEnablei" => gl::glEnablei as _,
+    b"glEndQuery" => gl::glEndQuery as _,
+    b"glEndTransformFeedback" => gl::glEndTransformFeedback as _,
+    b"glFenceSync" => gl::glFenceSync as _,
+    b"glFinish" => gl::glFinish as _,
+    b"glFlush" => gl::glFlush as _,
+    b"glFlushMappedBufferRange" => gl::glFlushMappedBufferRange as _,
+    b"glFramebufferParameteri" => gl::glFramebufferParameteri as _,
+    b"glFramebufferRenderbuffer" => gl::glFramebufferRenderbuffer as _,
+    b"glFramebufferTexture" => gl::glFramebufferTexture as _,
+    b"glFramebufferTexture2D" => gl::glFramebufferTexture2D as _,
+    b"glFramebufferTextureLayer" => gl::glFramebufferTextureLayer as _,
+    b"glFrontFace" => gl::glFrontFace as _,
+    b"glGenBuffers" => gl::glGenBuffers as _,
+    b"glGenFramebuffers" => gl::glGenFramebuffers as _,
+    b"glGenProgramPipelines" => gl::glGenProgramPipelines as _,
+    b"glGenQueries" => gl::glGenQueries as _,
+    b"glGenRenderbuffers" => gl::glGenRenderbuffers as _,
+    b"glGenSamplers" => gl::glGenSamplers as _,
+    b"glGenTextures" => gl::glGenTextures as _,
+    b"glGenTransformFeedbacks" => gl::glGenTransformFeedbacks as _,
+    b"glGenVertexArrays" => gl::glGenVertexArrays as _,
+    b"glGenerateMipmap" => gl::glGenerateMipmap as _,
+    b"glGetActiveAttrib" => gl::glGetActiveAttrib as _,
+    b"glGetActiveUniform" => gl::glGetActiveUniform as _,
+    b"glGetActiveUniformBlockName" => gl::glGetActiveUniformBlockName as _,
+    b"glGetActiveUniformBlockiv" => gl::glGetActiveUniformBlockiv as _,
+    b"glGetActiveUniformsiv" => gl::glGetActiveUniformsiv as _,
+    b"glGetAttachedShaders" => gl::glGetAttachedShaders as _,
+    b"glGetAttribLocation" => gl::glGetAttribLocation as _,
+    b"glGetBooleani_v" => gl::glGetBooleani_v as _,
+    b"glGetBooleanv" => gl::glGetBooleanv as _,
+    b"glGetBufferParameteri64v" => gl::glGetBufferParameteri64v as _,
+    b"glGetBufferParameteriv" => gl::glGetBufferParameteriv as _,
+    b"glGetBufferPointerv" => gl::glGetBufferPointerv as _,
+    b"glGetDebugMessageLog" => gl::glGetDebugMessageLog as _,
+    b"glGetError" => gl::glGetError as _,
+    b"glGetFloatv" => gl::glGetFloatv as _,
+    b"glGetFragDataLocation" => gl::glGetFragDataLocation as _,
+    b"glGetFramebufferAttachmentParameteriv" => gl::glGetFramebufferAttachmentParameteriv as _,
+    b"glGetFramebufferParameteriv" => gl::glGetFramebufferParameteriv as _,
+    b"glGetGraphicsResetStatus" => gl::glGetGraphicsResetStatus as _,
+    b"glGetInteger64i_v" => gl::glGetInteger64i_v as _,
+    b"glGetInteger64v" => gl::glGetInteger64v as _,
+    b"glGetIntegeri_v" => gl::glGetIntegeri_v as _,
+    b"glGetIntegerv" => gl::glGetIntegerv as _,
+    b"glGetInternalformativ" => gl::glGetInternalformativ as _,
+    b"glGetMultisamplefv" => gl::glGetMultisamplefv as _,
+    b"glGetObjectLabel" => gl::glGetObjectLabel as _,
+    b"glGetObjectPtrLabel" => gl::glGetObjectPtrLabel as _,
+    b"glGetPointerv" => gl::glGetPointerv as _,
+    b"glGetProgramBinary" => gl::glGetProgramBinary as _,
+    b"glGetProgramInfoLog" => gl::glGetProgramInfoLog as _,
+    b"glGetProgramInterfaceiv" => gl::glGetProgramInterfaceiv as _,
+    b"glGetProgramPipelineInfoLog" => gl::glGetProgramPipelineInfoLog as _,
+    b"glGetProgramPipelineiv" => gl::glGetProgramPipelineiv as _,
+    b"glGetProgramResourceIndex" => gl::glGetProgramResourceIndex as _,
+    b"glGetProgramResourceLocation" => gl::glGetProgramResourceLocation as _,
+    b"glGetProgramResourceName" => gl::glGetProgramResourceName as _,
+    b"glGetProgramResourceiv" => gl::glGetProgramResourceiv as _,
+    b"glGetProgramiv" => gl::glGetProgramiv as _,
+    b"glGetQueryObjectuiv" => gl::glGetQueryObjectuiv as _,
+    b"glGetQueryiv" => gl::glGetQueryiv as _,
+    b"glGetRenderbufferParameteriv" => gl::glGetRenderbufferParameteriv as _,
+    b"glGetSamplerParameterIiv" => gl::glGetSamplerParameterIiv as _,
+    b"glGetSamplerParameterIuiv" => gl::glGetSamplerParameterIuiv as _,
+    b"glGetSamplerParameterfv" => gl::glGetSamplerParameterfv as _,
+    b"glGetSamplerParameteriv" => gl::glGetSamplerParameteriv as _,
+    b"glGetShaderInfoLog" => gl::glGetShaderInfoLog as _,
+    b"glGetShaderPrecisionFormat" => gl::glGetShaderPrecisionFormat as _,
+    b"glGetShaderSource" => gl::glGetShaderSource as _,
+    b"glGetShaderiv" => gl::glGetShaderiv as _,
+    b"glGetString" => gl::glGetString as _,
+    b"glGetStringi" => gl::glGetStringi as _,
+    b"glGetSynciv" => gl::glGetSynciv as _,
+    b"glGetTexLevelParameterfv" => gl::glGetTexLevelParameterfv as _,
+    b"glGetTexLevelParameteriv" => gl::glGetTexLevelParameteriv as _,
+    b"glGetTexParameterIiv" => gl::glGetTexParameterIiv as _,
+    b"glGetTexParameterIuiv" => gl::glGetTexParameterIuiv as _,
+    b"glGetTexParameterfv" => gl::glGetTexParameterfv as _,
+    b"glGetTexParameteriv" => gl::glGetTexParameteriv as _,
+    b"glGetTransformFeedbackVarying" => gl::glGetTransformFeedbackVarying as _,
+    b"glGetUniformBlockIndex" => gl::glGetUniformBlockIndex as _,
+    b"glGetUniformIndices" => gl::glGetUniformIndices as _,
+    b"glGetUniformLocation" => gl::glGetUniformLocation as _,
+    b"glGetUniformfv" => gl::glGetUniformfv as _,
+    b"glGetUniformiv" => gl::glGetUniformiv as _,
+    b"glGetUniformuiv" => gl::glGetUniformuiv as _,
+    b"glGetVertexAttribIiv" => gl::glGetVertexAttribIiv as _,
+    b"glGetVertexAttribIuiv" => gl::glGetVertexAttribIuiv as _,
+    b"glGetVertexAttribPointerv" => gl::glGetVertexAttribPointerv as _,
+    b"glGetVertexAttribfv" => gl::glGetVertexAttribfv as _,
+    b"glGetVertexAttribiv" => gl::glGetVertexAttribiv as _,
+    b"glGetnUniformfv" => gl::glGetnUniformfv as _,
+    b"glGetnUniformiv" => gl::glGetnUniformiv as _,
+    b"glGetnUniformuiv" => gl::glGetnUniformuiv as _,
+    b"glHint" => gl::glHint as _,
+    b"glInvalidateFramebuffer" => gl::glInvalidateFramebuffer as _,
+    b"glInvalidateSubFramebuffer" => gl::glInvalidateSubFramebuffer as _,
+    b"glIsBuffer" => gl::glIsBuffer as _,
+    b"glIsEnabled" => gl::glIsEnabled as _,
+    b"glIsEnabledi" => gl::glIsEnabledi as _,
+    b"glIsFramebuffer" => gl::glIsFramebuffer as _,
+    b"glIsProgram" => gl::glIsProgram as _,
+    b"glIsProgramPipeline" => gl::glIsProgramPipeline as _,
+    b"glIsQuery" => gl::glIsQuery as _,
+    b"glIsRenderbuffer" => gl::glIsRenderbuffer as _,
+    b"glIsSampler" => gl::glIsSampler as _,
+    b"glIsShader" => gl::glIsShader as _,
+    b"glIsSync" => gl::glIsSync as _,
+    b"glIsTexture" => gl::glIsTexture as _,
+    b"glIsTransformFeedback" => gl::glIsTransformFeedback as _,
+    b"glIsVertexArray" => gl::glIsVertexArray as _,
+    b"glLineWidth" => gl::glLineWidth as _,
+    b"glLinkProgram" => gl::glLinkProgram as _,
+    b"glMapBufferRange" => gl::glMapBufferRange as _,
+    b"glMemoryBarrier" => gl::glMemoryBarrier as _,
+    b"glMemoryBarrierByRegion" => gl::glMemoryBarrierByRegion as _,
+    b"glMinSampleShading" => gl::glMinSampleShading as _,
+    b"glObjectLabel" => gl::glObjectLabel as _,
+    b"glObjectPtrLabel" => gl::glObjectPtrLabel as _,
+    b"glPatchParameteri" => gl::glPatchParameteri as _,
+    b"glPauseTransformFeedback" => gl::glPauseTransformFeedback as _,
+    b"glPixelStorei" => gl::glPixelStorei as _,
+    b"glPolygonOffset" => gl::glPolygonOffset as _,
+    b"glPopDebugGroup" => gl::glPopDebugGroup as _,
+    b"glPrimitiveBoundingBox" => gl::glPrimitiveBoundingBox as _,
+    b"glProgramBinary" => gl::glProgramBinary as _,
+    b"glProgramParameteri" => gl::glProgramParameteri as _,
+    b"glProgramUniform1f" => gl::glProgramUniform1f as _,
+    b"glProgramUniform1fv" => gl::glProgramUniform1fv as _,
+    b"glProgramUniform1i" => gl::glProgramUniform1i as _,
+    b"glProgramUniform1iv" => gl::glProgramUniform1iv as _,
+    b"glProgramUniform1ui" => gl::glProgramUniform1ui as _,
+    b"glProgramUniform1uiv" => gl::glProgramUniform1uiv as _,
+    b"glProgramUniform2f" => gl::glProgramUniform2f as _,
+    b"glProgramUniform2fv" => gl::glProgramUniform2fv as _,
+    b"glProgramUniform2i" => gl::glProgramUniform2i as _,
+    b"glProgramUniform2iv" => gl::glProgramUniform2iv as _,
+    b"glProgramUniform2ui" => gl::glProgramUniform2ui as _,
+    b"glProgramUniform2uiv" => gl::glProgramUniform2uiv as _,
+    b"glProgramUniform3f" => gl::glProgramUniform3f as _,
+    b"glProgramUniform3fv" => gl::glProgramUniform3fv as _,
+    b"glProgramUniform3i" => gl::glProgramUniform3i as _,
+    b"glProgramUniform3iv" => gl::glProgramUniform3iv as _,
+    b"glProgramUniform3ui" => gl::glProgramUniform3ui as _,
+    b"glProgramUniform3uiv" => gl::glProgramUniform3uiv as _,
+    b"glProgramUniform4f" => gl::glProgramUniform4f as _,
+    b"glProgramUniform4fv" => gl::glProgramUniform4fv as _,
+    b"glProgramUniform4i" => gl::glProgramUniform4i as _,
+    b"glProgramUniform4iv" => gl::glProgramUniform4iv as _,
+    b"glProgramUniform4ui" => gl::glProgramUniform4ui as _,
+    b"glProgramUniform4uiv" => gl::glProgramUniform4uiv as _,
+    b"glProgramUniformMatrix2fv" => gl::glProgramUniformMatrix2fv as _,
+    b"glProgramUniformMatrix2x3fv" => gl::glProgramUniformMatrix2x3fv as _,
+    b"glProgramUniformMatrix2x4fv" => gl::glProgramUniformMatrix2x4fv as _,
+    b"glProgramUniformMatrix3fv" => gl::glProgramUniformMatrix3fv as _,
+    b"glProgramUniformMatrix3x2fv" => gl::glProgramUniformMatrix3x2fv as _,
+    b"glProgramUniformMatrix3x4fv" => gl::glProgramUniformMatrix3x4fv as _,
+    b"glProgramUniformMatrix4fv" => gl::glProgramUniformMatrix4fv as _,
+    b"glProgramUniformMatrix4x2fv" => gl::glProgramUniformMatrix4x2fv as _,
+    b"glProgramUniformMatrix4x3fv" => gl::glProgramUniformMatrix4x3fv as _,
+    b"glPushDebugGroup" => gl::glPushDebugGroup as _,
+    b"glReadBuffer" => gl::glReadBuffer as _,
+    b"glReadPixels" => gl::glReadPixels as _,
+    b"glReadnPixels" => gl::glReadnPixels as _,
+    b"glReleaseShaderCompiler" => gl::glReleaseShaderCompiler as _,
+    b"glRenderbufferStorage" => gl::glRenderbufferStorage as _,
+    b"glRenderbufferStorageMultisample" => gl::glRenderbufferStorageMultisample as _,
+    b"glResumeTransformFeedback" => gl::glResumeTransformFeedback as _,
+    b"glSampleCoverage" => gl::glSampleCoverage as _,
+    b"glSampleMaski" => gl::glSampleMaski as _,
+    b"glSamplerParameterIiv" => gl::glSamplerParameterIiv as _,
+    b"glSamplerParameterIuiv" => gl::glSamplerParameterIuiv as _,
+    b"glSamplerParameterf" => gl::glSamplerParameterf as _,
+    b"glSamplerParameterfv" => gl::glSamplerParameterfv as _,
+    b"glSamplerParameteri" => gl::glSamplerParameteri as _,
+    b"glSamplerParameteriv" => gl::glSamplerParameteriv as _,
+    b"glScissor" => gl::glScissor as _,
+    b"glShaderBinary" => gl::glShaderBinary as _,
+    b"glShaderSource" => gl::glShaderSource as _,
+    b"glStencilFunc" => gl::glStencilFunc as _,
+    b"glStencilFuncSeparate" => gl::glStencilFuncSeparate as _,
+    b"glStencilMask" => gl::glStencilMask as _,
+    b"glStencilMaskSeparate" => gl::glStencilMaskSeparate as _,
+    b"glStencilOp" => gl::glStencilOp as _,
+    b"glStencilOpSeparate" => gl::glStencilOpSeparate as _,
+    b"glTexBuffer" => gl::glTexBuffer as _,
+    b"glTexBufferRange" => gl::glTexBufferRange as _,
+    b"glTexImage2D" => gl::glTexImage2D as _,
+    b"glTexImage3D" => gl::glTexImage3D as _,
+    b"glTexParameterIiv" => gl::glTexParameterIiv as _,
+    b"glTexParameterIuiv" => gl::glTexParameterIuiv as _,
+    b"glTexParameterf" => gl::glTexParameterf as _,
+    b"glTexParameterfv" => gl::glTexParameterfv as _,
+    b"glTexParameteri" => gl::glTexParameteri as _,
+    b"glTexParameteriv" => gl::glTexParameteriv as _,
+    b"glTexStorage2D" => gl::glTexStorage2D as _,
+    b"glTexStorage2DMultisample" => gl::glTexStorage2DMultisample as _,
+    b"glTexStorage3D" => gl::glTexStorage3D as _,
+    b"glTexStorage3DMultisample" => gl::glTexStorage3DMultisample as _,
+    b"glTexSubImage2D" => gl::glTexSubImage2D as _,
+    b"glTexSubImage3D" => gl::glTexSubImage3D as _,
+    b"glTransformFeedbackVaryings" => gl::glTransformFeedbackVaryings as _,
+    b"glUniform1f" => gl::glUniform1f as _,
+    b"glUniform1fv" => gl::glUniform1fv as _,
+    b"glUniform1i" => gl::glUniform1i as _,
+    b"glUniform1iv" => gl::glUniform1iv as _,
+    b"glUniform1ui" => gl::glUniform1ui as _,
+    b"glUniform1uiv" => gl::glUniform1uiv as _,
+    b"glUniform2f" => gl::glUniform2f as _,
+    b"glUniform2fv" => gl::glUniform2fv as _,
+    b"glUniform2i" => gl::glUniform2i as _,
+    b"glUniform2iv" => gl::glUniform2iv as _,
+    b"glUniform2ui" => gl::glUniform2ui as _,
+    b"glUniform2uiv" => gl::glUniform2uiv as _,
+    b"glUniform3f" => gl::glUniform3f as _,
+    b"glUniform3fv" => gl::glUniform3fv as _,
+    b"glUniform3i" => gl::glUniform3i as _,
+    b"glUniform3iv" => gl::glUniform3iv as _,
+    b"glUniform3ui" => gl::glUniform3ui as _,
+    b"glUniform3uiv" => gl::glUniform3uiv as _,
+    b"glUniform4f" => gl::glUniform4f as _,
+    b"glUniform4fv" => gl::glUniform4fv as _,
+    b"glUniform4i" => gl::glUniform4i as _,
+    b"glUniform4iv" => gl::glUniform4iv as _,
+    b"glUniform4ui" => gl::glUniform4ui as _,
+    b"glUniform4uiv" => gl::glUniform4uiv as _,
+    b"glUniformBlockBinding" => gl::glUniformBlockBinding as _,
+    b"glUniformMatrix2fv" => gl::glUniformMatrix2fv as _,
+    b"glUniformMatrix2x3fv" => gl::glUniformMatrix2x3fv as _,
+    b"glUniformMatrix2x4fv" => gl::glUniformMatrix2x4fv as _,
+    b"glUniformMatrix3fv" => gl::glUniformMatrix3fv as _,
+    b"glUniformMatrix3x2fv" => gl::glUniformMatrix3x2fv as _,
+    b"glUniformMatrix3x4fv" => gl::glUniformMatrix3x4fv as _,
+    b"glUniformMatrix4fv" => gl::glUniformMatrix4fv as _,
+    b"glUniformMatrix4x2fv" => gl::glUniformMatrix4x2fv as _,
+    b"glUniformMatrix4x3fv" => gl::glUniformMatrix4x3fv as _,
+    b"glUnmapBuffer" => gl::glUnmapBuffer as _,
+    b"glUseProgram" => gl::glUseProgram as _,
+    b"glUseProgramStages" => gl::glUseProgramStages as _,
+    b"glValidateProgram" => gl::glValidateProgram as _,
+    b"glValidateProgramPipeline" => gl::glValidateProgramPipeline as _,
+    b"glVertexAttrib1f" => gl::glVertexAttrib1f as _,
+    b"glVertexAttrib1fv" => gl::glVertexAttrib1fv as _,
+    b"glVertexAttrib2f" => gl::glVertexAttrib2f as _,
+    b"glVertexAttrib2fv" => gl::glVertexAttrib2fv as _,
+    b"glVertexAttrib3f" => gl::glVertexAttrib3f as _,
+    b"glVertexAttrib3fv" => gl::glVertexAttrib3fv as _,
+    b"glVertexAttrib4f" => gl::glVertexAttrib4f as _,
+    b"glVertexAttrib4fv" => gl::glVertexAttrib4fv as _,
+    b"glVertexAttribBinding" => gl::glVertexAttribBinding as _,
+    b"glVertexAttribDivisor" => gl::glVertexAttribDivisor as _,
+    b"glVertexAttribFormat" => gl::glVertexAttribFormat as _,
+    b"glVertexAttribI4i" => gl::glVertexAttribI4i as _,
+    b"glVertexAttribI4iv" => gl::glVertexAttribI4iv as _,
+    b"glVertexAttribI4ui" => gl::glVertexAttribI4ui as _,
+    b"glVertexAttribI4uiv" => gl::glVertexAttribI4uiv as _,
+    b"glVertexAttribIFormat" => gl::glVertexAttribIFormat as _,
+    b"glVertexAttribIPointer" => gl::glVertexAttribIPointer as _,
+    b"glVertexAttribPointer" => gl::glVertexAttribPointer as _,
+    b"glVertexBindingDivisor" => gl::glVertexBindingDivisor as _,
+    b"glViewport" => gl::glViewport as _,
+    b"glWaitSync" => gl::glWaitSync as _,
+    b"eglClientWaitSyncKHR"
+      | b"eglCreateImageKHR"
+      | b"eglCreatePlatformPixmapSurfaceEXT"
+      | b"eglCreatePlatformWindowSurfaceEXT"
+      | b"eglCreateSyncKHR"
+      | b"eglDestroyImageKHR"
+      | b"eglDestroySyncKHR"
+      | b"eglGetPlatformDisplayEXT"
+      | b"eglGetSyncAttribKHR"
+      | b"eglLockSurfaceKHR"
+      | b"eglSetDamageRegionKHR"
+      | b"eglSignalSyncKHR"
+      | b"eglSwapBuffersWithDamageKHR"
+      | b"eglUnlockSurfaceKHR"
+      | b"eglWaitSyncKHR"
+      => ptr::null(),
+    _ => unimplemented!("{:?}", cstr)
+  }
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -792,9 +1211,13 @@ pub unsafe extern "C" fn eglInitialize(dpy: EGLDisplay, major: *mut EGLint, mino
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglMakeCurrent(dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext) -> EGLBoolean {
+
+
   CONTEXT.with(|c| c.set(ctx));
-  READ_SURFACE.with(|s| s.set(read));
-  DRAW_SURFACE.with(|s| s.set(draw));
+  let context = unsafe{ ctx.as_mut() };
+  if let Some(context) = context {
+    context.set_surfaces(draw, read);
+  }
 
   EGL_TRUE
 }
@@ -811,9 +1234,7 @@ pub unsafe extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attri
   let context = &*ctx;
 
   let result = match attribute as EGLenum {
-    EGL_CONFIG_ID => {
-      context.config_id as EGLint
-    },
+    EGL_CONFIG_ID => context.config.id,
     EGL_CONTEXT_CLIENT_TYPE => EGL_OPENGL_ES_API as EGLint,
     EGL_CONTEXT_CLIENT_VERSION => 3,
     EGL_RENDER_BUFFER => EGL_BACK_BUFFER as EGLint,
@@ -844,10 +1265,10 @@ pub extern "C" fn eglQueryString(dpy: EGLDisplay, name: EGLint) -> *const c_char
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub unsafe extern "C" fn eglQuerySurface(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
-  let surface = ptr::read(surface);
+  let surface = &*surface;
 
   let result = match attribute as EGLenum {
-    EGL_CONFIG_ID => surface.config_id as EGLint,
+    EGL_CONFIG_ID => surface.config.id,
     EGL_WIDTH => surface.width,
     EGL_HEIGHT => surface.height,
     EGL_HORIZONTAL_RESOLUTION => -1,
@@ -879,7 +1300,9 @@ pub extern "C" fn eglReleaseTexImage(dpy: EGLDisplay, surface: EGLSurface, buffe
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglReleaseThread() -> EGLBoolean {
-  unimplemented!()
+  eglMakeCurrent(&THE_DISPLAY, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+
+  EGL_TRUE
 }
 
 #[allow(unused_variables, non_snake_case)]

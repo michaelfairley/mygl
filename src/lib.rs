@@ -2,6 +2,7 @@
 extern crate lazy_static;
 
 pub mod egl;
+pub mod gl;
 
 // use std::ffi;
 // use std::os::raw::*;
