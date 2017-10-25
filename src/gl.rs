@@ -87,22 +87,9 @@ impl Server {
 
             let (x, y, width, height) = scissor;
 
-            assert_eq!(draw.config.color_format, egl::ColorFormat::RGB565);
-            let buffer: &mut [u8] = draw.buffer.as_mut();
-            let buffer: &mut [u16] = unsafe{ ::std::slice::from_raw_parts_mut(buffer.as_mut_ptr() as _, buffer.len() / 2) };
-
-            let clear_red = (color.0 * 0b11111 as f32) as u16;
-            let clear_green = (color.1 * 0b111111 as f32) as u16;
-            let clear_blue = (color.2 * 0b11111 as f32) as u16;
-            assert!(clear_red < 1 << 5);
-            assert!(clear_green < 1 << 6);
-            assert!(clear_blue < 1 << 5);
-
-            let clear_value = clear_red << 11 | clear_green << 5 | clear_blue;
-
             for y in y..y+height {
               for x in x..x+width {
-                buffer[y as usize * draw.width as usize + x as usize] = clear_value;
+                draw.set_pixel(x, y, color);
               }
             }
           }
@@ -2817,33 +2804,23 @@ pub extern "C" fn glReadPixels(x: GLint, y: GLint, width: GLsizei, height: GLsiz
   let read = unsafe{ current.read_surface.as_ref() };
   let read = read.as_ref().unwrap();
 
-  assert_eq!(read.config.color_format, egl::ColorFormat::RGB565);
-  let buffer: &[u8] = read.buffer.as_ref();
-  let buffer: &[u16] = unsafe{ ::std::slice::from_raw_parts(buffer.as_ptr() as _, buffer.len() / 2) };
-
   let mut pos = pixels as *mut u8;
 
   for y in y..(y+height) {
     for x in x..(x+width) {
-      let pixel = buffer[y as usize * read.width as usize + x as usize];
-      let red = pixel >> 11;
-      let green = pixel >> 5 & 0b111111;
-      let blue = pixel & 0b11111;
+      let (red, green, blue, alpha) = read.get_pixel(x, y);
 
-      let red = red as f32 / 0b11111 as f32;
-      let green = green as f32 / 0b111111 as f32;
-      let blue = blue as f32 / 0b11111 as f32;
-
+      // TODO: find a way to not roundtrip 8 bit formats through floats
       let red = (red * 0xFF as f32) as u8;
       let green = (green * 0xFF as f32) as u8;
       let blue = (blue * 0xFF as f32) as u8;
-
+      let alpha = (alpha * 0xFF as f32) as u8;
 
       unsafe {
         ptr::write(pos.offset(0), red);
         ptr::write(pos.offset(1), green);
         ptr::write(pos.offset(2), blue);
-        ptr::write(pos.offset(3), 0xFF);
+        ptr::write(pos.offset(3), alpha);
 
         pos = pos.offset(4);
       }

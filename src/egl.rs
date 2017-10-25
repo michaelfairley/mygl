@@ -1,6 +1,6 @@
 use std::os::raw::*;
 // use std::ffi;
-// use std::mem;
+use std::mem;
 use std::ptr;
 use std::cell::Cell;
 use gl;
@@ -108,6 +108,94 @@ impl ColorFormat {
     assert!(size % 8 == 0);
     size as usize / 8
   }
+
+  fn encode(self, (r, g, b, a): (f32, f32, f32, f32)) -> [u8; 4] {
+    match self {
+      ColorFormat::RGB565 => {
+        let red = (r * 0b11111 as f32) as u8;
+        let green = (g * 0b111111 as f32) as u8;
+        let blue = (b * 0b11111 as f32) as u8;
+
+        let first_byte = red << 3 | green >> 3;
+        let second_byte = green << 5 | blue;
+        [first_byte, second_byte, 0, 0]
+      },
+      ColorFormat::RGB888 => {
+        [
+          (r * 0xFF as f32) as u8,
+          (g * 0xFF as f32) as u8,
+          (b * 0xFF as f32) as u8,
+          0,
+        ]
+      },
+      ColorFormat::RGB444A4 => {
+        let red = (r * 0xF as f32) as u8;
+        let green = (g * 0xF as f32) as u8;
+        let blue = (b * 0xF as f32) as u8;
+        let alpha = (a * 0xF as f32) as u8;
+
+        let first_byte = red << 4 | green;
+        let second_byte = blue << 4 | alpha;
+        [first_byte, second_byte, 0, 0]
+      },
+      ColorFormat::RGB888A8 => {
+        [
+          (r * 0xFF as f32) as u8,
+          (g * 0xFF as f32) as u8,
+          (b * 0xFF as f32) as u8,
+          (a * 0xFF as f32) as u8,
+        ]
+      },
+      x => unimplemented!("{:?}", x),
+    }
+  }
+
+  fn decode(self, bytes: [u8; 4]) -> (f32, f32, f32, f32) {
+    match self {
+      ColorFormat::RGB565 => {
+        let red = bytes[0] >> 3;
+        let green = ((bytes[0] & 0b111) << 3) | (bytes[1] >> 5);
+        let blue = bytes[1] & 0b11111;
+
+        (
+          red as f32 / 0b11111 as f32,
+          green as f32 / 0b111111 as f32,
+          blue as f32 / 0b11111 as f32,
+          1.0,
+        )
+      },
+      ColorFormat::RGB888 => {
+        (
+          bytes[0] as f32 / 0xFF as f32,
+          bytes[1] as f32 / 0xFF as f32,
+          bytes[2] as f32 / 0xFF as f32,
+          1.0,
+        )
+      },
+      ColorFormat::RGB444A4 => {
+        let red = bytes[0] >> 4;
+        let green = bytes[0] & 0b1111;
+        let blue = bytes[1] >> 4;
+        let alpha = bytes[1] & 0b1111;
+
+        (
+          red as f32 / 0xF as f32,
+          green as f32 / 0xF as f32,
+          blue as f32 / 0xF as f32,
+          alpha as f32 / 0xF as f32,
+        )
+      },
+      ColorFormat::RGB888A8 => {
+        (
+          bytes[0] as f32 / 0xFF as f32,
+          bytes[1] as f32 / 0xFF as f32,
+          bytes[2] as f32 / 0xFF as f32,
+          bytes[3] as f32 / 0xFF as f32,
+        )
+      },
+      x => unimplemented!("{:?}", x),
+    }
+  }
 }
 
 pub struct Surface {
@@ -116,6 +204,33 @@ pub struct Surface {
   pub height: EGLint,
   multisample_resolve: EGLenum,
   pub buffer: Vec<u8>,
+}
+
+impl Surface {
+  pub fn set_pixel(&mut self, x: gl::GLint, y: gl::GLint, color: (f32, f32, f32, f32)) {
+    let color_format = self.config.color_format;
+    let size = color_format.byte_size();
+    let loc = (y as usize * self.width as usize + x as usize) * size;
+
+    let encoded = color_format.encode(color);
+
+    for i in 0..size {
+      self.buffer[loc + i] = encoded[i];
+    }
+  }
+
+  pub fn get_pixel(&self, x: gl::GLint, y: gl::GLint) -> (f32, f32, f32, f32) {
+    let color_format = self.config.color_format;
+    let size = color_format.byte_size();
+    let loc = (y as usize * self.width as usize + x as usize) * size;
+
+    let mut bytes: [u8; 4] = unsafe{ mem::uninitialized() };
+    for i in 0..size {
+      bytes[i] = self.buffer[loc + i];
+    }
+
+    color_format.decode(bytes)
+  }
 }
 
 thread_local! {
