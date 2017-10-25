@@ -1289,12 +1289,12 @@ pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *const c_
     b"glVertexBindingDivisor" => gl::glVertexBindingDivisor as _,
     b"glViewport" => gl::glViewport as _,
     b"glWaitSync" => gl::glWaitSync as _,
+    b"eglCreateImageKHR" => eglCreateImage as _,
+    b"eglDestroyImageKHR" => eglDestroyImage as _,
     b"eglClientWaitSyncKHR"
-      | b"eglCreateImageKHR"
       | b"eglCreatePlatformPixmapSurfaceEXT"
       | b"eglCreatePlatformWindowSurfaceEXT"
       | b"eglCreateSyncKHR"
-      | b"eglDestroyImageKHR"
       | b"eglDestroySyncKHR"
       | b"eglGetPlatformDisplayEXT"
       | b"eglGetSyncAttribKHR"
@@ -1304,6 +1304,8 @@ pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *const c_
       | b"eglSwapBuffersWithDamageKHR"
       | b"eglUnlockSurfaceKHR"
       | b"eglWaitSyncKHR"
+      | b"glEGLImageTargetRenderbufferStorageOES"
+      | b"glEGLImageTargetTexture2DOES"
       => ptr::null(),
     _ => unimplemented!("{:?}", cstr)
   }
@@ -1365,16 +1367,19 @@ pub unsafe extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attri
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn eglQueryString(dpy: EGLDisplay, name: EGLint) -> *const c_char {
-  match name as EGLenum {
-    EGL_CLIENT_APIS => b"OpenGL_ES" as *const u8 as *const i8,
-    EGL_EXTENSIONS => b"" as *const u8 as *const i8,
-    EGL_VENDOR => b"MyGL" as *const u8 as *const i8,
-    EGL_VERSION => b"1.5" as *const u8 as *const i8,
-    _ => {
-      // TODO: set EGL_BAD_PARAMETER error
-      ptr::null()
-    },
-  }
+  let result: &'static [u8] = match name as EGLenum {
+    EGL_CLIENT_APIS => b"OpenGL_ES\0",
+    EGL_EXTENSIONS => b"EGL_KHR_create_context\0",
+    EGL_VENDOR => b"MyGL\0",
+    EGL_VERSION => b"1.5\0",
+    x => unimplemented!("{:x}", x),
+    // _ => {
+    //   // TODO: set EGL_BAD_PARAMETER error
+    //   ptr::null()
+    // },
+  };
+
+  result.as_ptr() as _
 }
 
 #[allow(unused_variables, non_snake_case)]

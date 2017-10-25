@@ -11,6 +11,9 @@ lazy_static = "*"
 
 [profile.dev]
 panic = "abort"
+opt-level = 1
 
 [profile.release]
 panic = "abort"
+debug = true
+codegen-units = 32
