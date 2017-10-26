@@ -1369,7 +1369,7 @@ pub unsafe extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attri
 pub extern "C" fn eglQueryString(dpy: EGLDisplay, name: EGLint) -> *const c_char {
   let result: &'static [u8] = match name as EGLenum {
     EGL_CLIENT_APIS => b"OpenGL_ES\0",
-    EGL_EXTENSIONS => b"EGL_KHR_create_context\0",
+    EGL_EXTENSIONS => b"EGL_KHR_create_context EGL_KHR_get_all_proc_addresses\0",
     EGL_VENDOR => b"MyGL\0",
     EGL_VERSION => b"1.5\0",
     x => unimplemented!("{:x}", x),

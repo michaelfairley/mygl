@@ -1,11 +1,21 @@
+FILTER=
+
 build:
 	cargo build
 
 test: build
+ifeq ($(FILTER),)
 	cd cts_build && DYLD_LIBRARY_PATH=../target/debug ./external/openglcts/modules/cts-runner --type=es32
+else
+	cd cts_build && DYLD_LIBRARY_PATH=../target/debug ./external/openglcts/modules/glcts -n $(FILTER)
+endif
 
 debug: build
+ifeq ($(FILTER),)
 	cd cts_build && lldb -s ../lldb-setup ./external/openglcts/modules/cts-runner -- --type=es32
+else
+	cd cts_build && lldb -s ../lldb-setup ./external/openglcts/modules/glcts -- -n $(FILTER)
+endif
 
 prepare_cts:
 	mkdir -p cts_build

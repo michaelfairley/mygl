@@ -1,1 +1,2 @@
-process launch -v DYLD_LIBRARY_PATH=../target/debug -X true -- --type=es32
+env DYLD_LIBRARY_PATH=../target/debug
+run
