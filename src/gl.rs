@@ -2,10 +2,13 @@ use std::os::raw::*;
 use std::sync::mpsc;
 use std::thread;
 use std::ptr;
-
+use std::ffi::{CStr};
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::cell::RefCell;
 
 use egl::{self,Config,Surface};
+use glsl;
 
 type Rect = (GLint, GLint, GLsizei, GLsizei);
 pub type ColorMask = (bool, bool, bool, bool);
@@ -50,6 +53,10 @@ pub struct Context {
   culling: bool,
   cull_face: GLenum,
   front_face: GLenum,
+
+  programs: HashMap<GLuint, Program>,
+  shaders: HashMap<GLuint, Arc<Shader>>,
+  program: GLuint,
 
 
   depth_range: (GLfloat, GLfloat),
@@ -112,6 +119,10 @@ impl Context {
       culling: false,
       cull_face: GL_BACK,
       front_face: GL_CCW,
+
+      programs: HashMap::new(),
+      shaders: HashMap::new(),
+      program: 0,
 
       depth_range: (0.0, 1.0),
       line_width: 1.0,
@@ -244,6 +255,35 @@ enum Command {
   Finish(mpsc::Sender<()>),
   Flush(mpsc::Sender<()>),
 }
+
+pub struct Program{
+  shaders: Vec<Arc<Shader>>,
+}
+
+impl Program {
+  pub fn new() -> Self {
+    Self{
+      shaders: vec![],
+    }
+  }
+}
+
+pub struct Shader{
+  type_: GLenum,
+  source: RefCell<Vec<u8>>,
+  compiled: RefCell<Option<()>>,
+}
+
+impl Shader {
+  pub fn new(type_: GLenum) -> Self {
+    Self{
+      type_,
+      source: RefCell::new(vec![]),
+      compiled: RefCell::new(None),
+    }
+  }
+}
+
 
 // Common types from OpenGL 1.1
 pub type GLenum = c_uint;
@@ -1372,7 +1412,12 @@ pub extern "C" fn glActiveTexture(texture: GLenum) -> () {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glAttachShader(program: GLuint, shader: GLuint) -> () {
-  unimplemented!()
+  let current = current();
+
+  let program = current.programs.get_mut(&program).unwrap();
+  let shader = current.shaders.get(&shader).unwrap();
+
+  program.shaders.push(Arc::clone(shader));
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -1656,7 +1701,10 @@ pub extern "C" fn glColorMaski(index: GLuint, r: GLboolean, g: GLboolean, b: GLb
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glCompileShader(shader: GLuint) -> () {
-  unimplemented!()
+  let current = current();
+  let shader = current.shaders.get_mut(&shader).unwrap();
+
+  *shader.compiled.borrow_mut() = Some(glsl::compile(&shader.source.borrow(), shader.type_));
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -1716,13 +1764,23 @@ pub extern "C" fn glCopyTexSubImage3D(target: GLenum, level: GLint, xoffset: GLi
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glCreateProgram() -> GLuint {
-  unimplemented!()
+  let current = current();
+
+  let name = (1..).find(|n| !current.programs.contains_key(n)).unwrap();
+  current.programs.insert(name, Program::new());
+
+  name
 }
 
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glCreateShader(type_: GLenum) -> GLuint {
-  unimplemented!()
+  let current = current();
+
+  let name = (1..).find(|n| !current.shaders.contains_key(n)).unwrap();
+  current.shaders.insert(name, Arc::new(Shader::new(type_)));
+
+  name
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -2360,7 +2418,13 @@ pub extern "C" fn glGetProgramResourceiv(program: GLuint, programInterface: GLen
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glGetProgramiv(program: GLuint, pname: GLenum, params: *mut GLint) -> () {
-  unimplemented!()
+  let value = match pname {
+    GL_LINK_STATUS => GL_TRUE as GLint,
+    GL_INFO_LOG_LENGTH => 0,
+    x => unimplemented!("{:x}", x),
+  };
+
+  unsafe{ ptr::write(params, value) };
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -2427,7 +2491,13 @@ pub extern "C" fn glGetShaderSource(shader: GLuint, bufSize: GLsizei, length: *m
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glGetShaderiv(shader: GLuint, pname: GLenum, params: *mut GLint) -> () {
-  unimplemented!()
+  let value = match pname {
+    GL_COMPILE_STATUS => GL_TRUE as GLint,
+    GL_INFO_LOG_LENGTH => 0,
+    x => unimplemented!("{:x}", x),
+  };
+
+  unsafe{ ptr::write(params, value) };
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -2685,7 +2755,7 @@ pub extern "C" fn glLineWidth(width: GLfloat) -> () {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glLinkProgram(program: GLuint) -> () {
-  unimplemented!()
+
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -3130,7 +3200,26 @@ pub extern "C" fn glShaderBinary(count: GLsizei, shaders: *const GLuint, binaryf
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glShaderSource(shader: GLuint, count: GLsizei, string: *const *const GLchar, length: *const GLint) -> () {
-  unimplemented!()
+  let current = current();
+
+  let shader = current.shaders.get_mut(&shader).unwrap();
+
+  let mut source = shader.source.borrow_mut();
+  *source = vec![];
+
+  for i in 0..count {
+    let string = unsafe{ *string.offset(i as isize) };
+    let length = if length.is_null() { -1 } else { unsafe{ *length.offset(i as isize) }};
+
+    let bytes = if length < 0 {
+      let cstr = unsafe{ CStr::from_ptr(string) };
+      cstr.to_bytes()
+    } else {
+      unsafe{ ::std::slice::from_raw_parts(string as *const u8, length as usize) }
+    };
+
+    source.extend_from_slice(bytes);
+  }
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -3489,7 +3578,7 @@ pub extern "C" fn glUnmapBuffer(target: GLenum) -> GLboolean {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glUseProgram(program: GLuint) -> () {
-  assert_eq!(program, 0);
+  current().program = program;
 }
 
 #[allow(unused_variables, non_snake_case)]
