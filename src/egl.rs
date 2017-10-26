@@ -314,42 +314,17 @@ lazy_static! {
 
 pub type EGLBoolean = c_uint;
 pub type EGLenum = c_uint;
-// pub type EGLAttribKHR = isize;
 pub type EGLAttrib = isize;
 pub type EGLConfig = *const Config;
 pub type EGLContext = *mut Context;
-// pub type EGLDeviceEXT = *const c_void;
 pub type EGLDisplay = *const Display;
 pub type EGLSurface = *mut Surface;
 pub type EGLClientBuffer = *const c_void;
-// pub type EGLImageKHR = *const c_void;
 pub type EGLImage = *const c_void;
-// pub type EGLOutputLayerEXT = *const c_void;
-// pub type EGLOutputPortEXT = *const c_void;
-// pub type EGLSyncKHR = *const c_void;
 pub type EGLSync = *const c_void;
-// pub type EGLTimeKHR = khronos_utime_nanoseconds_t;
 pub type EGLTime = khronos_utime_nanoseconds_t;
-// pub type EGLSyncNV = *const c_void;
-// pub type EGLTimeNV = khronos_utime_nanoseconds_t;
-// pub type EGLuint64NV = khronos_utime_nanoseconds_t;
-// pub type EGLStreamKHR = *const c_void;
-// pub type EGLuint64KHR = khronos_uint64_t;
-// pub type EGLNativeFileDescriptorKHR = c_int;
-// pub type EGLsizeiANDROID = khronos_ssize_t;
-// pub type EGLSetBlobFuncANDROID = extern "system" fn(*const c_void,
-//                                                     EGLsizeiANDROID,
-//                                                     *const c_void,
-//                                                     EGLsizeiANDROID)
-//                                                     -> ();
-// pub type EGLGetBlobFuncANDROID = extern "system" fn(*const c_void,
-//                                                     EGLsizeiANDROID,
-//                                                     *mut c_void,
-//                                                     EGLsizeiANDROID)
-//                                                     -> EGLsizeiANDROID;
 
 #[repr(C)]
-#[allow(non_snake_case)]
 pub struct EGLClientPixmapHI {
     pData: *const c_void,
     iWidth: EGLint,
@@ -526,7 +501,6 @@ pub struct EGLClientPixmapHI {
 #[allow(dead_code, non_upper_case_globals)] pub const EGL_WINDOW_BIT: EGLenum = 0x0004;
 
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglBindAPI(api: EGLenum) -> EGLBoolean {
   if api != EGL_OPENGL_ES_API {
@@ -543,9 +517,8 @@ pub extern "C" fn eglBindTexImage(dpy: EGLDisplay, surface: EGLSurface, buffer: 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub unsafe extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EGLint, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
+pub unsafe extern "C" fn eglChooseConfig(_dpy: EGLDisplay, attrib_list: *const EGLint, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
   if num_config.is_null() {
     // TODO: set error
     return EGL_FALSE
@@ -704,7 +677,9 @@ pub unsafe extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EG
         })
     });
 
-    for i in 0..matching_configs.len() {
+    let num = (config_size as usize).min(matching_configs.len());
+
+    for i in 0..num {
       ptr::write(configs.offset(i as _), matching_configs[i as usize]);
     }
   }
@@ -744,9 +719,8 @@ pub extern "C" fn eglCreatePbufferFromClientBuffer(dpy: EGLDisplay, buftype: EGL
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub unsafe extern "C" fn eglCreatePbufferSurface(dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
+pub unsafe extern "C" fn eglCreatePbufferSurface(_dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
   let config = &*config;
   let mut width = 0;
   let mut height = 0;
@@ -832,9 +806,8 @@ pub extern "C" fn eglDestroySync(dpy: EGLDisplay, sync: EGLSync) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub unsafe extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+pub unsafe extern "C" fn eglGetConfigAttrib(_dpy: EGLDisplay, config: EGLConfig, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
   let config = &*config;
   let result = match attribute as EGLenum {
     EGL_CONFIG_ID => { config.id as EGLint },
@@ -884,9 +857,8 @@ pub unsafe extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, 
   EGL_TRUE
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub unsafe extern "C" fn eglGetConfigs(dpy: EGLDisplay, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
+pub unsafe extern "C" fn eglGetConfigs(_dpy: EGLDisplay, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
   if num_config.is_null() {
     // TODO: set error
     return EGL_FALSE
@@ -907,19 +879,16 @@ pub unsafe extern "C" fn eglGetConfigs(dpy: EGLDisplay, configs: *mut EGLConfig,
   EGL_TRUE
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentContext() -> EGLContext {
   CONTEXT.with(|c| c.get())
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentDisplay() -> EGLDisplay {
   &THE_DISPLAY
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentSurface(readdraw: EGLint) -> EGLSurface {
   let context = gl::current();
@@ -930,13 +899,11 @@ pub extern "C" fn eglGetCurrentSurface(readdraw: EGLint) -> EGLSurface {
   }
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglGetDisplay(display_id: EGLNativeDisplayType) -> EGLDisplay {
+pub extern "C" fn eglGetDisplay(_display_id: EGLNativeDisplayType) -> EGLDisplay {
   &THE_DISPLAY as *const _
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetError() -> EGLint {
   EGL_SUCCESS as EGLint
@@ -948,7 +915,6 @@ pub extern "C" fn eglGetPlatformDisplay(platform: EGLenum, native_display: *mut 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *const c_void {
   let cstr = ::std::ffi::CStr::from_ptr(procname);
@@ -1340,19 +1306,15 @@ pub extern "C" fn eglGetSyncAttrib(dpy: EGLDisplay, sync: EGLSync, attribute: EG
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub unsafe extern "C" fn eglInitialize(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean {
+pub unsafe extern "C" fn eglInitialize(_dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean {
   ptr::write(major, 1);
   ptr::write(minor, 5);
   EGL_TRUE
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglMakeCurrent(dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext) -> EGLBoolean {
-
-
+pub extern "C" fn eglMakeCurrent(_dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext) -> EGLBoolean {
   CONTEXT.with(|c| c.set(ctx));
   let context = unsafe{ ctx.as_mut() };
   if let Some(context) = context {
@@ -1362,15 +1324,13 @@ pub extern "C" fn eglMakeCurrent(dpy: EGLDisplay, draw: EGLSurface, read: EGLSur
   EGL_TRUE
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglQueryAPI() -> EGLenum {
   API.with(|a| a.get())
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub unsafe extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+pub unsafe extern "C" fn eglQueryContext(_dpy: EGLDisplay, ctx: EGLContext, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
   let context = &*ctx;
 
   let result = match attribute as EGLenum {
@@ -1387,9 +1347,8 @@ pub unsafe extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attri
   EGL_TRUE
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglQueryString(dpy: EGLDisplay, name: EGLint) -> *const c_char {
+pub extern "C" fn eglQueryString(_dpy: EGLDisplay, name: EGLint) -> *const c_char {
   let result: &'static [u8] = match name as EGLenum {
     EGL_CLIENT_APIS => b"OpenGL_ES\0",
     EGL_EXTENSIONS => b"EGL_KHR_create_context EGL_KHR_get_all_proc_addresses\0",
@@ -1405,9 +1364,8 @@ pub extern "C" fn eglQueryString(dpy: EGLDisplay, name: EGLint) -> *const c_char
   result.as_ptr() as _
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub unsafe extern "C" fn eglQuerySurface(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
+pub unsafe extern "C" fn eglQuerySurface(_dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
   let surface = &*surface;
 
   let result = match attribute as EGLenum {
@@ -1440,7 +1398,6 @@ pub extern "C" fn eglReleaseTexImage(dpy: EGLDisplay, surface: EGLSurface, buffe
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglReleaseThread() -> EGLBoolean {
   eglMakeCurrent(&THE_DISPLAY, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -1452,7 +1409,7 @@ pub extern "C" fn eglReleaseThread() -> EGLBoolean {
 #[no_mangle]
 pub extern "C" fn eglSurfaceAttrib(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: EGLint) -> EGLBoolean {
   match attribute as EGLenum {
-    EGL_MIPMAP_LEVEL => {},
+    EGL_MIPMAP_LEVEL => {}, // TODO
     x => unimplemented!("{:x}", x),
   }
 
@@ -1471,16 +1428,14 @@ pub extern "C" fn eglSwapInterval(dpy: EGLDisplay, interval: EGLint) -> EGLBoole
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglTerminate(dpy: EGLDisplay) -> EGLBoolean {
-  EGL_TRUE
+pub extern "C" fn eglTerminate(_dpy: EGLDisplay) -> EGLBoolean {
+  EGL_TRUE // TODO
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglWaitClient() -> EGLBoolean {
-  EGL_TRUE
+  EGL_TRUE // TODO
 }
 
 #[allow(unused_variables)]
