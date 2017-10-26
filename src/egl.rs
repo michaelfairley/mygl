@@ -1,3 +1,6 @@
+#![allow(non_snake_case)]
+
+
 use std::os::raw::*;
 // use std::ffi;
 use std::mem;
@@ -523,7 +526,7 @@ pub struct EGLClientPixmapHI {
 #[allow(dead_code, non_upper_case_globals)] pub const EGL_WINDOW_BIT: EGLenum = 0x0004;
 
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglBindAPI(api: EGLenum) -> EGLBoolean {
   if api != EGL_OPENGL_ES_API {
@@ -534,13 +537,13 @@ pub extern "C" fn eglBindAPI(api: EGLenum) -> EGLBoolean {
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglBindTexImage(dpy: EGLDisplay, surface: EGLSurface, buffer: EGLint) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EGLint, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
   if num_config.is_null() {
@@ -710,38 +713,38 @@ pub unsafe extern "C" fn eglChooseConfig(dpy: EGLDisplay, attrib_list: *const EG
 }
 
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglClientWaitSync(dpy: EGLDisplay, sync: EGLSync, flags: EGLint, timeout: EGLTime) -> EGLint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglCopyBuffers(dpy: EGLDisplay, surface: EGLSurface, target: EGLNativePixmapType) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglCreateContext(dpy: EGLDisplay, config: EGLConfig, share_context: EGLContext, attrib_list: *const EGLint) -> EGLContext {
   let context = Box::new(Context::new(&*config));
   Box::into_raw(context)
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglCreateImage(dpy: EGLDisplay, ctx: EGLContext, target: EGLenum, buffer: EGLClientBuffer, attrib_list: *const EGLAttrib) -> EGLImage {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglCreatePbufferFromClientBuffer(dpy: EGLDisplay, buftype: EGLenum, buffer: EGLClientBuffer, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglCreatePbufferSurface(dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
   let config = &*config;
@@ -773,63 +776,63 @@ pub unsafe extern "C" fn eglCreatePbufferSurface(dpy: EGLDisplay, config: EGLCon
   Box::into_raw(surface)
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglCreatePixmapSurface(dpy: EGLDisplay, config: EGLConfig, pixmap: EGLNativePixmapType, attrib_list: *const EGLint) -> EGLSurface {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglCreatePlatformPixmapSurface(dpy: EGLDisplay, config: EGLConfig, native_pixmap: *mut c_void, attrib_list: *const EGLAttrib) -> EGLSurface {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglCreatePlatformWindowSurface(dpy: EGLDisplay, config: EGLConfig, native_window: *mut c_void, attrib_list: *const EGLAttrib) -> EGLSurface {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglCreateSync(dpy: EGLDisplay, type_: EGLenum, attrib_list: *const EGLAttrib) -> EGLSync {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglCreateWindowSurface(dpy: EGLDisplay, config: EGLConfig, win: EGLNativeWindowType, attrib_list: *const EGLint) -> EGLSurface {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglDestroyContext(dpy: EGLDisplay, ctx: EGLContext) -> EGLBoolean {
   let context = Box::from_raw(ctx);
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglDestroyImage(dpy: EGLDisplay, image: EGLImage) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglDestroySurface(dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
   let surface = Box::from_raw(surface);
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglDestroySync(dpy: EGLDisplay, sync: EGLSync) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
   let config = &*config;
@@ -881,7 +884,7 @@ pub unsafe extern "C" fn eglGetConfigAttrib(dpy: EGLDisplay, config: EGLConfig, 
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglGetConfigs(dpy: EGLDisplay, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
   if num_config.is_null() {
@@ -904,19 +907,19 @@ pub unsafe extern "C" fn eglGetConfigs(dpy: EGLDisplay, configs: *mut EGLConfig,
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentContext() -> EGLContext {
   CONTEXT.with(|c| c.get())
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentDisplay() -> EGLDisplay {
   &THE_DISPLAY
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetCurrentSurface(readdraw: EGLint) -> EGLSurface {
   let context = gl::current();
@@ -927,25 +930,25 @@ pub extern "C" fn eglGetCurrentSurface(readdraw: EGLint) -> EGLSurface {
   }
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetDisplay(display_id: EGLNativeDisplayType) -> EGLDisplay {
   &THE_DISPLAY as *const _
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetError() -> EGLint {
   EGL_SUCCESS as EGLint
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetPlatformDisplay(platform: EGLenum, native_display: *mut c_void, attrib_list: *const EGLAttrib) -> EGLDisplay {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *const c_void {
   let cstr = ::std::ffi::CStr::from_ptr(procname);
@@ -1331,13 +1334,13 @@ pub unsafe extern "C" fn eglGetProcAddress(procname: *const c_char) -> *const c_
   }
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglGetSyncAttrib(dpy: EGLDisplay, sync: EGLSync, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglInitialize(dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean {
   ptr::write(major, 1);
@@ -1345,7 +1348,7 @@ pub unsafe extern "C" fn eglInitialize(dpy: EGLDisplay, major: *mut EGLint, mino
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglMakeCurrent(dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext) -> EGLBoolean {
 
@@ -1359,13 +1362,13 @@ pub extern "C" fn eglMakeCurrent(dpy: EGLDisplay, draw: EGLSurface, read: EGLSur
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglQueryAPI() -> EGLenum {
   API.with(|a| a.get())
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
   let context = &*ctx;
@@ -1384,7 +1387,7 @@ pub unsafe extern "C" fn eglQueryContext(dpy: EGLDisplay, ctx: EGLContext, attri
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglQueryString(dpy: EGLDisplay, name: EGLint) -> *const c_char {
   let result: &'static [u8] = match name as EGLenum {
@@ -1402,7 +1405,7 @@ pub extern "C" fn eglQueryString(dpy: EGLDisplay, name: EGLint) -> *const c_char
   result.as_ptr() as _
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub unsafe extern "C" fn eglQuerySurface(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: *mut EGLint) -> EGLBoolean {
   let surface = &*surface;
@@ -1431,13 +1434,13 @@ pub unsafe extern "C" fn eglQuerySurface(dpy: EGLDisplay, surface: EGLSurface, a
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglReleaseTexImage(dpy: EGLDisplay, surface: EGLSurface, buffer: EGLint) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglReleaseThread() -> EGLBoolean {
   eglMakeCurrent(&THE_DISPLAY, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -1445,7 +1448,7 @@ pub extern "C" fn eglReleaseThread() -> EGLBoolean {
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglSurfaceAttrib(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: EGLint) -> EGLBoolean {
   match attribute as EGLenum {
@@ -1456,43 +1459,43 @@ pub extern "C" fn eglSurfaceAttrib(dpy: EGLDisplay, surface: EGLSurface, attribu
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglSwapInterval(dpy: EGLDisplay, interval: EGLint) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglTerminate(dpy: EGLDisplay) -> EGLBoolean {
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglWaitClient() -> EGLBoolean {
   EGL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglWaitGL() -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglWaitNative(engine: EGLint) -> EGLBoolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn eglWaitSync(dpy: EGLDisplay, sync: EGLSync, flags: EGLint) -> EGLBoolean {
   unimplemented!()

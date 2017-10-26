@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 use std::os::raw::*;
 use std::sync::mpsc;
 use std::thread;
@@ -1397,19 +1398,19 @@ pub type GLvdpauSurfaceNV = GLintptr;
 #[allow(dead_code, non_upper_case_globals)] pub const GL_WRITE_ONLY: GLenum = 0x88B9;
 #[allow(dead_code, non_upper_case_globals)] pub const GL_ZERO: GLenum = 0;
 
-#[allow(unused_variables, non_snake_case)]
 #[no_mangle]
+#[allow(unused_variables)]
 pub extern "C" fn glActiveShaderProgram(pipeline: GLuint, program: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glActiveTexture(texture: GLenum) -> () {
   assert_eq!(texture, GL_TEXTURE0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glAttachShader(program: GLuint, shader: GLuint) -> () {
   let current = current();
@@ -1420,25 +1421,25 @@ pub extern "C" fn glAttachShader(program: GLuint, shader: GLuint) -> () {
   program.shaders.push(Arc::clone(shader));
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBeginQuery(target: GLenum, id: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBeginTransformFeedback(primitiveMode: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindAttribLocation(program: GLuint, index: GLuint, name: *const GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindBuffer(target: GLenum, buffer: GLuint) -> () {
   let current = current();
@@ -1446,79 +1447,79 @@ pub extern "C" fn glBindBuffer(target: GLenum, buffer: GLuint) -> () {
   *current.buffer_target_mut(target) = buffer;
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindBufferBase(target: GLenum, index: GLuint, buffer: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindBufferRange(target: GLenum, index: GLuint, buffer: GLuint, offset: GLintptr, size: GLsizeiptr) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindFramebuffer(target: GLenum, framebuffer: GLuint) -> () {
   assert_eq!(framebuffer, 0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindImageTexture(unit: GLuint, texture: GLuint, level: GLint, layered: GLboolean, layer: GLint, access: GLenum, format: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindProgramPipeline(pipeline: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindRenderbuffer(target: GLenum, renderbuffer: GLuint) -> () {
   assert_eq!(renderbuffer, 0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindSampler(unit: GLuint, sampler: GLuint) -> () {
   assert_eq!(sampler, 0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindTexture(target: GLenum, texture: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindTransformFeedback(target: GLenum, id: GLuint) -> () {
   assert_eq!(id, 0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindVertexArray(array: GLuint) -> () {
   current().vertex_array = array;
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindVertexBuffer(bindingindex: GLuint, buffer: GLuint, offset: GLintptr, stride: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendBarrier() -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendColor(red: GLfloat, green: GLfloat, blue: GLfloat, alpha: GLfloat) -> () {
   assert_eq!(red, 0.0);
@@ -1527,62 +1528,62 @@ pub extern "C" fn glBlendColor(red: GLfloat, green: GLfloat, blue: GLfloat, alph
   assert_eq!(alpha, 0.0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendEquation(mode: GLenum) -> () {
   assert_eq!(mode, GL_FUNC_ADD);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendEquationSeparate(modeRGB: GLenum, modeAlpha: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendEquationSeparatei(buf: GLuint, modeRGB: GLenum, modeAlpha: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendEquationi(buf: GLuint, mode: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendFunc(sfactor: GLenum, dfactor: GLenum) -> () {
   assert_eq!(sfactor, GL_ONE);
   assert_eq!(dfactor, GL_ZERO);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendFuncSeparate(sfactorRGB: GLenum, dfactorRGB: GLenum, sfactorAlpha: GLenum, dfactorAlpha: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendFuncSeparatei(buf: GLuint, srcRGB: GLenum, dstRGB: GLenum, srcAlpha: GLenum, dstAlpha: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendFunci(buf: GLuint, src: GLenum, dst: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlitFramebuffer(srcX0: GLint, srcY0: GLint, srcX1: GLint, srcY1: GLint, dstX0: GLint, dstY0: GLint, dstX1: GLint, dstY1: GLint, mask: GLbitfield, filter: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const c_void, usage: GLenum) -> () {
   let current = current();
@@ -1598,19 +1599,19 @@ pub extern "C" fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const c_
   current.buffers.insert(name, Some(vec));
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBufferSubData(target: GLenum, offset: GLintptr, size: GLsizeiptr, data: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCheckFramebufferStatus(target: GLenum) -> GLenum {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "system" fn glClear(mask: GLbitfield) -> () {
   let current = current();
@@ -1633,55 +1634,55 @@ pub extern "system" fn glClear(mask: GLbitfield) -> () {
   )).unwrap();
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearBufferfi(buffer: GLenum, drawbuffer: GLint, depth: GLfloat, stencil: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearBufferfv(buffer: GLenum, drawbuffer: GLint, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearBufferiv(buffer: GLenum, drawbuffer: GLint, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearBufferuiv(buffer: GLenum, drawbuffer: GLint, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearColor(red: GLfloat, green: GLfloat, blue: GLfloat, alpha: GLfloat) -> () {
   current().clear_color = (red, green, blue, alpha);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearDepthf(d: GLfloat) -> () {
   assert_eq!(d, 1.0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearStencil(s: GLint) -> () {
   assert_eq!(s, 0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClientWaitSync(sync: GLsync, flags: GLbitfield, timeout: GLuint64) -> GLenum {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glColorMask(red: GLboolean, green: GLboolean, blue: GLboolean, alpha: GLboolean) -> () {
   current().color_mask = (
@@ -1692,13 +1693,13 @@ pub extern "C" fn glColorMask(red: GLboolean, green: GLboolean, blue: GLboolean,
   )
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glColorMaski(index: GLuint, r: GLboolean, g: GLboolean, b: GLboolean, a: GLboolean) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCompileShader(shader: GLuint) -> () {
   let current = current();
@@ -1707,61 +1708,61 @@ pub extern "C" fn glCompileShader(shader: GLuint) -> () {
   *shader.compiled.borrow_mut() = Some(glsl::compile(&shader.source.borrow(), shader.type_));
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCompressedTexImage2D(target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, border: GLint, imageSize: GLsizei, data: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCompressedTexImage3D(target: GLenum, level: GLint, internalformat: GLenum, width: GLsizei, height: GLsizei, depth: GLsizei, border: GLint, imageSize: GLsizei, data: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCompressedTexSubImage2D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, imageSize: GLsizei, data: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCompressedTexSubImage3D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, format: GLenum, imageSize: GLsizei, data: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCopyBufferSubData(readTarget: GLenum, writeTarget: GLenum, readOffset: GLintptr, writeOffset: GLintptr, size: GLsizeiptr) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCopyImageSubData(srcName: GLuint, srcTarget: GLenum, srcLevel: GLint, srcX: GLint, srcY: GLint, srcZ: GLint, dstName: GLuint, dstTarget: GLenum, dstLevel: GLint, dstX: GLint, dstY: GLint, dstZ: GLint, srcWidth: GLsizei, srcHeight: GLsizei, srcDepth: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCopyTexImage2D(target: GLenum, level: GLint, internalformat: GLenum, x: GLint, y: GLint, width: GLsizei, height: GLsizei, border: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCopyTexSubImage2D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, x: GLint, y: GLint, width: GLsizei, height: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCopyTexSubImage3D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, x: GLint, y: GLint, width: GLsizei, height: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCreateProgram() -> GLuint {
   let current = current();
@@ -1772,7 +1773,7 @@ pub extern "C" fn glCreateProgram() -> GLuint {
   name
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCreateShader(type_: GLenum) -> GLuint {
   let current = current();
@@ -1783,37 +1784,37 @@ pub extern "C" fn glCreateShader(type_: GLenum) -> GLuint {
   name
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCreateShaderProgramv(type_: GLenum, count: GLsizei, strings: *const *const GLchar) -> GLuint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCullFace(mode: GLenum) -> () {
   current().cull_face = mode;
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDebugMessageCallback(callback: GLDEBUGPROC, userParam: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDebugMessageControl(source: GLenum, type_: GLenum, severity: GLenum, count: GLsizei, ids: *const GLuint, enabled: GLboolean) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDebugMessageInsert(source: GLenum, type_: GLenum, id: GLuint, severity: GLenum, length: GLsizei, buf: *const GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteBuffers(n: GLsizei, buffers: *const GLuint) -> () {
   let current = current();
@@ -1824,230 +1825,230 @@ pub extern "C" fn glDeleteBuffers(n: GLsizei, buffers: *const GLuint) -> () {
   }
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteFramebuffers(n: GLsizei, framebuffers: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteProgram(program: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteProgramPipelines(n: GLsizei, pipelines: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteQueries(n: GLsizei, ids: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteRenderbuffers(n: GLsizei, renderbuffers: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteSamplers(count: GLsizei, samplers: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteShader(shader: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteSync(sync: GLsync) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteTextures(n: GLsizei, textures: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteTransformFeedbacks(n: GLsizei, ids: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteVertexArrays(n: GLsizei, arrays: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDepthFunc(func: GLenum) -> () {
   assert_eq!(func, GL_LESS);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDepthMask(flag: GLboolean) -> () {
   assert_eq!(flag, GL_TRUE);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDepthRangef(n: GLfloat, f: GLfloat) -> () {
   current().depth_range = (n, f);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDetachShader(program: GLuint, shader: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDisable(cap: GLenum) -> () {
   *current().cap_mut(cap) = false;
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDisableVertexAttribArray(index: GLuint) -> () {
   // unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDisablei(target: GLenum, index: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDispatchCompute(num_groups_x: GLuint, num_groups_y: GLuint, num_groups_z: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDispatchComputeIndirect(indirect: GLintptr) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawArraysIndirect(mode: GLenum, indirect: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawArraysInstanced(mode: GLenum, first: GLint, count: GLsizei, instancecount: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawBuffers(n: GLsizei, bufs: *const GLenum) -> () {
   assert_eq!(n, 1);
   assert_eq!(unsafe{ *bufs }, GL_BACK);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawElements(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawElementsBaseVertex(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const c_void, basevertex: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawElementsIndirect(mode: GLenum, type_: GLenum, indirect: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawElementsInstanced(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const c_void, instancecount: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawElementsInstancedBaseVertex(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const c_void, instancecount: GLsizei, basevertex: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawRangeElements(mode: GLenum, start: GLuint, end: GLuint, count: GLsizei, type_: GLenum, indices: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawRangeElementsBaseVertex(mode: GLenum, start: GLuint, end: GLuint, count: GLsizei, type_: GLenum, indices: *const c_void, basevertex: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glEnable(cap: GLenum) -> () {
   *current().cap_mut(cap) = true;
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glEnableVertexAttribArray(index: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glEnablei(target: GLenum, index: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glEndQuery(target: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glEndTransformFeedback() -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFenceSync(condition: GLenum, flags: GLbitfield) -> GLsync {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFinish() -> () {
   let (tx, rx) = mpsc::channel();
@@ -2057,7 +2058,7 @@ pub extern "C" fn glFinish() -> () {
   rx.recv().unwrap();
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFlush() -> () {
   let (tx, rx) = mpsc::channel();
@@ -2067,49 +2068,49 @@ pub extern "C" fn glFlush() -> () {
   rx.recv().unwrap();
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFlushMappedBufferRange(target: GLenum, offset: GLintptr, length: GLsizeiptr) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFramebufferParameteri(target: GLenum, pname: GLenum, param: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFramebufferRenderbuffer(target: GLenum, attachment: GLenum, renderbuffertarget: GLenum, renderbuffer: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFramebufferTexture(target: GLenum, attachment: GLenum, texture: GLuint, level: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFramebufferTexture2D(target: GLenum, attachment: GLenum, textarget: GLenum, texture: GLuint, level: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFramebufferTextureLayer(target: GLenum, attachment: GLenum, texture: GLuint, level: GLint, layer: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFrontFace(mode: GLenum) -> () {
   current().front_face = mode;
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenBuffers(n: GLsizei, buffers: *mut GLuint) -> () {
   let current = current();
@@ -2122,109 +2123,109 @@ pub extern "C" fn glGenBuffers(n: GLsizei, buffers: *mut GLuint) -> () {
   }
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenFramebuffers(n: GLsizei, framebuffers: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenProgramPipelines(n: GLsizei, pipelines: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenQueries(n: GLsizei, ids: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenRenderbuffers(n: GLsizei, renderbuffers: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenSamplers(count: GLsizei, samplers: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenTextures(n: GLsizei, textures: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenTransformFeedbacks(n: GLsizei, ids: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenVertexArrays(n: GLsizei, arrays: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenerateMipmap(target: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetActiveAttrib(program: GLuint, index: GLuint, bufSize: GLsizei, length: *mut GLsizei, size: *mut GLint, type_: *mut GLenum, name: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetActiveUniform(program: GLuint, index: GLuint, bufSize: GLsizei, length: *mut GLsizei, size: *mut GLint, type_: *mut GLenum, name: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetActiveUniformBlockName(program: GLuint, uniformBlockIndex: GLuint, bufSize: GLsizei, length: *mut GLsizei, uniformBlockName: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetActiveUniformBlockiv(program: GLuint, uniformBlockIndex: GLuint, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetActiveUniformsiv(program: GLuint, uniformCount: GLsizei, uniformIndices: *const GLuint, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetAttachedShaders(program: GLuint, maxCount: GLsizei, count: *mut GLsizei, shaders: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetAttribLocation(program: GLuint, name: *const GLchar) -> GLint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetBooleani_v(target: GLenum, index: GLuint, data: *mut GLboolean) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetBooleanv(pname: GLenum, data: *mut GLboolean) -> () {
   let result = match pname {
@@ -2237,85 +2238,85 @@ pub extern "C" fn glGetBooleanv(pname: GLenum, data: *mut GLboolean) -> () {
   unsafe{ ptr::write(data, result) };
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetBufferParameteri64v(target: GLenum, pname: GLenum, params: *mut GLint64) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetBufferParameteriv(target: GLenum, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetBufferPointerv(target: GLenum, pname: GLenum, params: *const *mut c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetDebugMessageLog(count: GLuint, bufSize: GLsizei, sources: *mut GLenum, types: *mut GLenum, ids: *mut GLuint, severities: *mut GLenum, lengths: *mut GLsizei, messageLog: *mut GLchar) -> GLuint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetError() -> GLenum {
   GL_NONE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetFloatv(pname: GLenum, data: *mut GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetFragDataLocation(program: GLuint, name: *const GLchar) -> GLint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetFramebufferAttachmentParameteriv(target: GLenum, attachment: GLenum, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetFramebufferParameteriv(target: GLenum, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetGraphicsResetStatus() -> GLenum {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetInteger64i_v(target: GLenum, index: GLuint, data: *mut GLint64) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetInteger64v(pname: GLenum, data: *mut GLint64) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetIntegeri_v(target: GLenum, index: GLuint, data: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetIntegerv(pname: GLenum, data: *mut GLint) -> () {
   let result = match pname {
@@ -2331,91 +2332,91 @@ pub extern "C" fn glGetIntegerv(pname: GLenum, data: *mut GLint) -> () {
   unsafe{ ptr::write(data, result) };
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetInternalformativ(target: GLenum, internalformat: GLenum, pname: GLenum, bufSize: GLsizei, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetMultisamplefv(pname: GLenum, index: GLuint, val: *mut GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetObjectLabel(identifier: GLenum, name: GLuint, bufSize: GLsizei, length: *mut GLsizei, label: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetObjectPtrLabel(ptr: *const c_void, bufSize: GLsizei, length: *mut GLsizei, label: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetPointerv(pname: GLenum, params: *const *mut c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramBinary(program: GLuint, bufSize: GLsizei, length: *mut GLsizei, binaryFormat: *mut GLenum, binary: *mut c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramInfoLog(program: GLuint, bufSize: GLsizei, length: *mut GLsizei, infoLog: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramInterfaceiv(program: GLuint, programInterface: GLenum, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramPipelineInfoLog(pipeline: GLuint, bufSize: GLsizei, length: *mut GLsizei, infoLog: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramPipelineiv(pipeline: GLuint, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramResourceIndex(program: GLuint, programInterface: GLenum, name: *const GLchar) -> GLuint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramResourceLocation(program: GLuint, programInterface: GLenum, name: *const GLchar) -> GLint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramResourceName(program: GLuint, programInterface: GLenum, index: GLuint, bufSize: GLsizei, length: *mut GLsizei, name: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramResourceiv(program: GLuint, programInterface: GLenum, index: GLuint, propCount: GLsizei, props: *const GLenum, bufSize: GLsizei, length: *mut GLsizei, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramiv(program: GLuint, pname: GLenum, params: *mut GLint) -> () {
   let value = match pname {
@@ -2427,68 +2428,68 @@ pub extern "C" fn glGetProgramiv(program: GLuint, pname: GLenum, params: *mut GL
   unsafe{ ptr::write(params, value) };
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetQueryObjectuiv(id: GLuint, pname: GLenum, params: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetQueryiv(target: GLenum, pname: GLenum, params: *mut GLint) -> () {
   assert_eq!(pname, GL_CURRENT_QUERY);
   unsafe{ ptr::write(params, 0) };
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetRenderbufferParameteriv(target: GLenum, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetSamplerParameterIiv(sampler: GLuint, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetSamplerParameterIuiv(sampler: GLuint, pname: GLenum, params: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetSamplerParameterfv(sampler: GLuint, pname: GLenum, params: *mut GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetSamplerParameteriv(sampler: GLuint, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetShaderInfoLog(shader: GLuint, bufSize: GLsizei, length: *mut GLsizei, infoLog: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetShaderPrecisionFormat(shadertype: GLenum, precisiontype: GLenum, range: *mut GLint, precision: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetShaderSource(shader: GLuint, bufSize: GLsizei, length: *mut GLsizei, source: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetShaderiv(shader: GLuint, pname: GLenum, params: *mut GLint) -> () {
   let value = match pname {
@@ -2500,265 +2501,265 @@ pub extern "C" fn glGetShaderiv(shader: GLuint, pname: GLenum, params: *mut GLin
   unsafe{ ptr::write(params, value) };
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetString(name: GLenum) -> *const GLubyte {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetStringi(name: GLenum, index: GLuint) -> *const GLubyte {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetSynciv(sync: GLsync, pname: GLenum, bufSize: GLsizei, length: *mut GLsizei, values: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetTexLevelParameterfv(target: GLenum, level: GLint, pname: GLenum, params: *mut GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetTexLevelParameteriv(target: GLenum, level: GLint, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetTexParameterIiv(target: GLenum, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetTexParameterIuiv(target: GLenum, pname: GLenum, params: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetTexParameterfv(target: GLenum, pname: GLenum, params: *mut GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetTexParameteriv(target: GLenum, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetTransformFeedbackVarying(program: GLuint, index: GLuint, bufSize: GLsizei, length: *mut GLsizei, size: *mut GLsizei, type_: *mut GLenum, name: *mut GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetUniformBlockIndex(program: GLuint, uniformBlockName: *const GLchar) -> GLuint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetUniformIndices(program: GLuint, uniformCount: GLsizei, uniformNames: *const *const GLchar, uniformIndices: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetUniformLocation(program: GLuint, name: *const GLchar) -> GLint {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetUniformfv(program: GLuint, location: GLint, params: *mut GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetUniformiv(program: GLuint, location: GLint, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetUniformuiv(program: GLuint, location: GLint, params: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetVertexAttribIiv(index: GLuint, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetVertexAttribIuiv(index: GLuint, pname: GLenum, params: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetVertexAttribPointerv(index: GLuint, pname: GLenum, pointer: *const *mut c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetVertexAttribfv(index: GLuint, pname: GLenum, params: *mut GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetVertexAttribiv(index: GLuint, pname: GLenum, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetnUniformfv(program: GLuint, location: GLint, bufSize: GLsizei, params: *mut GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetnUniformiv(program: GLuint, location: GLint, bufSize: GLsizei, params: *mut GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetnUniformuiv(program: GLuint, location: GLint, bufSize: GLsizei, params: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glHint(target: GLenum, mode: GLenum) -> () {
 
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glInvalidateFramebuffer(target: GLenum, numAttachments: GLsizei, attachments: *const GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glInvalidateSubFramebuffer(target: GLenum, numAttachments: GLsizei, attachments: *const GLenum, x: GLint, y: GLint, width: GLsizei, height: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsBuffer(buffer: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsEnabled(cap: GLenum) -> GLboolean {
   if *current().cap_mut(cap) { GL_TRUE } else { GL_FALSE }
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsEnabledi(target: GLenum, index: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsFramebuffer(framebuffer: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsProgram(program: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsProgramPipeline(pipeline: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsQuery(id: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsRenderbuffer(renderbuffer: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsSampler(sampler: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsShader(shader: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsSync(sync: GLsync) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsTexture(texture: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsTransformFeedback(id: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsVertexArray(array: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glLineWidth(width: GLfloat) -> () {
   current().line_width = width;
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glLinkProgram(program: GLuint) -> () {
 
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glMapBufferRange(target: GLenum, offset: GLintptr, length: GLsizeiptr, access: GLbitfield) -> *mut c_void {
   let current = current();
@@ -2770,295 +2771,295 @@ pub extern "C" fn glMapBufferRange(target: GLenum, offset: GLintptr, length: GLs
   range.as_mut_ptr() as _
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glMemoryBarrier(barriers: GLbitfield) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glMemoryBarrierByRegion(barriers: GLbitfield) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glMinSampleShading(value: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glObjectLabel(identifier: GLenum, name: GLuint, length: GLsizei, label: *const GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glObjectPtrLabel(ptr: *const c_void, length: GLsizei, label: *const GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glPatchParameteri(pname: GLenum, value: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glPauseTransformFeedback() -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glPixelStorei(pname: GLenum, param: GLint) -> () {
   // unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glPolygonOffset(factor: GLfloat, units: GLfloat) -> () {
   current().polygon_offset = (factor, units);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glPopDebugGroup() -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glPrimitiveBoundingBox(minX: GLfloat, minY: GLfloat, minZ: GLfloat, minW: GLfloat, maxX: GLfloat, maxY: GLfloat, maxZ: GLfloat, maxW: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramBinary(program: GLuint, binaryFormat: GLenum, binary: *const c_void, length: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramParameteri(program: GLuint, pname: GLenum, value: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform1f(program: GLuint, location: GLint, v0: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform1fv(program: GLuint, location: GLint, count: GLsizei, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform1i(program: GLuint, location: GLint, v0: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform1iv(program: GLuint, location: GLint, count: GLsizei, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform1ui(program: GLuint, location: GLint, v0: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform1uiv(program: GLuint, location: GLint, count: GLsizei, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform2f(program: GLuint, location: GLint, v0: GLfloat, v1: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform2fv(program: GLuint, location: GLint, count: GLsizei, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform2i(program: GLuint, location: GLint, v0: GLint, v1: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform2iv(program: GLuint, location: GLint, count: GLsizei, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform2ui(program: GLuint, location: GLint, v0: GLuint, v1: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform2uiv(program: GLuint, location: GLint, count: GLsizei, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform3f(program: GLuint, location: GLint, v0: GLfloat, v1: GLfloat, v2: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform3fv(program: GLuint, location: GLint, count: GLsizei, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform3i(program: GLuint, location: GLint, v0: GLint, v1: GLint, v2: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform3iv(program: GLuint, location: GLint, count: GLsizei, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform3ui(program: GLuint, location: GLint, v0: GLuint, v1: GLuint, v2: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform3uiv(program: GLuint, location: GLint, count: GLsizei, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform4f(program: GLuint, location: GLint, v0: GLfloat, v1: GLfloat, v2: GLfloat, v3: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform4fv(program: GLuint, location: GLint, count: GLsizei, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform4i(program: GLuint, location: GLint, v0: GLint, v1: GLint, v2: GLint, v3: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform4iv(program: GLuint, location: GLint, count: GLsizei, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform4ui(program: GLuint, location: GLint, v0: GLuint, v1: GLuint, v2: GLuint, v3: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniform4uiv(program: GLuint, location: GLint, count: GLsizei, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix2fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix2x3fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix2x4fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix3fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix3x2fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix3x4fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix4fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix4x2fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glProgramUniformMatrix4x3fv(program: GLuint, location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glPushDebugGroup(source: GLenum, id: GLuint, length: GLsizei, message: *const GLchar) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glReadBuffer(src: GLenum) -> () {
   assert_eq!(src, GL_BACK);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glReadPixels(x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, type_: GLenum, pixels: *mut c_void) -> () {
   assert_eq!(format, GL_RGBA);
@@ -3095,85 +3096,85 @@ pub extern "C" fn glReadPixels(x: GLint, y: GLint, width: GLsizei, height: GLsiz
   }
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glReadnPixels(x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, type_: GLenum, bufSize: GLsizei, data: *mut c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glReleaseShaderCompiler() -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glRenderbufferStorage(target: GLenum, internalformat: GLenum, width: GLsizei, height: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glRenderbufferStorageMultisample(target: GLenum, samples: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glResumeTransformFeedback() -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSampleCoverage(value: GLfloat, invert: GLboolean) -> () {
   current().sample_coverage = (value, invert == GL_TRUE);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSampleMaski(maskNumber: GLuint, mask: GLbitfield) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSamplerParameterIiv(sampler: GLuint, pname: GLenum, param: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSamplerParameterIuiv(sampler: GLuint, pname: GLenum, param: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSamplerParameterf(sampler: GLuint, pname: GLenum, param: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSamplerParameterfv(sampler: GLuint, pname: GLenum, param: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSamplerParameteri(sampler: GLuint, pname: GLenum, param: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSamplerParameteriv(sampler: GLuint, pname: GLenum, param: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glScissor(x: GLint, y: GLint, width: GLsizei, height: GLsizei) -> () {
   let current = current();
@@ -3191,13 +3192,13 @@ pub extern "C" fn glScissor(x: GLint, y: GLint, width: GLsizei, height: GLsizei)
   current.scissor = (x, y, width, height);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glShaderBinary(count: GLsizei, shaders: *const GLuint, binaryformat: GLenum, binary: *const c_void, length: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glShaderSource(shader: GLuint, count: GLsizei, string: *const *const GLchar, length: *const GLint) -> () {
   let current = current();
@@ -3222,7 +3223,7 @@ pub extern "C" fn glShaderSource(shader: GLuint, count: GLsizei, string: *const 
   }
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glStencilFunc(func: GLenum, ref_: GLint, mask: GLuint) -> () {
   assert_eq!(func, GL_ALWAYS);
@@ -3230,25 +3231,25 @@ pub extern "C" fn glStencilFunc(func: GLenum, ref_: GLint, mask: GLuint) -> () {
   assert_eq!(mask, 0xFFFF_FFFF);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glStencilFuncSeparate(face: GLenum, func: GLenum, ref_: GLint, mask: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glStencilMask(mask: GLuint) -> () {
   assert_eq!(mask, 0xFFFF_FFFF);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glStencilMaskSeparate(face: GLenum, mask: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glStencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum) -> () {
   assert_eq!(fail, GL_KEEP);
@@ -3256,452 +3257,452 @@ pub extern "C" fn glStencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum) -> () 
   assert_eq!(zpass, GL_KEEP);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glStencilOpSeparate(face: GLenum, sfail: GLenum, dpfail: GLenum, dppass: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexBuffer(target: GLenum, internalformat: GLenum, buffer: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexBufferRange(target: GLenum, internalformat: GLenum, buffer: GLuint, offset: GLintptr, size: GLsizeiptr) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexImage2D(target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, type_: GLenum, pixels: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexImage3D(target: GLenum, level: GLint, internalformat: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, border: GLint, format: GLenum, type_: GLenum, pixels: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexParameterIiv(target: GLenum, pname: GLenum, params: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexParameterIuiv(target: GLenum, pname: GLenum, params: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexParameterf(target: GLenum, pname: GLenum, param: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexParameterfv(target: GLenum, pname: GLenum, params: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexParameteri(target: GLenum, pname: GLenum, param: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexParameteriv(target: GLenum, pname: GLenum, params: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexStorage2D(target: GLenum, levels: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexStorage2DMultisample(target: GLenum, samples: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei, fixedsamplelocations: GLboolean) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexStorage3D(target: GLenum, levels: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei, depth: GLsizei) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexStorage3DMultisample(target: GLenum, samples: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei, depth: GLsizei, fixedsamplelocations: GLboolean) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexSubImage2D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, type_: GLenum, pixels: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTexSubImage3D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, zoffset: GLint, width: GLsizei, height: GLsizei, depth: GLsizei, format: GLenum, type_: GLenum, pixels: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glTransformFeedbackVaryings(program: GLuint, count: GLsizei, varyings: *const *const GLchar, bufferMode: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform1f(location: GLint, v0: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform1fv(location: GLint, count: GLsizei, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform1i(location: GLint, v0: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform1iv(location: GLint, count: GLsizei, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform1ui(location: GLint, v0: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform1uiv(location: GLint, count: GLsizei, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform2f(location: GLint, v0: GLfloat, v1: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform2fv(location: GLint, count: GLsizei, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform2i(location: GLint, v0: GLint, v1: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform2iv(location: GLint, count: GLsizei, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform2ui(location: GLint, v0: GLuint, v1: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform2uiv(location: GLint, count: GLsizei, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform3f(location: GLint, v0: GLfloat, v1: GLfloat, v2: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform3fv(location: GLint, count: GLsizei, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform3i(location: GLint, v0: GLint, v1: GLint, v2: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform3iv(location: GLint, count: GLsizei, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform3ui(location: GLint, v0: GLuint, v1: GLuint, v2: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform3uiv(location: GLint, count: GLsizei, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform4f(location: GLint, v0: GLfloat, v1: GLfloat, v2: GLfloat, v3: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform4fv(location: GLint, count: GLsizei, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform4i(location: GLint, v0: GLint, v1: GLint, v2: GLint, v3: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform4iv(location: GLint, count: GLsizei, value: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform4ui(location: GLint, v0: GLuint, v1: GLuint, v2: GLuint, v3: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniform4uiv(location: GLint, count: GLsizei, value: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformBlockBinding(program: GLuint, uniformBlockIndex: GLuint, uniformBlockBinding: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix2fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix2x3fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix2x4fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix3fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix3x2fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix3x4fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix4fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix4x2fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUniformMatrix4x3fv(location: GLint, count: GLsizei, transpose: GLboolean, value: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUnmapBuffer(target: GLenum) -> GLboolean {
   // unimplemented!()
   GL_TRUE
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUseProgram(program: GLuint) -> () {
   current().program = program;
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glUseProgramStages(pipeline: GLuint, stages: GLbitfield, program: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glValidateProgram(program: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glValidateProgramPipeline(pipeline: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttrib1f(index: GLuint, x: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttrib1fv(index: GLuint, v: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttrib2f(index: GLuint, x: GLfloat, y: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttrib2fv(index: GLuint, v: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttrib3f(index: GLuint, x: GLfloat, y: GLfloat, z: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttrib3fv(index: GLuint, v: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttrib4f(index: GLuint, x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttrib4fv(index: GLuint, v: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribBinding(attribindex: GLuint, bindingindex: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribDivisor(index: GLuint, divisor: GLuint) -> () {
   assert_eq!(divisor, 0);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribFormat(attribindex: GLuint, size: GLint, type_: GLenum, normalized: GLboolean, relativeoffset: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribI4i(index: GLuint, x: GLint, y: GLint, z: GLint, w: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribI4iv(index: GLuint, v: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribI4ui(index: GLuint, x: GLuint, y: GLuint, z: GLuint, w: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribI4uiv(index: GLuint, v: *const GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribIFormat(attribindex: GLuint, size: GLint, type_: GLenum, relativeoffset: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribIPointer(index: GLuint, size: GLint, type_: GLenum, stride: GLsizei, pointer: *const c_void) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexAttribPointer(index: GLuint, size: GLint, type_: GLenum, normalized: GLboolean, stride: GLsizei, pointer: *const c_void) -> () {
   assert_eq!(size, 4);
@@ -3711,19 +3712,19 @@ pub extern "C" fn glVertexAttribPointer(index: GLuint, size: GLint, type_: GLenu
   assert!(pointer.is_null());
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glVertexBindingDivisor(bindingindex: GLuint, divisor: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glViewport(x: GLint, y: GLint, width: GLsizei, height: GLsizei) -> () {
   current().viewport = (x, y, width, height);
 }
 
-#[allow(unused_variables, non_snake_case)]
+#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glWaitSync(sync: GLsync, flags: GLbitfield, timeout: GLuint64) -> () {
   unimplemented!()
