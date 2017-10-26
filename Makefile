@@ -1,13 +1,13 @@
 FILTER=
 
 build:
-	cargo build
+	cargo build --release
 
 test: build
 ifeq ($(FILTER),)
-	cd cts_build && DYLD_LIBRARY_PATH=../target/debug ./external/openglcts/modules/cts-runner --type=es32
+	cd cts_build && DYLD_LIBRARY_PATH=../target/release ./external/openglcts/modules/cts-runner --type=es32
 else
-	cd cts_build && DYLD_LIBRARY_PATH=../target/debug ./external/openglcts/modules/glcts -n $(FILTER)
+	cd cts_build && DYLD_LIBRARY_PATH=../target/release ./external/openglcts/modules/glcts -n $(FILTER)
 endif
 
 debug: build

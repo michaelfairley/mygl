@@ -98,17 +98,20 @@ impl ColorFormat {
     }
   }
 
+  #[inline]
   fn size(self) -> u8 {
     let sizes = self.sizes();
     sizes.0 + sizes.1 + sizes.2 + sizes.3
   }
 
+  #[inline]
   fn byte_size(self) -> usize {
     let size = self.size();
     assert!(size % 8 == 0);
     size as usize / 8
   }
 
+  #[inline]
   fn encode(self, (r, g, b, a): (f32, f32, f32, f32)) -> [u8; 4] {
     match self {
       ColorFormat::RGB565 => {
@@ -150,6 +153,7 @@ impl ColorFormat {
     }
   }
 
+  #[inline]
   fn decode(self, bytes: [u8; 4]) -> (f32, f32, f32, f32) {
     match self {
       ColorFormat::RGB565 => {
@@ -198,6 +202,7 @@ impl ColorFormat {
   }
 }
 
+// TODO: move this into gl
 pub struct Surface {
   pub config: &'static Config,
   pub width: EGLint,
@@ -207,7 +212,21 @@ pub struct Surface {
 }
 
 impl Surface {
-  pub fn set_pixel(&mut self, x: gl::GLint, y: gl::GLint, color: (f32, f32, f32, f32)) {
+  #[inline]
+  pub fn set_pixel(&mut self,
+                   x: gl::GLint,
+                   y: gl::GLint,
+                   color: (f32, f32, f32, f32),
+                   mask: gl::ColorMask) {
+    let old = self.get_pixel(x, y);
+
+    let color = (
+      if mask.0 { color.0 } else { old.0 },
+      if mask.1 { color.1 } else { old.1 },
+      if mask.2 { color.2 } else { old.2 },
+      if mask.3 { color.3 } else { old.3 },
+    );
+
     let color_format = self.config.color_format;
     let size = color_format.byte_size();
     let loc = (y as usize * self.width as usize + x as usize) * size;
@@ -219,6 +238,7 @@ impl Surface {
     }
   }
 
+  #[inline]
   pub fn get_pixel(&self, x: gl::GLint, y: gl::GLint) -> (f32, f32, f32, f32) {
     let color_format = self.config.color_format;
     let size = color_format.byte_size();

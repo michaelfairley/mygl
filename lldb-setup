@@ -1,2 +1,2 @@
-env DYLD_LIBRARY_PATH=../target/debug
+env DYLD_LIBRARY_PATH=../target/release
 run

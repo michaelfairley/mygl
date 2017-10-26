@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use egl::{self,Config,Surface};
 
 type Rect = (GLint, GLint, GLsizei, GLsizei);
+pub type ColorMask = (bool, bool, bool, bool);
 
 pub struct Context {
   pub config: &'static Config,
@@ -19,6 +20,8 @@ pub struct Context {
 
   scissor_test: bool,
   scissor: Rect,
+
+  color_mask: ColorMask,
 
   stencil_test: bool,
 
@@ -80,6 +83,8 @@ impl Context {
 
       scissor_test: false,
       scissor: (0, 0, 0, 0),
+
+      color_mask: (true, true, true, true),
 
       stencil_test: false,
 
@@ -206,7 +211,7 @@ impl Server {
           self.draw_surface = draw;
           self.read_surface = read;
         },
-        Command::Clear(color, depth, stencil, scissor) => {
+        Command::Clear(color, depth, stencil, scissor, color_mask) => {
           if depth.is_some() { unimplemented!() }
           if stencil.is_some() { unimplemented!() }
 
@@ -217,7 +222,7 @@ impl Server {
 
             for y in y..y+height {
               for x in x..x+width {
-                draw.set_pixel(x, y, color);
+                draw.set_pixel(x, y, color, color_mask);
               }
             }
           }
@@ -235,7 +240,7 @@ impl Server {
 
 enum Command {
   SetSurfaces(Option<&'static mut Surface>, Option<&'static mut Surface>),
-  Clear(Option<(f32, f32, f32, f32)>, Option<f32>, Option<f32>, Rect),
+  Clear(Option<(f32, f32, f32, f32)>, Option<f32>, Option<f32>, Rect, ColorMask),
   Finish(mpsc::Sender<()>),
   Flush(mpsc::Sender<()>),
 }
@@ -1579,6 +1584,7 @@ pub extern "system" fn glClear(mask: GLbitfield) -> () {
     if (mask & GL_DEPTH_BUFFER_BIT) > 0 { unimplemented!() } else { None },
     if (mask & GL_STENCIL_BUFFER_BIT) > 0 { unimplemented!() } else { None },
     scissor,
+    current.color_mask,
   )).unwrap();
 }
 
@@ -1633,10 +1639,12 @@ pub extern "C" fn glClientWaitSync(sync: GLsync, flags: GLbitfield, timeout: GLu
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glColorMask(red: GLboolean, green: GLboolean, blue: GLboolean, alpha: GLboolean) -> () {
-  assert_eq!(red, GL_TRUE);
-  assert_eq!(green, GL_TRUE);
-  assert_eq!(blue, GL_TRUE);
-  assert_eq!(alpha, GL_TRUE);
+  current().color_mask = (
+    red == GL_TRUE,
+    green == GL_TRUE,
+    blue == GL_TRUE,
+    alpha == GL_TRUE,
+  )
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -2593,7 +2601,7 @@ pub extern "C" fn glIsBuffer(buffer: GLuint) -> GLboolean {
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glIsEnabled(cap: GLenum) -> GLboolean {
-  unimplemented!()
+  if *current().cap_mut(cap) { GL_TRUE } else { GL_FALSE }
 }
 
 #[allow(unused_variables, non_snake_case)]
@@ -2987,6 +2995,9 @@ pub extern "C" fn glReadPixels(x: GLint, y: GLint, width: GLsizei, height: GLsiz
   assert_eq!(type_, GL_UNSIGNED_BYTE);
 
   let current = current();
+
+  glFinish();
+
   let read = unsafe{ current.read_surface.as_ref() };
   let read = read.as_ref().unwrap();
 
@@ -3095,7 +3106,19 @@ pub extern "C" fn glSamplerParameteriv(sampler: GLuint, pname: GLenum, param: *c
 #[allow(unused_variables, non_snake_case)]
 #[no_mangle]
 pub extern "C" fn glScissor(x: GLint, y: GLint, width: GLsizei, height: GLsizei) -> () {
-  current().scissor = (x, y, width, height);
+  let current = current();
+
+  let draw = unsafe{ current.draw_surface.as_ref() };
+  let draw = draw.unwrap();
+
+  let width = width.min(x + width);
+  let height = height.min(y + height);
+  let x = x.min(draw.width).max(0);
+  let y = y.min(draw.height).max(0);
+  let width = width.min(draw.width - x);
+  let height = height.min(draw.height - y);
+
+  current.scissor = (x, y, width, height);
 }
 
 #[allow(unused_variables, non_snake_case)]
