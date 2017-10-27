@@ -9,13 +9,11 @@ use std::cell::Cell;
 use gl;
 use gl::Context;
 
-// TODO: use references in signatures and ditch ptr
-
 #[repr(C)]
-struct AttribList(*const EGLint);
+pub struct AttribList(*const EGLint);
 
 impl AttribList {
-  pub fn iter(&self) -> AttribListIterator {
+  fn iter(&self) -> AttribListIterator {
     AttribListIterator{ pos: self.0 }
   }
 }
@@ -518,13 +516,11 @@ pub extern "C" fn eglBindTexImage(dpy: EGLDisplay, surface: EGLSurface, buffer: 
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn eglChooseConfig(_dpy: EGLDisplay, attrib_list: *const EGLint, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
+pub unsafe extern "C" fn eglChooseConfig(_dpy: EGLDisplay, attrib_list: AttribList, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
   if num_config.is_null() {
     // TODO: set error
     return EGL_FALSE
   }
-
-  let attrib_list = AttribList(attrib_list);
 
   let mut buffer_size = 0;
   let mut red_size = 0;
@@ -702,31 +698,30 @@ pub extern "C" fn eglCopyBuffers(dpy: EGLDisplay, surface: EGLSurface, target: E
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub unsafe extern "C" fn eglCreateContext(dpy: EGLDisplay, config: EGLConfig, share_context: EGLContext, attrib_list: *const EGLint) -> EGLContext {
+pub unsafe extern "C" fn eglCreateContext(dpy: EGLDisplay, config: EGLConfig, share_context: EGLContext, attrib_list: AttribList) -> EGLContext {
   let context = Box::new(Context::new(&*config));
   Box::into_raw(context)
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglCreateImage(dpy: EGLDisplay, ctx: EGLContext, target: EGLenum, buffer: EGLClientBuffer, attrib_list: *const EGLAttrib) -> EGLImage {
+pub extern "C" fn eglCreateImage(dpy: EGLDisplay, ctx: EGLContext, target: EGLenum, buffer: EGLClientBuffer, attrib_list: AttribList) -> EGLImage {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglCreatePbufferFromClientBuffer(dpy: EGLDisplay, buftype: EGLenum, buffer: EGLClientBuffer, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
+pub extern "C" fn eglCreatePbufferFromClientBuffer(dpy: EGLDisplay, buftype: EGLenum, buffer: EGLClientBuffer, config: EGLConfig, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn eglCreatePbufferSurface(_dpy: EGLDisplay, config: EGLConfig, attrib_list: *const EGLint) -> EGLSurface {
+pub unsafe extern "C" fn eglCreatePbufferSurface(_dpy: EGLDisplay, config: EGLConfig, attrib_list: AttribList) -> EGLSurface {
   let config = &*config;
   let mut width = 0;
   let mut height = 0;
   let mut _texture_format = EGL_NO_TEXTURE;
 
-  let attrib_list = AttribList(attrib_list);
   for (attrib, value) in attrib_list.iter() {
     match attrib as EGLenum {
       EGL_WIDTH => { width = value; },
@@ -752,31 +747,31 @@ pub unsafe extern "C" fn eglCreatePbufferSurface(_dpy: EGLDisplay, config: EGLCo
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglCreatePixmapSurface(dpy: EGLDisplay, config: EGLConfig, pixmap: EGLNativePixmapType, attrib_list: *const EGLint) -> EGLSurface {
+pub extern "C" fn eglCreatePixmapSurface(dpy: EGLDisplay, config: EGLConfig, pixmap: EGLNativePixmapType, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglCreatePlatformPixmapSurface(dpy: EGLDisplay, config: EGLConfig, native_pixmap: *mut c_void, attrib_list: *const EGLAttrib) -> EGLSurface {
+pub extern "C" fn eglCreatePlatformPixmapSurface(dpy: EGLDisplay, config: EGLConfig, native_pixmap: *mut c_void, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglCreatePlatformWindowSurface(dpy: EGLDisplay, config: EGLConfig, native_window: *mut c_void, attrib_list: *const EGLAttrib) -> EGLSurface {
+pub extern "C" fn eglCreatePlatformWindowSurface(dpy: EGLDisplay, config: EGLConfig, native_window: *mut c_void, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglCreateSync(dpy: EGLDisplay, type_: EGLenum, attrib_list: *const EGLAttrib) -> EGLSync {
+pub extern "C" fn eglCreateSync(dpy: EGLDisplay, type_: EGLenum, attrib_list: AttribList) -> EGLSync {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglCreateWindowSurface(dpy: EGLDisplay, config: EGLConfig, win: EGLNativeWindowType, attrib_list: *const EGLint) -> EGLSurface {
+pub extern "C" fn eglCreateWindowSurface(dpy: EGLDisplay, config: EGLConfig, win: EGLNativeWindowType, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
@@ -911,7 +906,7 @@ pub extern "C" fn eglGetError() -> EGLint {
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn eglGetPlatformDisplay(platform: EGLenum, native_display: *mut c_void, attrib_list: *const EGLAttrib) -> EGLDisplay {
+pub extern "C" fn eglGetPlatformDisplay(platform: EGLenum, native_display: *mut c_void, attrib_list: AttribList) -> EGLDisplay {
   unimplemented!()
 }
 
