@@ -330,10 +330,6 @@ pub type GLuint64EXT = u64;
 pub enum __GLsync {}
 pub type GLsync = *const __GLsync;
 
-// compatible with OpenCL cl_context
-// pub enum _cl_context {}
-// pub enum _cl_event {}
-
 pub type GLDEBUGPROC = extern "system" fn(source: GLenum,
                                           gltype: GLenum,
                                           id: GLuint,
@@ -356,44 +352,6 @@ pub type GLDEBUGPROCKHR = extern "system" fn(source: GLenum,
                                              message: *const GLchar,
                                              userParam: *mut c_void);
 
-// GLES 1 types
-// "pub type GLclampx = i32;",
-
-// GLES 1/2 types (tagged for GLES 1)
-// "pub type GLbyte = i8;",
-// "pub type GLubyte = u8;",
-// "pub type GLfloat = GLfloat;",
-// "pub type GLclampf = GLfloat;",
-// "pub type GLfixed = i32;",
-// "pub type GLint64 = i64;",
-// "pub type GLuint64 = u64;",
-// "pub type GLintptr = intptr_t;",
-// "pub type GLsizeiptr = ssize_t;",
-
-// GLES 1/2 types (tagged for GLES 2 - attribute syntax is limited)
-// "pub type GLbyte = i8;",
-// "pub type GLubyte = u8;",
-// "pub type GLfloat = GLfloat;",
-// "pub type GLclampf = GLfloat;",
-// "pub type GLfixed = i32;",
-// "pub type GLint64 = i64;",
-// "pub type GLuint64 = u64;",
-// "pub type GLint64EXT = i64;",
-// "pub type GLuint64EXT = u64;",
-// "pub type GLintptr = intptr_t;",
-// "pub type GLsizeiptr = ssize_t;",
-
-// GLES 2 types (none currently)
-
-// Vendor extension types
-pub type GLDEBUGPROCAMD = extern "system" fn(id: GLuint,
-                                             category: GLenum,
-                                             severity: GLenum,
-                                             length: GLsizei,
-                                             message: *const GLchar,
-                                             userParam: *mut c_void);
-pub type GLhalfNV = c_ushort;
-pub type GLvdpauSurfaceNV = GLintptr;
 
 
 #[allow(dead_code, non_upper_case_globals)] pub const GL_ACTIVE_ATOMIC_COUNTER_BUFFERS: GLenum = 0x92D9;
@@ -1410,7 +1368,6 @@ pub extern "C" fn glActiveTexture(texture: GLenum) -> () {
   assert_eq!(texture, GL_TEXTURE0);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glAttachShader(program: GLuint, shader: GLuint) -> () {
   let current = current();
@@ -1439,7 +1396,6 @@ pub extern "C" fn glBindAttribLocation(program: GLuint, index: GLuint, name: *co
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindBuffer(target: GLenum, buffer: GLuint) -> () {
   let current = current();
@@ -1519,7 +1475,6 @@ pub extern "C" fn glBlendBarrier() -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendColor(red: GLfloat, green: GLfloat, blue: GLfloat, alpha: GLfloat) -> () {
   assert_eq!(red, 0.0);
@@ -1552,7 +1507,6 @@ pub extern "C" fn glBlendEquationi(buf: GLuint, mode: GLenum) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBlendFunc(sfactor: GLenum, dfactor: GLenum) -> () {
   assert_eq!(sfactor, GL_ONE);
@@ -1583,9 +1537,8 @@ pub extern "C" fn glBlitFramebuffer(srcX0: GLint, srcY0: GLint, srcX1: GLint, sr
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const c_void, usage: GLenum) -> () {
+pub extern "C" fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const c_void, _usage: GLenum) -> () {
   let current = current();
 
   let vec = if data.is_null() {
@@ -1611,7 +1564,6 @@ pub extern "C" fn glCheckFramebufferStatus(target: GLenum) -> GLenum {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "system" fn glClear(mask: GLbitfield) -> () {
   let current = current();
@@ -1658,19 +1610,16 @@ pub extern "C" fn glClearBufferuiv(buffer: GLenum, drawbuffer: GLint, value: *co
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearColor(red: GLfloat, green: GLfloat, blue: GLfloat, alpha: GLfloat) -> () {
   current().clear_color = (red, green, blue, alpha);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearDepthf(d: GLfloat) -> () {
   assert_eq!(d, 1.0);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glClearStencil(s: GLint) -> () {
   assert_eq!(s, 0);
@@ -1682,7 +1631,6 @@ pub extern "C" fn glClientWaitSync(sync: GLsync, flags: GLbitfield, timeout: GLu
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glColorMask(red: GLboolean, green: GLboolean, blue: GLboolean, alpha: GLboolean) -> () {
   current().color_mask = (
@@ -1699,7 +1647,6 @@ pub extern "C" fn glColorMaski(index: GLuint, r: GLboolean, g: GLboolean, b: GLb
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCompileShader(shader: GLuint) -> () {
   let current = current();
@@ -1762,7 +1709,6 @@ pub extern "C" fn glCopyTexSubImage3D(target: GLenum, level: GLint, xoffset: GLi
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCreateProgram() -> GLuint {
   let current = current();
@@ -1773,7 +1719,6 @@ pub extern "C" fn glCreateProgram() -> GLuint {
   name
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCreateShader(type_: GLenum) -> GLuint {
   let current = current();
@@ -1790,7 +1735,6 @@ pub extern "C" fn glCreateShaderProgramv(type_: GLenum, count: GLsizei, strings:
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glCullFace(mode: GLenum) -> () {
   current().cull_face = mode;
@@ -1814,7 +1758,6 @@ pub extern "C" fn glDebugMessageInsert(source: GLenum, type_: GLenum, id: GLuint
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteBuffers(n: GLsizei, buffers: *const GLuint) -> () {
   let current = current();
@@ -1891,19 +1834,16 @@ pub extern "C" fn glDeleteVertexArrays(n: GLsizei, arrays: *const GLuint) -> () 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDepthFunc(func: GLenum) -> () {
   assert_eq!(func, GL_LESS);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDepthMask(flag: GLboolean) -> () {
   assert_eq!(flag, GL_TRUE);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDepthRangef(n: GLfloat, f: GLfloat) -> () {
   current().depth_range = (n, f);
@@ -1915,7 +1855,6 @@ pub extern "C" fn glDetachShader(program: GLuint, shader: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDisable(cap: GLenum) -> () {
   *current().cap_mut(cap) = false;
@@ -1963,7 +1902,6 @@ pub extern "C" fn glDrawArraysInstanced(mode: GLenum, first: GLint, count: GLsiz
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDrawBuffers(n: GLsizei, bufs: *const GLenum) -> () {
   assert_eq!(n, 1);
@@ -2012,7 +1950,6 @@ pub extern "C" fn glDrawRangeElementsBaseVertex(mode: GLenum, start: GLuint, end
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glEnable(cap: GLenum) -> () {
   *current().cap_mut(cap) = true;
@@ -2048,7 +1985,6 @@ pub extern "C" fn glFenceSync(condition: GLenum, flags: GLbitfield) -> GLsync {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFinish() -> () {
   let (tx, rx) = mpsc::channel();
@@ -2058,7 +1994,6 @@ pub extern "C" fn glFinish() -> () {
   rx.recv().unwrap();
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFlush() -> () {
   let (tx, rx) = mpsc::channel();
@@ -2104,13 +2039,11 @@ pub extern "C" fn glFramebufferTextureLayer(target: GLenum, attachment: GLenum, 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glFrontFace(mode: GLenum) -> () {
   current().front_face = mode;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGenBuffers(n: GLsizei, buffers: *mut GLuint) -> () {
   let current = current();
@@ -2225,7 +2158,6 @@ pub extern "C" fn glGetBooleani_v(target: GLenum, index: GLuint, data: *mut GLbo
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetBooleanv(pname: GLenum, data: *mut GLboolean) -> () {
   let result = match pname {
@@ -2262,7 +2194,6 @@ pub extern "C" fn glGetDebugMessageLog(count: GLuint, bufSize: GLsizei, sources:
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetError() -> GLenum {
   GL_NONE
@@ -2316,7 +2247,6 @@ pub extern "C" fn glGetIntegeri_v(target: GLenum, index: GLuint, data: *mut GLin
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetIntegerv(pname: GLenum, data: *mut GLint) -> () {
   let result = match pname {
@@ -2416,12 +2346,11 @@ pub extern "C" fn glGetProgramResourceiv(program: GLuint, programInterface: GLen
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetProgramiv(program: GLuint, pname: GLenum, params: *mut GLint) -> () {
+pub extern "C" fn glGetProgramiv(_program: GLuint, pname: GLenum, params: *mut GLint) -> () {
   let value = match pname {
-    GL_LINK_STATUS => GL_TRUE as GLint,
-    GL_INFO_LOG_LENGTH => 0,
+    GL_LINK_STATUS => GL_TRUE as GLint, // TODO
+    GL_INFO_LOG_LENGTH => 0, // TODO
     x => unimplemented!("{:x}", x),
   };
 
@@ -2434,9 +2363,8 @@ pub extern "C" fn glGetQueryObjectuiv(id: GLuint, pname: GLenum, params: *mut GL
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetQueryiv(target: GLenum, pname: GLenum, params: *mut GLint) -> () {
+pub extern "C" fn glGetQueryiv(_target: GLenum, pname: GLenum, params: *mut GLint) -> () {
   assert_eq!(pname, GL_CURRENT_QUERY);
   unsafe{ ptr::write(params, 0) };
 }
@@ -2489,9 +2417,8 @@ pub extern "C" fn glGetShaderSource(shader: GLuint, bufSize: GLsizei, length: *m
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetShaderiv(shader: GLuint, pname: GLenum, params: *mut GLint) -> () {
+pub extern "C" fn glGetShaderiv(_shader: GLuint, pname: GLenum, params: *mut GLint) -> () {
   let value = match pname {
     GL_COMPILE_STATUS => GL_TRUE as GLint,
     GL_INFO_LOG_LENGTH => 0,
@@ -2669,7 +2596,6 @@ pub extern "C" fn glIsBuffer(buffer: GLuint) -> GLboolean {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glIsEnabled(cap: GLenum) -> GLboolean {
   if *current().cap_mut(cap) { GL_TRUE } else { GL_FALSE }
@@ -2759,9 +2685,8 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
 
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glMapBufferRange(target: GLenum, offset: GLintptr, length: GLsizeiptr, access: GLbitfield) -> *mut c_void {
+pub extern "C" fn glMapBufferRange(target: GLenum, offset: GLintptr, _length: GLsizeiptr, _access: GLbitfield) -> *mut c_void {
   let current = current();
 
   let target_name = *current.buffer_target(target);
@@ -2819,7 +2744,6 @@ pub extern "C" fn glPixelStorei(pname: GLenum, param: GLint) -> () {
   // unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glPolygonOffset(factor: GLfloat, units: GLfloat) -> () {
   current().polygon_offset = (factor, units);
@@ -3059,7 +2983,6 @@ pub extern "C" fn glReadBuffer(src: GLenum) -> () {
   assert_eq!(src, GL_BACK);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glReadPixels(x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, type_: GLenum, pixels: *mut c_void) -> () {
   assert_eq!(format, GL_RGBA);
@@ -3126,7 +3049,6 @@ pub extern "C" fn glResumeTransformFeedback() -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glSampleCoverage(value: GLfloat, invert: GLboolean) -> () {
   current().sample_coverage = (value, invert == GL_TRUE);
@@ -3174,7 +3096,6 @@ pub extern "C" fn glSamplerParameteriv(sampler: GLuint, pname: GLenum, param: *c
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glScissor(x: GLint, y: GLint, width: GLsizei, height: GLsizei) -> () {
   let current = current();
@@ -3198,7 +3119,6 @@ pub extern "C" fn glShaderBinary(count: GLsizei, shaders: *const GLuint, binaryf
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glShaderSource(shader: GLuint, count: GLsizei, string: *const *const GLchar, length: *const GLint) -> () {
   let current = current();
@@ -3223,7 +3143,6 @@ pub extern "C" fn glShaderSource(shader: GLuint, count: GLsizei, string: *const 
   }
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glStencilFunc(func: GLenum, ref_: GLint, mask: GLuint) -> () {
   assert_eq!(func, GL_ALWAYS);
@@ -3249,7 +3168,6 @@ pub extern "C" fn glStencilMaskSeparate(face: GLenum, mask: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glStencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum) -> () {
   assert_eq!(fail, GL_KEEP);
@@ -3569,10 +3487,8 @@ pub extern "C" fn glUniformMatrix4x3fv(location: GLint, count: GLsizei, transpos
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glUnmapBuffer(target: GLenum) -> GLboolean {
-  // unimplemented!()
+pub extern "C" fn glUnmapBuffer(_target: GLenum) -> GLboolean {
   GL_TRUE
 }
 
@@ -3654,9 +3570,8 @@ pub extern "C" fn glVertexAttribBinding(attribindex: GLuint, bindingindex: GLuin
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glVertexAttribDivisor(index: GLuint, divisor: GLuint) -> () {
+pub extern "C" fn glVertexAttribDivisor(_index: GLuint, divisor: GLuint) -> () {
   assert_eq!(divisor, 0);
 }
 
@@ -3702,9 +3617,8 @@ pub extern "C" fn glVertexAttribIPointer(index: GLuint, size: GLint, type_: GLen
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glVertexAttribPointer(index: GLuint, size: GLint, type_: GLenum, normalized: GLboolean, stride: GLsizei, pointer: *const c_void) -> () {
+pub extern "C" fn glVertexAttribPointer(_index: GLuint, size: GLint, type_: GLenum, normalized: GLboolean, stride: GLsizei, pointer: *const c_void) -> () {
   assert_eq!(size, 4);
   assert_eq!(type_, GL_FLOAT);
   assert_eq!(normalized, GL_FALSE);
@@ -3718,7 +3632,6 @@ pub extern "C" fn glVertexBindingDivisor(bindingindex: GLuint, divisor: GLuint) 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glViewport(x: GLint, y: GLint, width: GLsizei, height: GLsizei) -> () {
   current().viewport = (x, y, width, height);
