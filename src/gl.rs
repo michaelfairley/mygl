@@ -1663,7 +1663,7 @@ pub extern "C" fn glCompileShader(shader: GLuint) -> () {
   let current = current();
   let shader = current.shaders.get_mut(&shader).unwrap();
 
-  *shader.compiled.borrow_mut() = Some(glsl::compile(&shader.source.borrow(), shader.type_));
+  *shader.compiled.borrow_mut() = glsl::compile(&shader.source.borrow(), shader.type_).ok();
 }
 
 #[allow(unused_variables)]

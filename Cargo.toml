@@ -9,6 +9,9 @@ crate-type = ["cdylib"]
 [dependencies]
 lazy_static = "*"
 
+[dev-dependencies]
+pretty_assertions = "*"
+
 [profile.dev]
 panic = "abort"
 opt-level = 1
