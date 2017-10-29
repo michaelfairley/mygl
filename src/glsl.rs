@@ -256,7 +256,8 @@ mod parse {
 
     fn must_consume(&mut self, typ: &TokenType) -> Result<()> {
       if !self.consume(typ)? {
-        Err(format!("Expected {:?}", typ))
+        let next = self.tokens.first().unwrap();
+        Err(format!("Expected {:?}, got {:?} at {}:{}", typ, next.typ, next.line, next.col))
       } else { Ok(()) }
     }
 
@@ -278,7 +279,8 @@ mod parse {
         self.tokens = rest;
         Ok(ident.clone())
       } else {
-        Err("Expected ident".to_string())
+        let next = self.tokens.first().unwrap();
+        Err(format!("Expected ident, got {:?} at {}:{}", next.typ, next.line, next.col))
       }
     }
 
