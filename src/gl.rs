@@ -48,6 +48,9 @@ pub struct Context {
   dispatch_indirect_buffer: GLuint,
   copy_read_buffer: GLuint,
   copy_write_buffer: GLuint,
+  draw_indirect_buffer: GLuint,
+  atomic_counter_buffer: GLuint,
+  shader_storage_buffer: GLuint,
 
   vertex_array: GLuint,
 
@@ -114,6 +117,9 @@ impl Context {
       dispatch_indirect_buffer: 0,
       copy_read_buffer: 0,
       copy_write_buffer: 0,
+      draw_indirect_buffer: 0,
+      atomic_counter_buffer: 0,
+      shader_storage_buffer: 0,
 
       vertex_array: 0,
 
@@ -156,6 +162,9 @@ impl Context {
       GL_DISPATCH_INDIRECT_BUFFER => &self.dispatch_indirect_buffer,
       GL_COPY_READ_BUFFER => &self.copy_read_buffer,
       GL_COPY_WRITE_BUFFER => &self.copy_write_buffer,
+      GL_DRAW_INDIRECT_BUFFER => &self.draw_indirect_buffer,
+      GL_ATOMIC_COUNTER_BUFFER => &self.atomic_counter_buffer,
+      GL_SHADER_STORAGE_BUFFER => &self.shader_storage_buffer,
       x => unimplemented!("{:x}", x),
     }
   }
@@ -171,6 +180,9 @@ impl Context {
       GL_DISPATCH_INDIRECT_BUFFER => &mut self.dispatch_indirect_buffer,
       GL_COPY_READ_BUFFER => &mut self.copy_read_buffer,
       GL_COPY_WRITE_BUFFER => &mut self.copy_write_buffer,
+      GL_DRAW_INDIRECT_BUFFER => &mut self.draw_indirect_buffer,
+      GL_ATOMIC_COUNTER_BUFFER => &mut self.atomic_counter_buffer,
+      GL_SHADER_STORAGE_BUFFER => &mut self.shader_storage_buffer,
       x => unimplemented!("{:x}", x),
     }
   }
@@ -1427,10 +1439,9 @@ pub extern "C" fn glBindImageTexture(unit: GLuint, texture: GLuint, level: GLint
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindProgramPipeline(pipeline: GLuint) -> () {
-  unimplemented!()
+  assert_eq!(pipeline, 0);
 }
 
 #[allow(unused_variables)]
@@ -1774,10 +1785,11 @@ pub extern "C" fn glDeleteFramebuffers(n: GLsizei, framebuffers: *const GLuint) 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteProgram(program: GLuint) -> () {
-  unimplemented!()
+  let current = current();
+
+  current.programs.remove(&program);
 }
 
 #[allow(unused_variables)]
@@ -1804,10 +1816,11 @@ pub extern "C" fn glDeleteSamplers(count: GLsizei, samplers: *const GLuint) -> (
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteShader(shader: GLuint) -> () {
-  unimplemented!()
+  let current = current();
+
+  current.shaders.remove(&shader);
 }
 
 #[allow(unused_variables)]
@@ -1875,7 +1888,7 @@ pub extern "C" fn glDisablei(target: GLenum, index: GLuint) -> () {
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDispatchCompute(num_groups_x: GLuint, num_groups_y: GLuint, num_groups_z: GLuint) -> () {
-  unimplemented!()
+  // unimplemented!()
 }
 
 #[allow(unused_variables)]
@@ -2256,6 +2269,9 @@ pub extern "C" fn glGetIntegerv(pname: GLenum, data: *mut GLint) -> () {
     GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS => 0, // TODO
     GL_MAX_UNIFORM_BUFFER_BINDINGS => 0, // TODO
     GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS => 0, // TODO
+    GL_MAX_ATOMIC_COUNTER_BUFFER_BINDINGS => 0, // TODO
+    GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS => 0, // TODO
+    GL_MAX_IMAGE_UNITS => 0, // TODO
     x => unimplemented!("{:x}", x),
   };
 
