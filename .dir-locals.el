@@ -1,2 +1,2 @@
-((nil . ((compile-command . "make -C .. test")))
+((nil . ((compile-command . "make test")))
  (compilation-mode . ((compilation-scroll-output . t))))
