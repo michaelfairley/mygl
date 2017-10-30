@@ -1,17 +1,17 @@
 use super::{Result,Version};
-use super::lex::{Token,TokenType};
+use super::lex::{FullToken,Token};
 
-pub(super) fn parse(tokens: &[Token], version: Version) -> Result<TranslationUnit> {
+pub(super) fn parse(tokens: &[FullToken], version: Version) -> Result<TranslationUnit> {
   Parser::new(tokens, version).parse_translation_unit()
 }
 
 pub struct Parser<'a> {
-  tokens: &'a [Token],
+  tokens: &'a [FullToken],
   _version: Version,
 }
 
 impl<'a> Parser<'a> {
-  pub(super) fn new(tokens: &'a [Token], version: Version) -> Parser<'a> {
+  pub(super) fn new(tokens: &'a [FullToken], version: Version) -> Parser<'a> {
     Self{
       tokens,
       _version: version,
@@ -29,15 +29,15 @@ impl<'a> Parser<'a> {
     Ok(result)
   }
 
-  fn peek(&mut self) -> Result<&'a TokenType> {
+  fn peek(&mut self) -> Result<&'a Token> {
     self.tokens.first().map(|t| &t.typ).ok_or("Ran out of input too soon".to_string())
   }
 
-  fn peekn(&mut self, n:usize) -> Result<&'a TokenType> {
+  fn peekn(&mut self, n:usize) -> Result<&'a Token> {
     self.tokens.get(n).map(|t| &t.typ).ok_or("Ran out of input too soon".to_string())
   }
 
-  fn consume(&mut self, typ: &TokenType) -> Result<bool> {
+  fn consume(&mut self, typ: &Token) -> Result<bool> {
     let (first, rest) = self.tokens.split_first().ok_or(format!("Ran out of input too soon; expected {:?}", typ))?;
 
     if &first.typ == typ {
@@ -48,7 +48,7 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn must_consume(&mut self, typ: &TokenType) -> Result<()> {
+  fn must_consume(&mut self, typ: &Token) -> Result<()> {
     if !self.consume(typ)? {
       let next = self.tokens.first().unwrap();
       Err(format!("Expected {:?}, got {:?} at {}:{}", typ, next.typ, next.line, next.col))
@@ -58,7 +58,7 @@ impl<'a> Parser<'a> {
   fn consume_ident(&mut self) -> Result<Option<String>> {
     let (first, rest) = self.tokens.split_first().ok_or("Ran out of input too soon".to_string())?;
 
-    if let TokenType::Ident(ref ident) = first.typ {
+    if let Token::Ident(ref ident) = first.typ {
       self.tokens = rest;
       Ok(Some(ident.clone()))
     } else {
@@ -69,7 +69,7 @@ impl<'a> Parser<'a> {
   fn must_consume_ident(&mut self) -> Result<String> {
     let (first, rest) = self.tokens.split_first().ok_or("Ran out of input too soon".to_string())?;
 
-    if let TokenType::Ident(ref ident) = first.typ {
+    if let Token::Ident(ref ident) = first.typ {
       self.tokens = rest;
       Ok(ident.clone())
     } else {
@@ -92,24 +92,24 @@ impl<'a> Parser<'a> {
   fn parse_external_declaration(&mut self) -> Result<ExternalDeclaration> {
     let type_qualifiers = self.parse_type_qualifiers()?;
 
-    if self.consume(&TokenType::Semicolon)? {
+    if self.consume(&Token::Semicolon)? {
       return Ok(ExternalDeclaration::TypeQualifier(type_qualifiers));
     }
 
     // TODO: this section is awkward
     let next = self.peek()?;
-    if let &TokenType::Ident(ref _ident) = next {
+    if let &Token::Ident(ref _ident) = next {
       let peek1 = self.peekn(1)?;
-      if peek1 == &TokenType::Comma || peek1 == &TokenType::Semicolon {
+      if peek1 == &Token::Comma || peek1 == &Token::Semicolon {
         unimplemented!()
-      } else if peek1 == &TokenType::OpenBrace {
+      } else if peek1 == &Token::OpenBrace {
         let block_name = self.must_consume_ident()?;
-        self.must_consume(&TokenType::OpenBrace)?;
+        self.must_consume(&Token::OpenBrace)?;
 
         let member_list = self.parse_member_list()?;
 
         let instance_name = self.consume_ident()?;
-        self.must_consume(&TokenType::Semicolon)?;
+        self.must_consume(&Token::Semicolon)?;
 
         return Ok(ExternalDeclaration::Block(type_qualifiers, block_name, member_list, instance_name));
       }
@@ -119,7 +119,7 @@ impl<'a> Parser<'a> {
     let fully_specified_type = (type_qualifiers, typ);
 
     let name = self.must_consume_ident()?;
-    self.must_consume(&TokenType::OpenParen)?;
+    self.must_consume(&Token::OpenParen)?;
     let parameters = self.parse_parameter_declarations()?;
 
     let function_proto = FunctionPrototype{
@@ -128,35 +128,35 @@ impl<'a> Parser<'a> {
       params: parameters,
     };
 
-    if self.consume(&TokenType::Semicolon)? {
+    if self.consume(&Token::Semicolon)? {
       Ok(ExternalDeclaration::FunctionPrototype(function_proto))
-    } else if self.peek()? == &TokenType::OpenBrace {
+    } else if self.peek()? == &Token::OpenBrace {
       let body = self.parse_statement()?;
       Ok(ExternalDeclaration::FunctionDefinition(function_proto, body))
     } else { self.unexpected() }
   }
 
   fn parse_statement(&mut self) -> Result<Statement> {
-    if self.consume(&TokenType::OpenBrace)? {
+    if self.consume(&Token::OpenBrace)? {
       let mut statements = vec![];
 
-      while !self.consume(&TokenType::CloseBrace)? {
+      while !self.consume(&Token::CloseBrace)? {
         let statement = self.parse_statement()?;
         statements.push(statement);
       }
 
       return Ok(Statement::Compound(statements));
-    } if self.consume(&TokenType::For)? {
-      self.must_consume(&TokenType::OpenParen)?;
+    } if self.consume(&Token::For)? {
+      self.must_consume(&Token::OpenParen)?;
 
       let init = self.parse_statement()?;
       let condition = self.parse_expression()?;
-      self.must_consume(&TokenType::Semicolon)?;
-      let iter = if self.consume(&TokenType::CloseParen)? {
+      self.must_consume(&Token::Semicolon)?;
+      let iter = if self.consume(&Token::CloseParen)? {
         Expression::Empty
       } else {
         let expr = self.parse_expression()?;
-        self.must_consume(&TokenType::CloseParen)?;
+        self.must_consume(&Token::CloseParen)?;
         expr
       };
 
@@ -176,16 +176,16 @@ impl<'a> Parser<'a> {
       let fully_specified_type = (type_qualifiers, typ);
 
       let name = self.must_consume_ident()?;
-      self.must_consume(&TokenType::Equal)?;
+      self.must_consume(&Token::Equal)?;
 
       let initializer = self.parse_expression()?;
 
-      self.must_consume(&TokenType::Semicolon)?;
+      self.must_consume(&Token::Semicolon)?;
 
       Ok(Statement::Declaration(fully_specified_type, name, initializer))
     } else {
       let expr = self.parse_expression()?;
-      self.must_consume(&TokenType::Semicolon)?;
+      self.must_consume(&Token::Semicolon)?;
       Ok(Statement::Expression(expr))
     }
   }
@@ -196,7 +196,7 @@ impl<'a> Parser<'a> {
   fn parse_assignment_expression(&mut self) -> Result<Expression> {
     let a = self.parse_conditional_expression()?;
 
-    if self.consume(&TokenType::Equal)? {
+    if self.consume(&Token::Equal)? {
       let rhs = self.parse_expression()?;
       Ok(Expression::Assignment(Box::new(a), Box::new(rhs)))
     } else {
@@ -239,16 +239,16 @@ impl<'a> Parser<'a> {
     // TODO
     let a = self.parse_shift_expression()?;
 
-    if self.consume(&TokenType::OpenAngle)? {
+    if self.consume(&Token::OpenAngle)? {
       let b = self.parse_expression()?;
       Ok(Expression::Comparison(Box::new(a), Comparison::Less, Box::new(b)))
-    } else if self.consume(&TokenType::CloseAngle)? {
+    } else if self.consume(&Token::CloseAngle)? {
       let b = self.parse_expression()?;
       Ok(Expression::Comparison(Box::new(a), Comparison::Greater, Box::new(b)))
-    } else if self.consume(&TokenType::LeOp)? {
+    } else if self.consume(&Token::LeOp)? {
       let b = self.parse_expression()?;
       Ok(Expression::Comparison(Box::new(a), Comparison::LessEqual, Box::new(b)))
-    } else if self.consume(&TokenType::GeOp)? {
+    } else if self.consume(&Token::GeOp)? {
       let b = self.parse_expression()?;
       Ok(Expression::Comparison(Box::new(a), Comparison::GreaterEqual, Box::new(b)))
     } else {
@@ -262,7 +262,7 @@ impl<'a> Parser<'a> {
   fn parse_additive_expression(&mut self) -> Result<Expression> {
     let a = self.parse_multiplicative_expression()?;
 
-    if self.consume(&TokenType::Plus)? {
+    if self.consume(&Token::Plus)? {
       let b = self.parse_additive_expression()?;
       Ok(Expression::Add(Box::new(a), Box::new(b)))
     } else {
@@ -272,10 +272,10 @@ impl<'a> Parser<'a> {
   fn parse_multiplicative_expression(&mut self) -> Result<Expression> {
     let a = self.parse_unary_expression()?;
 
-    if self.consume(&TokenType::Star)? {
+    if self.consume(&Token::Star)? {
       let b = self.parse_multiplicative_expression()?;
       Ok(Expression::Multiply(Box::new(a), Box::new(b)))
-    } else if self.consume(&TokenType::Slash)? {
+    } else if self.consume(&Token::Slash)? {
       let b = self.parse_multiplicative_expression()?;
       Ok(Expression::Divide(Box::new(a), Box::new(b)))
     } else {
@@ -283,7 +283,7 @@ impl<'a> Parser<'a> {
     }
   }
   fn parse_unary_expression(&mut self) -> Result<Expression> {
-    if self.consume(&TokenType::Tilde)? {
+    if self.consume(&Token::Tilde)? {
       let a = self.parse_expression()?;
       Ok(Expression::BinaryNot(Box::new(a)))
     } else {
@@ -292,25 +292,25 @@ impl<'a> Parser<'a> {
   }
   fn parse_postfix_expression(&mut self) -> Result<Expression> {
     let possible_function_name = match *self.peek()? {
-      TokenType::Ident(ref name) => Some(name.clone()),
-      TokenType::Uint => Some("uint".to_string()),
+      Token::Ident(ref name) => Some(name.clone()),
+      Token::Uint => Some("uint".to_string()),
       _ => None,
     };
 
     if let Some(name) = possible_function_name {
-      if self.peekn(1)? == &TokenType::OpenParen {
+      if self.peekn(1)? == &Token::OpenParen {
         self.advance();
         self.advance();
 
         let mut arguments = vec![];
-        if !self.consume(&TokenType::Void)? {
+        if !self.consume(&Token::Void)? {
           loop {
             let expr = self.parse_expression()?;
             arguments.push(expr);
-            if !self.consume(&TokenType::Comma)? { break; }
+            if !self.consume(&Token::Comma)? { break; }
           }
         }
-        self.must_consume(&TokenType::CloseParen)?;
+        self.must_consume(&Token::CloseParen)?;
 
         return Ok(Expression::FunctionCall(name, arguments));
       }
@@ -318,19 +318,19 @@ impl<'a> Parser<'a> {
 
     let mut expr = self.parse_primary_expression()?;
     loop {
-      if self.consume(&TokenType::OpenBracket)? {
+      if self.consume(&Token::OpenBracket)? {
         let inner = self.parse_expression()?;
-        self.must_consume(&TokenType::CloseBracket)?;
+        self.must_consume(&Token::CloseBracket)?;
 
         expr = Expression::Index(Box::new(expr), Box::new(inner));
-      } else if self.consume(&TokenType::Dot)? {
+      } else if self.consume(&Token::Dot)? {
         let field = self.must_consume_ident()?;
 
-        if field.as_str() == "length" && self.consume(&TokenType::OpenParen)? {
-          self.must_consume(&TokenType::CloseParen)?;
+        if field.as_str() == "length" && self.consume(&Token::OpenParen)? {
+          self.must_consume(&Token::CloseParen)?;
         }
         expr = Expression::FieldSelection(Box::new(expr), field);
-      } else if self.consume(&TokenType::IncOp)? {
+      } else if self.consume(&Token::IncOp)? {
         expr = Expression::PostInc(Box::new(expr))
       } else {
         return Ok(expr)
@@ -338,16 +338,16 @@ impl<'a> Parser<'a> {
     }
   }
   fn parse_primary_expression(&mut self) -> Result<Expression> {
-    if self.consume(&TokenType::OpenParen)? {
+    if self.consume(&Token::OpenParen)? {
       let expr = self.parse_expression()?;
-      self.must_consume(&TokenType::CloseParen)?;
+      self.must_consume(&Token::CloseParen)?;
       return Ok(expr)
     }
 
     let primary = match *self.peek()? {
-      TokenType::Ident(ref name) => Expression::Variable(name.clone()),
-      TokenType::IntConstant(x) => Expression::IntConstant(x),
-      TokenType::UintConstant(x) => Expression::UintConstant(x),
+      Token::Ident(ref name) => Expression::Variable(name.clone()),
+      Token::IntConstant(x) => Expression::IntConstant(x),
+      Token::UintConstant(x) => Expression::UintConstant(x),
       _ => { self.unexpected()? },
     };
     self.advance();
@@ -355,7 +355,7 @@ impl<'a> Parser<'a> {
   }
 
   fn parse_member_list(&mut self) -> Result<MemberList> {
-    if self.consume(&TokenType::CloseBrace)? { return Ok(vec![]); }
+    if self.consume(&Token::CloseBrace)? { return Ok(vec![]); }
 
     let mut result = vec![];
 
@@ -369,24 +369,24 @@ impl<'a> Parser<'a> {
       loop {
         let declarator = self.must_consume_ident()?;
         declarators.push((declarator, self.parse_array_specifier()?));
-        if !self.consume(&TokenType::Comma)? { break; }
+        if !self.consume(&Token::Comma)? { break; }
       }
-      self.must_consume(&TokenType::Semicolon)?;
+      self.must_consume(&Token::Semicolon)?;
 
       result.push((fully_specified, declarators));
 
-      if self.consume(&TokenType::CloseBrace)? { break; }
+      if self.consume(&Token::CloseBrace)? { break; }
     }
 
     Ok(result)
   }
 
   fn parse_type(&mut self) -> Result<TypeSpecifier> {
-    let typ = if self.consume(&TokenType::Void)? {
+    let typ = if self.consume(&Token::Void)? {
       TypeSpecifierNonArray::Void
-    } else if self.consume(&TokenType::Uint)? {
+    } else if self.consume(&Token::Uint)? {
       TypeSpecifierNonArray::Uint
-    } else if self.consume(&TokenType::UVec3)? {
+    } else if self.consume(&Token::UVec3)? {
       TypeSpecifierNonArray::UVec3
     } else { self.unexpected()? };
 
@@ -397,16 +397,16 @@ impl<'a> Parser<'a> {
     let mut result = vec![];
 
     loop {
-      if self.consume(&TokenType::Layout)? {
-        self.must_consume(&TokenType::OpenParen)?;
+      if self.consume(&Token::Layout)? {
+        self.must_consume(&Token::OpenParen)?;
 
         let mut layout_qualifier_ids = vec![];
 
         loop {
-          if let &TokenType::Ident(ref name) = self.peek()? {
+          if let &Token::Ident(ref name) = self.peek()? {
             self.advance();
-            if self.consume(&TokenType::Equal)? {
-              if let &TokenType::IntConstant(val) = self.peek()? {
+            if self.consume(&Token::Equal)? {
+              if let &Token::IntConstant(val) = self.peek()? {
                 self.advance();
                 layout_qualifier_ids.push(LayoutQualifierId::Int(name.clone(), val));
               } else { self.unexpected()? }
@@ -414,17 +414,17 @@ impl<'a> Parser<'a> {
               layout_qualifier_ids.push(LayoutQualifierId::Ident(name.clone()));
             }
           } else { self.unexpected()? }
-          if self.consume(&TokenType::CloseParen)? {
+          if self.consume(&Token::CloseParen)? {
             break;
           } else {
-            self.must_consume(&TokenType::Comma)?;
+            self.must_consume(&Token::Comma)?;
           }
         }
 
         result.push(TypeQualifier::Layout(layout_qualifier_ids));
-      } else if self.consume(&TokenType::In)? {
+      } else if self.consume(&Token::In)? {
         result.push(TypeQualifier::Storage(StorageQualifier::In));
-      } else if self.consume(&TokenType::Buffer)? {
+      } else if self.consume(&Token::Buffer)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Buffer));
       } else {
         return Ok(result)
@@ -433,7 +433,7 @@ impl<'a> Parser<'a> {
   }
 
   fn parse_parameter_declarations(&mut self) -> Result<Vec<ParameterDeclaration>> {
-    if self.consume(&TokenType::CloseParen)? {
+    if self.consume(&Token::CloseParen)? {
       return Ok(vec![])
     }
 
@@ -452,10 +452,10 @@ impl<'a> Parser<'a> {
 
       result.push((fully_specified, ident));
 
-      if self.consume(&TokenType::CloseParen)? {
+      if self.consume(&Token::CloseParen)? {
         break;
       } else {
-        self.must_consume(&TokenType::Comma)?;
+        self.must_consume(&Token::Comma)?;
       }
     }
 
@@ -466,12 +466,12 @@ impl<'a> Parser<'a> {
     let mut result = vec![];
 
     loop {
-      if !self.consume(&TokenType::OpenBracket)? { break; }
-      let expr = if self.consume(&TokenType::CloseBracket)? {
+      if !self.consume(&Token::OpenBracket)? { break; }
+      let expr = if self.consume(&Token::CloseBracket)? {
         None
       } else {
         let expr = self.parse_constant_expression()?;
-        self.must_consume(&TokenType::CloseBracket)?;
+        self.must_consume(&Token::CloseBracket)?;
         Some(expr)
       };
 
@@ -483,8 +483,8 @@ impl<'a> Parser<'a> {
 
   fn parse_constant_expression(&mut self) -> Result<ConstantExpression> {
     let expr = match *self.peek()? {
-      TokenType::IntConstant(i) => ConstantExpression::IntConstant(i),
-      TokenType::UintConstant(i) => ConstantExpression::UintConstant(i),
+      Token::IntConstant(i) => ConstantExpression::IntConstant(i),
+      Token::UintConstant(i) => ConstantExpression::UintConstant(i),
       _ => self.unexpected()?,
     };
     self.advance();
@@ -603,12 +603,12 @@ fn test_order_of_operations() {
   use self::Expression::*;
   { // Add first
     let tokens = vec![
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(1) },
-      Token{ line: 0, col: 0, typ: TokenType::Plus },
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(2) },
-      Token{ line: 0, col: 0, typ: TokenType::Star },
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(3) },
-      Token{ line: 0, col: 0, typ: TokenType::Semicolon },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(1) },
+      FullToken{ line: 0, col: 0, typ: Token::Plus },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(2) },
+      FullToken{ line: 0, col: 0, typ: Token::Star },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(3) },
+      FullToken{ line: 0, col: 0, typ: Token::Semicolon },
     ];
 
     let mut parser = Parser::new(&tokens, Version::ES310);
@@ -622,12 +622,12 @@ fn test_order_of_operations() {
 
   { // Multiply first
     let tokens = vec![
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(1) },
-      Token{ line: 0, col: 0, typ: TokenType::Star },
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(2) },
-      Token{ line: 0, col: 0, typ: TokenType::Plus },
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(3) },
-      Token{ line: 0, col: 0, typ: TokenType::Semicolon },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(1) },
+      FullToken{ line: 0, col: 0, typ: Token::Star },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(2) },
+      FullToken{ line: 0, col: 0, typ: Token::Plus },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(3) },
+      FullToken{ line: 0, col: 0, typ: Token::Semicolon },
     ];
 
     let mut parser = Parser::new(&tokens, Version::ES310);
@@ -641,14 +641,14 @@ fn test_order_of_operations() {
 
   { // Add first with parens
     let tokens = vec![
-      Token{ line: 0, col: 0, typ: TokenType::OpenParen },
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(1) },
-      Token{ line: 0, col: 0, typ: TokenType::Plus },
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(2) },
-      Token{ line: 0, col: 0, typ: TokenType::CloseParen },
-      Token{ line: 0, col: 0, typ: TokenType::Star },
-      Token{ line: 0, col: 0, typ: TokenType::IntConstant(3) },
-      Token{ line: 0, col: 0, typ: TokenType::Semicolon },
+      FullToken{ line: 0, col: 0, typ: Token::OpenParen },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(1) },
+      FullToken{ line: 0, col: 0, typ: Token::Plus },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(2) },
+      FullToken{ line: 0, col: 0, typ: Token::CloseParen },
+      FullToken{ line: 0, col: 0, typ: Token::Star },
+      FullToken{ line: 0, col: 0, typ: Token::IntConstant(3) },
+      FullToken{ line: 0, col: 0, typ: Token::Semicolon },
     ];
 
     let mut parser = Parser::new(&tokens, Version::ES310);
