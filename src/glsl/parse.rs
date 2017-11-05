@@ -497,6 +497,14 @@ pub enum ConstantExpression {
   IntConstant(i32),
   UintConstant(u32),
 }
+impl ConstantExpression {
+  pub fn eval(&self) -> u32 {
+    match *self {
+      ConstantExpression::IntConstant(i) => i as u32,
+      ConstantExpression::UintConstant(i) => i,
+    }
+  }
+}
 
 pub type ArraySpecifier = Vec<Option<ConstantExpression>>;
 

@@ -6,7 +6,7 @@ use std::ptr;
 use std::ffi::{CStr};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::cell::RefCell;
+use std::cell::{RefCell};
 
 use egl::{self,Config,Surface};
 use glsl;
@@ -14,6 +14,9 @@ use glsl;
 type Rect = (GLint, GLint, GLsizei, GLsizei);
 pub type ColorMask = (bool, bool, bool, bool);
 
+const MAX_SHADER_STORAGE_BUFFER_BINDINGS: usize = 4;
+
+#[derive(Debug)]
 pub struct Context {
   pub config: &'static Config,
 
@@ -51,6 +54,7 @@ pub struct Context {
   draw_indirect_buffer: GLuint,
   atomic_counter_buffer: GLuint,
   shader_storage_buffer: GLuint,
+  indexed_shader_storage_buffer: [GLuint; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
 
   vertex_array: GLuint,
 
@@ -120,6 +124,7 @@ impl Context {
       draw_indirect_buffer: 0,
       atomic_counter_buffer: 0,
       shader_storage_buffer: 0,
+      indexed_shader_storage_buffer: [0; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
 
       vertex_array: 0,
 
@@ -183,6 +188,13 @@ impl Context {
       GL_DRAW_INDIRECT_BUFFER => &mut self.draw_indirect_buffer,
       GL_ATOMIC_COUNTER_BUFFER => &mut self.atomic_counter_buffer,
       GL_SHADER_STORAGE_BUFFER => &mut self.shader_storage_buffer,
+      x => unimplemented!("{:x}", x),
+    }
+  }
+
+  fn indexed_buffer_target_mut(&mut self, target: GLenum, i: usize) -> &mut GLuint {
+    match target {
+      GL_SHADER_STORAGE_BUFFER => &mut self.indexed_shader_storage_buffer[i],
       x => unimplemented!("{:x}", x),
     }
   }
@@ -269,22 +281,26 @@ enum Command {
   Flush(mpsc::Sender<()>),
 }
 
+#[derive(Debug)]
 pub struct Program{
   shaders: Vec<Arc<Shader>>,
+  ssbos: HashMap<GLuint, glsl::ShaderStorageBlockInfo>,
 }
 
 impl Program {
   pub fn new() -> Self {
     Self{
       shaders: vec![],
+      ssbos: HashMap::new(),
     }
   }
 }
 
+#[derive(Debug)]
 pub struct Shader{
   type_: GLenum,
   source: RefCell<Vec<u8>>,
-  compiled: RefCell<Option<()>>,
+  compiled: RefCell<Option<glsl::Shader>>,
 }
 
 impl Shader {
@@ -1418,7 +1434,10 @@ pub extern "C" fn glBindBuffer(target: GLenum, buffer: GLuint) -> () {
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glBindBufferBase(target: GLenum, index: GLuint, buffer: GLuint) -> () {
-  unimplemented!()
+  let current = current();
+
+  *current.buffer_target_mut(target) = buffer;
+  *current.indexed_buffer_target_mut(target, index as usize) = buffer;
 }
 
 #[allow(unused_variables)]
@@ -2341,7 +2360,29 @@ pub extern "C" fn glGetProgramPipelineiv(pipeline: GLuint, pname: GLenum, params
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glGetProgramResourceIndex(program: GLuint, programInterface: GLenum, name: *const GLchar) -> GLuint {
-  unimplemented!()
+  let current = current();
+
+  let program = current.programs.get(&program).unwrap();
+
+  let name = unsafe{ CStr::from_ptr(name) };
+  let name = name.to_str().unwrap();
+
+  match programInterface {
+    GL_SHADER_STORAGE_BLOCK => {
+      *program.ssbos.iter().find(|&(_, ref info)| {
+        info.name == name
+      }).unwrap().0
+    },
+    GL_BUFFER_VARIABLE => {
+      for (_, ref info) in &program.ssbos {
+        for var in &info.active_variables {
+          if name == format!("{}.{}", info.name, var.name) { return var.index as GLuint };
+        }
+      }
+      unimplemented!()
+    },
+    x => unimplemented!("{:x}", x),
+  }
 }
 
 #[allow(unused_variables)]
@@ -2350,16 +2391,114 @@ pub extern "C" fn glGetProgramResourceLocation(program: GLuint, programInterface
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetProgramResourceName(program: GLuint, programInterface: GLenum, index: GLuint, bufSize: GLsizei, length: *mut GLsizei, name: *mut GLchar) -> () {
-  unimplemented!()
+pub extern "C" fn glGetProgramResourceName(
+  program: GLuint,
+  programInterface: GLenum,
+  index: GLuint,
+  bufSize: GLsizei,
+  length: *mut GLsizei,
+  name: *mut GLchar,
+) -> () {
+  let current = current();
+  let program = current.programs.get(&program).unwrap();
+
+  let n = match programInterface {
+    GL_SHADER_STORAGE_BLOCK => { program.ssbos.get(&index).map(|s| &s.name).unwrap() },
+    GL_BUFFER_VARIABLE => { &program.ssbos.values().flat_map(|ssbo| ssbo.active_variables.iter()).find(|a| a.index == index as i32).unwrap().name },
+    x => unimplemented!("{:x}", x),
+  };
+
+  let num_to_write = (n.len() as GLsizei).min(bufSize - 1).max(0);
+
+  unsafe {
+    if bufSize > 0 {
+      ptr::copy(n.as_ptr() as *const i8, name, num_to_write as usize);
+      *name.offset(num_to_write as isize + 1) = 0;
+    }
+
+    if !length.is_null() {
+      *length = num_to_write;
+    }
+  }
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetProgramResourceiv(program: GLuint, programInterface: GLenum, index: GLuint, propCount: GLsizei, props: *const GLenum, bufSize: GLsizei, length: *mut GLsizei, params: *mut GLint) -> () {
-  unimplemented!()
+pub extern "C" fn glGetProgramResourceiv(
+  program: GLuint,
+  programInterface:GLenum,
+  index: GLuint,
+  propCount: GLsizei,
+  props: *const GLenum,
+  bufSize: GLsizei,
+  length: *mut GLsizei,
+  params: *mut GLint,
+) -> () {
+  struct Pusher {
+    ptr: *mut GLint,
+    pub current_offset: isize,
+    max: isize,
+  };
+
+  impl Pusher {
+    fn push(&mut self, val: GLint) {
+      if self.current_offset < self.max as isize {
+        unsafe{ *self.ptr.offset(self.current_offset) = val; }
+        self.current_offset += 1;
+      }
+    }
+  }
+
+  let mut pusher = Pusher{ ptr: params, current_offset: 0, max: bufSize as isize };
+
+  let current = current();
+  let program = current.programs.get(&program).unwrap();
+
+  let props = unsafe{ ::std::slice::from_raw_parts(props, propCount as usize) };
+
+  {
+    let mut push = |val: GLint| pusher.push(val);
+    match programInterface {
+      GL_SHADER_STORAGE_BLOCK => {
+        let ssbo = program.ssbos.get(&index).unwrap();
+
+        for &prop in props {
+          match prop {
+            GL_BUFFER_BINDING => push(ssbo.binding as GLint),
+            GL_BUFFER_DATA_SIZE => push(ssbo.size as GLint),
+            GL_NUM_ACTIVE_VARIABLES => push(ssbo.active_variables.len() as GLint),
+            GL_ACTIVE_VARIABLES => ssbo.active_variables.iter().for_each(|v| push(v.index)),
+            GL_NAME_LENGTH => push(ssbo.name.len() as GLint),
+            x => unimplemented!("{:x}", x),
+          };
+        }
+      },
+      GL_BUFFER_VARIABLE => {
+        let var = program.ssbos.values().flat_map(|ssbo| ssbo.active_variables.iter()).find(|a| a.index == index as i32).unwrap();
+        for &prop in props {
+          match prop {
+            GL_BLOCK_INDEX => push(*program.ssbos.iter().find(|&(_, ref ssbo)| ssbo.active_variables.contains(var)).unwrap().0 as i32),
+            GL_TYPE => push(var.type_ as i32),
+            GL_ARRAY_SIZE => push(var.array_size as i32),
+            GL_OFFSET => push(var.offset as i32),
+            GL_ARRAY_STRIDE => push(0), // TODO
+            GL_MATRIX_STRIDE => push(0), // TODO
+            GL_IS_ROW_MAJOR => push(0), // TODO
+            GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO
+            GL_TOP_LEVEL_ARRAY_STRIDE => push(0), // TODO
+            GL_NAME_LENGTH => push(var.name.len() as i32),
+            x => unimplemented!("{:x}", x),
+          };
+        }
+      }
+      x => unimplemented!("{:x}", x),
+    }
+  }
+
+  if !length.is_null() {
+    unsafe{ *length = pusher.current_offset as i32; }
+  }
+
 }
 
 #[no_mangle]
@@ -2698,12 +2837,36 @@ pub extern "C" fn glLineWidth(width: GLfloat) -> () {
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glLinkProgram(program: GLuint) -> () {
+  let current = current();
 
+  let program = current.programs.get_mut(&program).unwrap();
+
+  let mut ssbos = HashMap::new();
+
+  let mut next_variable_location = 0;
+
+  for shader in &program.shaders {
+    for iface in &shader.compiled.borrow().as_ref().unwrap().interfaces {
+      if let &glsl::Interface::ShaderStorageBlock(ref info) = iface {
+        let i = ssbos.len() + 1;
+        let mut info = info.clone();
+        for ref mut var in info.active_variables.iter_mut() {
+          var.index = next_variable_location;
+          next_variable_location += 1;
+        }
+        ssbos.insert(i as GLuint, info);
+      }
+    }
+  }
+
+  program.ssbos = ssbos;
 }
 
 #[no_mangle]
 pub extern "C" fn glMapBufferRange(target: GLenum, offset: GLintptr, _length: GLsizeiptr, _access: GLbitfield) -> *mut c_void {
   let current = current();
+
+  // println!("{:#?}", current);
 
   let target_name = *current.buffer_target(target);
   let mut buffer = current.buffers.get_mut(&target_name);
