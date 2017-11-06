@@ -32,6 +32,28 @@ impl BuiltinFunc {
       },
     }
   }
+
+  fn all() -> Funcs {
+    let mut funcs = HashMap::new();
+
+    let vec4 = (vec![], (TypeSpecifierNonArray::Vec4, vec![]));
+    let float_ = (vec![], (TypeSpecifierNonArray::Float, vec![]));
+
+    let vec4_float4 = FunctionPrototype{
+      typ: vec4,
+      name: "vec4".to_string(),
+      params: vec![
+        (float_.clone(), Some(("a".to_string(), vec![]))),
+        (float_.clone(), Some(("b".to_string(), vec![]))),
+        (float_.clone(), Some(("c".to_string(), vec![]))),
+        (float_.clone(), Some(("d".to_string(), vec![]))),
+      ],
+    };
+
+    funcs.insert("vec4".to_string(), vec![(vec4_float4, Statement::Builtin(BuiltinFunc::Vec4Float4))]);
+
+    funcs
+  }
 }
 
 type Funcs = HashMap<String, Vec<(FunctionPrototype, Statement)>>;
@@ -169,25 +191,8 @@ fn test_basic() {
   let input = 0.3;
   let output = [0.0; 4];
 
-  let vec4 = (vec![], (TypeSpecifierNonArray::Vec4, vec![]));
-  let float_ = (vec![], (TypeSpecifierNonArray::Float, vec![]));
-
-  let vec4_float4 = FunctionPrototype{
-    typ: vec4,
-    name: "vec4".to_string(),
-    params: vec![
-      (float_.clone(), Some(("a".to_string(), vec![]))),
-      (float_.clone(), Some(("b".to_string(), vec![]))),
-      (float_.clone(), Some(("c".to_string(), vec![]))),
-      (float_.clone(), Some(("d".to_string(), vec![]))),
-    ],
-  };
-
   let mut vars = Vars::new();
-  let mut funcs = HashMap::new();
-
-  funcs.insert("vec4".to_string(), vec![(vec4_float4, Statement::Builtin(BuiltinFunc::Vec4Float4))]);
-
+  let mut funcs = BuiltinFunc::all();
   {
     vars.insert("c".to_string(), Value::Float(input));
     vars.insert("color".to_string(), Value::Vec4(output));
