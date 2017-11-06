@@ -119,21 +119,26 @@ impl<'a> Parser<'a> {
     let fully_specified_type = (type_qualifiers, typ);
 
     let name = self.must_consume_ident()?;
-    self.must_consume(&Token::OpenParen)?;
-    let parameters = self.parse_parameter_declarations()?;
 
-    let function_proto = FunctionPrototype{
-      typ: fully_specified_type,
-      name: name,
-      params: parameters,
-    };
+    if self.consume(&Token::OpenParen)? {
+      let parameters = self.parse_parameter_declarations()?;
 
-    if self.consume(&Token::Semicolon)? {
-      Ok(ExternalDeclaration::FunctionPrototype(function_proto))
-    } else if self.peek()? == &Token::OpenBrace {
-      let body = self.parse_statement()?;
-      Ok(ExternalDeclaration::FunctionDefinition(function_proto, body))
-    } else { self.unexpected() }
+      let function_proto = FunctionPrototype{
+        typ: fully_specified_type,
+        name: name,
+        params: parameters,
+      };
+
+      if self.consume(&Token::Semicolon)? {
+        Ok(ExternalDeclaration::FunctionPrototype(function_proto))
+      } else if self.peek()? == &Token::OpenBrace {
+        let body = self.parse_statement()?;
+        Ok(ExternalDeclaration::FunctionDefinition(function_proto, body))
+      } else { self.unexpected() }
+    } else {
+      self.must_consume(&Token::Semicolon)?;
+      Ok(ExternalDeclaration::Variable(fully_specified_type, name))
+    }
   }
 
   fn parse_statement(&mut self) -> Result<Statement> {
@@ -294,6 +299,8 @@ impl<'a> Parser<'a> {
     let possible_function_name = match *self.peek()? {
       Token::Ident(ref name) => Some(name.clone()),
       Token::Uint => Some("uint".to_string()),
+      Token::Float => Some("float".to_string()),
+      Token::Vec4 => Some("vec4".to_string()),
       _ => None,
     };
 
@@ -348,6 +355,7 @@ impl<'a> Parser<'a> {
       Token::Ident(ref name) => Expression::Variable(name.clone()),
       Token::IntConstant(x) => Expression::IntConstant(x),
       Token::UintConstant(x) => Expression::UintConstant(x),
+      Token::FloatConstant(x) => Expression::FloatConstant(x),
       _ => { self.unexpected()? },
     };
     self.advance();
@@ -388,6 +396,10 @@ impl<'a> Parser<'a> {
       TypeSpecifierNonArray::Uint
     } else if self.consume(&Token::UVec3)? {
       TypeSpecifierNonArray::UVec3
+    } else if self.consume(&Token::Float)? {
+      TypeSpecifierNonArray::Float
+    } else if self.consume(&Token::Vec4)? {
+      TypeSpecifierNonArray::Vec4
     } else { self.unexpected()? };
 
     Ok((typ, self.parse_array_specifier()?))
@@ -424,6 +436,8 @@ impl<'a> Parser<'a> {
         result.push(TypeQualifier::Layout(layout_qualifier_ids));
       } else if self.consume(&Token::In)? {
         result.push(TypeQualifier::Storage(StorageQualifier::In));
+      } else if self.consume(&Token::Out)? {
+        result.push(TypeQualifier::Storage(StorageQualifier::Out));
       } else if self.consume(&Token::Buffer)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Buffer));
       } else {
@@ -492,7 +506,7 @@ impl<'a> Parser<'a> {
   }
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum ConstantExpression {
   IntConstant(i32),
   UintConstant(u32),
@@ -518,13 +532,14 @@ pub enum ExternalDeclaration {
   FunctionDefinition(FunctionPrototype, Statement),
   Block(Vec<TypeQualifier>, String, MemberList, Option<String>),
   TypeQualifier(Vec<TypeQualifier>),
+  Variable(FullySpecifiedType, Identifier),
 }
 
 pub type MemberList = Vec<(FullySpecifiedType, Vec<(Identifier, ArraySpecifier)>)>;
 
 pub type LayoutQualifier = Vec<LayoutQualifierId>;
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum LayoutQualifierId {
   Ident(Identifier),
   Int(Identifier, i32),
@@ -538,33 +553,36 @@ pub struct FunctionPrototype {
   pub name: Identifier,
   pub params: Vec<ParameterDeclaration>,
 }
+pub type ParameterDeclaration = (FullySpecifiedType,
+                                 Option<(Identifier, ArraySpecifier)>);
+
 
 pub type FullySpecifiedType = (Vec<TypeQualifier>, TypeSpecifier);
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum TypeQualifier {
   Layout(LayoutQualifier),
   Storage(StorageQualifier),
   // TODO
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum StorageQualifier {
   In,
+  Out,
   Buffer,
   // TODO
 }
 
-pub type ParameterDeclaration = (FullySpecifiedType,
-                                 Option<(Identifier, ArraySpecifier)>);
-
 pub type TypeSpecifier = (TypeSpecifierNonArray, ArraySpecifier);
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum TypeSpecifierNonArray {
   Void,
   Uint,
   UVec3,
+  Float,
+  Vec4,
   // TODO
 }
 
@@ -574,6 +592,7 @@ pub enum Statement {
   Declaration(FullySpecifiedType, String, Expression),
   For(Box<Statement>, Expression, Expression, Box<Statement>),
   Expression(Expression),
+  Builtin(super::interpret::BuiltinFunc),
 }
 
 #[derive(Debug,PartialEq)]
@@ -582,6 +601,7 @@ pub enum Expression {
   Variable(String),
   IntConstant(i32),
   UintConstant(u32),
+  FloatConstant(f32),
   Multiply(Box<Expression>, Box<Expression>),
   Divide(Box<Expression>, Box<Expression>),
   Add(Box<Expression>, Box<Expression>),

@@ -2,6 +2,7 @@ use gl::{GLenum,GLuint,self};
 
 mod lex;
 mod parse;
+mod interpret;
 
 use self::parse::{FunctionPrototype,Statement};
 

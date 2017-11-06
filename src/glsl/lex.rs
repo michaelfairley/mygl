@@ -426,9 +426,12 @@ pub(super) fn tokenize(source: &str, version: Version) -> Result<Vec<FullToken>>
         }.unwrap_or(Token::Ident(string)) // TODO: cleanup with NLL
       },
       n if n.is_digit(10) => {
-        let string = l.take(|c| c.is_digit(10));
+        let string = l.take(|c| c.is_digit(10) || c == '.');
 
-        if l.peek() == Some('u') {
+        if string.contains('.') {
+          let n = string.parse::<f32>().map_err(|_| format!("Failed to parse {} as a float", string))?;
+          Token::FloatConstant(n)
+        } else if l.peek() == Some('u') {
           l.advance();
           let n = string.parse::<u32>().map_err(|_| format!("Failed to parse {} as a uint", string))?;
           Token::UintConstant(n)
