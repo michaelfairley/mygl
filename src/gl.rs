@@ -1936,11 +1936,12 @@ pub extern "C" fn glDispatchCompute(
           for ly in 0..work_group_size[1] {
             for lz in 0..work_group_size[2] {
 
+              // TODO: omg clean up
               let mut vars = Vars::new();
               vars.push();
               vars.insert("gl_NumWorkGroups".to_string(), Value::UVec3([num_groups_x,
-                                                                       num_groups_y,
-                                                                       num_groups_z]));
+                                                                        num_groups_y,
+                                                                        num_groups_z]));
               vars.insert("gl_WorkGroupSize".to_string(), Value::UVec3(work_group_size));
 
               vars.insert("gl_WorkGroupID".to_string(), Value::UVec3([gx, gy, gz]));
@@ -1964,7 +1965,13 @@ pub extern "C" fn glDispatchCompute(
                   let buffer = current.indexed_shader_storage_buffer[info.binding as usize];
                   let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
 
-                  vars.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), None))
+                  let size = info.active_variables.last().and_then(|v| {
+                    if v.array_size == 0 {
+                      Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
+                    } else { None }
+                  });
+
+                  vars.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size))
                 }
               }
 
@@ -2541,13 +2548,7 @@ pub extern "C" fn glGetProgramResourceiv(
             GL_TYPE => push(var.type_ as i32),
             GL_ARRAY_SIZE => push(var.array_size as i32),
             GL_OFFSET => push(var.offset as i32),
-            GL_ARRAY_STRIDE => {
-              let s = match var.type_ {
-                GL_UNSIGNED_INT => mem::size_of::<GLuint>() as i32,
-                x => unimplemented!("{:x}", x),
-              };
-              push(s);
-            },
+            GL_ARRAY_STRIDE => push(size_of(var.type_) as i32),
             GL_MATRIX_STRIDE => push(0), // TODO
             GL_IS_ROW_MAJOR => push(0), // TODO
             GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO
@@ -3915,5 +3916,12 @@ unsafe fn write_string(src: &str,
 
   if !length.is_null() {
     *length = num_to_write;
+  }
+}
+
+fn size_of(typ: GLenum) -> usize {
+  match typ {
+    GL_UNSIGNED_INT => mem::size_of::<GLuint>(),
+    x => unimplemented!("{:x}", x),
   }
 }

@@ -319,7 +319,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             x => unimplemented!("{:x}", x),
           };
 
-          let length = Some(field.array_size);
+          let length = Some(if field.array_size > 0 { field.array_size } else { len.unwrap() });
 
           Value::Buffer(new_type, unsafe{ p.offset(field.offset as isize) }, length)
         },

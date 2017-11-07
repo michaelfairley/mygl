@@ -92,7 +92,11 @@ impl Shader {
             };
 
             names.iter().map(|&(ref name, ref array)| {
-              let array_size: u32 = array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(1)).sum();
+              let array_size: u32 = if array.is_empty() {
+                1
+              } else {
+                array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
+              };
 
               let var = Variable{
                 name: name.clone(),
