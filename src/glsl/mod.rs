@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 mod lex;
 mod parse;
-mod interpret;
+pub mod interpret;
 
 use self::parse::{FunctionPrototype,Statement};
 
@@ -43,6 +43,7 @@ pub struct Variable {
 #[derive(Debug,Clone)]
 pub struct ShaderStorageBlockInfo {
   pub name: String,
+  pub var_name: String,
   pub binding: u32,
   pub size: u32,
   pub active_variables: Vec<Variable>,
@@ -59,6 +60,7 @@ pub struct Shader {
   pub version: Version,
   pub functions: HashMap<String, Vec<(FunctionPrototype, Statement)>>,
   pub interfaces: Vec<Interface>,
+  pub work_group_size: Option<[u32; 3]>,
 }
 
 impl Shader {
@@ -68,10 +70,10 @@ impl Shader {
     let mut functions = interpret::BuiltinFunc::all();
     let mut interfaces = vec![];
 
-    for decl in translation_unit {
-      if let ExternalDeclaration::FunctionDefinition(proto, body) = decl {
-        functions.entry(proto.name.clone()).or_insert(vec![]).push((proto, body));
-      } else if let ExternalDeclaration::Block(quals, name, members, _var_name) = decl {
+    for decl in &translation_unit {
+      if let &ExternalDeclaration::FunctionDefinition(ref proto, ref body) = decl {
+        functions.entry(proto.name.clone()).or_insert(vec![]).push(((*proto).clone(), (*body).clone()));
+      } else if let &ExternalDeclaration::Block(ref quals, ref name, ref members, ref var_name) = decl {
         if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Buffer)) {
           let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
             lqs.iter().filter_map(|lq| if let &LayoutQualifierId::Int(ref name, val) = lq {
@@ -108,6 +110,7 @@ impl Shader {
 
           let info = ShaderStorageBlockInfo{
             name: name.clone(),
+            var_name: var_name.as_ref().unwrap().clone(),
             binding: binding as u32,
             size: size,
             active_variables: active_variables,
@@ -117,10 +120,32 @@ impl Shader {
       }
     }
 
+    let work_group_size = translation_unit.iter().filter_map(|decl| {
+      let mut x = 1;
+      let mut y = 1;
+      let mut z = 1;
+      if let &ExternalDeclaration::TypeQualifier(ref quals) = decl {
+        if quals.len() == 2 && quals[1] == TypeQualifier::Storage(StorageQualifier::In) {
+          if let TypeQualifier::Layout(ref ls) = quals[0] {
+            for l in ls {
+              match l {
+                &LayoutQualifierId::Int(ref s, i) if s == "local_size_x" => { x = i as u32 },
+                &LayoutQualifierId::Int(ref s, i) if s == "local_size_y" => { y = i as u32 },
+                &LayoutQualifierId::Int(ref s, i) if s == "local_size_z" => { z = i as u32 },
+                x => unimplemented!("{:?}", x),
+              }
+            }
+            Some([x, y, z])
+          } else { None }
+        } else { None }
+      } else { None }
+    }).next();
+
     Ok(Shader{
       version,
       functions,
       interfaces,
+      work_group_size,
     })
   }
 }

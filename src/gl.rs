@@ -6,7 +6,8 @@ use std::ptr;
 use std::ffi::{CStr};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::cell::{RefCell};
+use std::cell::{RefCell,Ref};
+use std::mem;
 
 use egl::{self,Config,Surface};
 use glsl;
@@ -41,7 +42,7 @@ pub struct Context {
   clear_color: (GLfloat, GLfloat, GLfloat, GLfloat),
 
   // TODO: move to server?
-  buffers: HashMap<GLuint, Option<Vec<u8>>>,
+  buffers: HashMap<GLuint, Option<Vec<u8>>>, // TODO: replace with pointer
   array_buffer: GLuint,
   element_array_buffer: GLuint,
   pixel_pack_buffer: GLuint,
@@ -1572,7 +1573,9 @@ pub extern "C" fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const c_
   let current = current();
 
   let vec = if data.is_null() {
-    Vec::with_capacity(size as usize)
+    let mut v = Vec::with_capacity(size as usize);
+    unsafe{ v.set_len(size as usize); }
+    v
   } else {
     let slice = unsafe{ ::std::slice::from_raw_parts(data as *const u8, size as usize) };
     Vec::from(slice)
@@ -1906,8 +1909,71 @@ pub extern "C" fn glDisablei(target: GLenum, index: GLuint) -> () {
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glDispatchCompute(num_groups_x: GLuint, num_groups_y: GLuint, num_groups_z: GLuint) -> () {
-  // unimplemented!()
+pub extern "C" fn glDispatchCompute(
+  num_groups_x: GLuint,
+  num_groups_y: GLuint,
+  num_groups_z: GLuint,
+) -> () {
+  use glsl::interpret::{self,Vars,Value};
+  use glsl::{Interface};
+
+  let current = current();
+  let program = current.programs.get(&current.program).unwrap();
+
+  let shader = program.shaders.iter().find(|s| s.type_ == GL_COMPUTE_SHADER).unwrap();
+  let compiled = Ref::map(shader.compiled.borrow(), |s| s.as_ref().unwrap());
+  let work_group_size = compiled.work_group_size.unwrap();
+
+  for gx in 0..num_groups_x {
+    for gy in 0..num_groups_y {
+      for gz in 0..num_groups_z {
+        for lx in 0..work_group_size[0] {
+          for ly in 0..work_group_size[1] {
+            for lz in 0..work_group_size[2] {
+
+              let mut vars = Vars::new();
+              vars.push();
+              vars.insert("gl_NumWorkGroups".to_string(), Value::UVec3([num_groups_x,
+                                                                       num_groups_y,
+                                                                       num_groups_z]));
+              vars.insert("gl_WorkGroupSize".to_string(), Value::UVec3(work_group_size));
+
+              vars.insert("gl_WorkGroupID".to_string(), Value::UVec3([gx, gy, gz]));
+              vars.insert("gl_LocalInvocationID".to_string(), Value::UVec3([lx, ly, lz]));
+
+              let gid = [
+                gx * work_group_size[0] + lx,
+                gy * work_group_size[1] + ly,
+                gz * work_group_size[2] + lz,
+              ];
+              vars.insert("gl_GlobalInvocationID".to_string(), Value::UVec3(gid));
+
+              let lii = lz * work_group_size[0] * work_group_size[1]
+                + ly * work_group_size[0]
+                + lx;
+
+              vars.insert("gl_LocalInvocationIndex;".to_string(), Value::Uint(lii));
+
+              for iface in &compiled.interfaces {
+                if let &Interface::ShaderStorageBlock(ref info) = iface {
+                  let buffer = current.indexed_shader_storage_buffer[info.binding as usize];
+                  let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+
+                  vars.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), None))
+                }
+              }
+
+              vars.push();
+
+              let main = &compiled.functions[&"main".to_string()][0];
+
+              interpret::execute(&main.1, &mut vars, &compiled);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 #[allow(unused_variables)]
@@ -2481,7 +2547,13 @@ pub extern "C" fn glGetProgramResourceiv(
             GL_TYPE => push(var.type_ as i32),
             GL_ARRAY_SIZE => push(var.array_size as i32),
             GL_OFFSET => push(var.offset as i32),
-            GL_ARRAY_STRIDE => push(0), // TODO
+            GL_ARRAY_STRIDE => {
+              let s = match var.type_ {
+                GL_UNSIGNED_INT => mem::size_of::<GLuint>() as i32,
+                x => unimplemented!("{:x}", x),
+              };
+              push(s);
+            },
             GL_MATRIX_STRIDE => push(0), // TODO
             GL_IS_ROW_MAJOR => push(0), // TODO
             GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO

@@ -9,10 +9,11 @@ pub enum Value {
   Int(i32),
   Uint(u32),
   Vec4([f32; 4]),
+  UVec3([u32; 3]),
   Float(f32),
   Bool(bool),
 
-  Buffer(String, *mut u8),
+  Buffer(String, *mut u8, Option<u32>),
 }
 
 #[derive(Debug)]
@@ -40,6 +41,7 @@ impl<'a> LValue<'a> {
 #[derive(Debug,PartialEq,Clone,Copy)]
 pub enum BuiltinFunc {
   Vec4Float4,
+  UintUint,
 }
 
 impl BuiltinFunc {
@@ -57,6 +59,9 @@ impl BuiltinFunc {
           Vec4([a, b, c, d])
         } else { unreachable!() }
       },
+      BuiltinFunc::UintUint => {
+        vars.get(&"a".to_string()).clone()
+      }
     }
   }
 
@@ -64,6 +69,7 @@ impl BuiltinFunc {
     let mut funcs = HashMap::new();
 
     let vec4 = (vec![], (TypeSpecifierNonArray::Vec4, vec![]));
+    let uint = (vec![], (TypeSpecifierNonArray::Uint, vec![]));
     let float_ = (vec![], (TypeSpecifierNonArray::Float, vec![]));
 
     let vec4_float4 = FunctionPrototype{
@@ -77,24 +83,34 @@ impl BuiltinFunc {
       ],
     };
 
+    let uint_uint = FunctionPrototype{
+      typ: uint.clone(),
+      name: "uint".to_string(),
+      params: vec![
+        (uint.clone(), Some(("a".to_string(), vec![]))),
+      ],
+    };
+
     funcs.insert("vec4".to_string(), vec![(vec4_float4, Statement::Builtin(BuiltinFunc::Vec4Float4))]);
+    funcs.insert("uint".to_string(), vec![(uint_uint, Statement::Builtin(BuiltinFunc::UintUint))]);
 
     funcs
   }
 }
 
+#[derive(Debug)]
 pub struct Vars {
   scopes: Vec<HashMap<String, Value>>,
 }
 
 impl Vars {
-  fn new() -> Self {
+  pub fn new() -> Self {
     Self{
       scopes: vec![HashMap::new()],
     }
   }
 
-  fn push(&mut self) {
+  pub fn push(&mut self) {
     self.scopes.push(HashMap::new());
   }
 
@@ -102,16 +118,7 @@ impl Vars {
     self.scopes.pop().expect("Tried to pop an empty vars");
   }
 
-  fn update(&mut self, ident: String, value: Value) {
-    for scope in self.scopes.iter_mut().rev() {
-      if let Some(val) = scope.get_mut(&ident) {
-        *val = value;
-        return;
-      }
-    }
-  }
-
-  fn insert(&mut self, ident: String, value: Value) {
+  pub fn insert(&mut self, ident: String, value: Value) {
     self.scopes.last_mut().unwrap().insert(ident, value);
   }
 
@@ -182,15 +189,16 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
     },
     Expression::FunctionCall(ref name, ref args) => {
       let args = args.iter().map(|a| eval(a, vars, shader)).collect::<Vec<_>>();
-      let fs = shader.functions.get(name).unwrap();
+      let fs = shader.functions.get(name).expect(&format!("Didn't find function '{}'", name));
       let &(ref func, ref body) = fs.iter().find(|&&(ref f,_)| {
         args.len() == f.params.len() && args.iter().zip(f.params.iter()).all(|(a,p)| {
           match (a, &((p.0).1).0) {
             (&Value::Float(_), &TypeSpecifierNonArray::Float) => true,
+            (&Value::Uint(_), &TypeSpecifierNonArray::Uint) => true,
             _ => false,
           }
         })
-      }).unwrap();
+      }).expect(&format!("Didn't find matching function signature for {}", name));
 
       vars.push();
       for (arg, param) in args.iter().zip(func.params.iter()) {
@@ -221,6 +229,20 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       };
       Value::Bool(result)
     },
+    Expression::Add(ref left, ref right) => {
+      let left = eval(left, vars, shader);
+      let right = eval(right, vars, shader);
+
+      match (left, right) {
+        (Value::Float(a), Value::Float(b)) => Value::Float(a + b),
+        (Value::Uint(a), Value::Uint(b)) => Value::Uint(a + b),
+        (Value::Int(a), Value::Int(b)) => Value::Int(a + b),
+        (Value::UVec3(a), Value::UVec3(b)) => Value::UVec3([a[0] + b[0],
+                                                            a[1] + b[1],
+                                                            a[2] + b[2]]),
+        x => unimplemented!("{:?}", x),
+      }
+    },
     Expression::Multiply(ref left, ref right) => {
       let left = eval(left, vars, shader);
       let right = eval(right, vars, shader);
@@ -229,6 +251,20 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         (Value::Float(a), Value::Float(b)) => Value::Float(a * b),
         (Value::Uint(a), Value::Uint(b)) => Value::Uint(a * b),
         (Value::Int(a), Value::Int(b)) => Value::Int(a * b),
+        (Value::UVec3(a), Value::UVec3(b)) => Value::UVec3([a[0] * b[0],
+                                                            a[1] * b[1],
+                                                            a[2] * b[2]]),
+        x => unimplemented!("{:?}", x),
+      }
+    },
+    Expression::Divide(ref left, ref right) => {
+      let left = eval(left, vars, shader);
+      let right = eval(right, vars, shader);
+
+      match (left, right) {
+        (Value::Float(a), Value::Float(b)) => Value::Float(a / b),
+        (Value::Uint(a), Value::Uint(b)) => Value::Uint(a / b),
+        (Value::Int(a), Value::Int(b)) => Value::Int(a / b),
         x => unimplemented!("{:?}", x),
       }
     },
@@ -242,7 +278,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       };
 
       match container {
-        Value::Buffer(ref s, p) if s == "uint" => unsafe{ Value::Uint(*(p as *mut u32).offset(index)) },
+        Value::Buffer(ref s, p, _len) if s == "uint" => unsafe{ Value::Uint(*(p as *mut u32).offset(index)) },
         x => unimplemented!("{:?}", x),
       }
     },
@@ -250,23 +286,36 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       let container = eval(container, vars, shader);
 
       match container {
-        Value::Buffer(typ, p) => {
+        Value::Buffer(typ, p, len) => {
           // TODO: maybe should use a separate types table instead of borrowing the interface info
+          if field == "length" {
+            return Value::Uint(len.unwrap())
+          }
 
           let info = shader.interfaces.iter().find(|iface| match iface {
             &&super::Interface::ShaderStorageBlock(ref info) => info.name == typ,
             x => unimplemented!("{:?}", x),
-          }).unwrap();
+          }).expect(&format!("Couldn't find info for {}", typ));
 
           let info = if let &super::Interface::ShaderStorageBlock(ref info) = info { info } else { unimplemented!() };
 
-          let field = info.active_variables.iter().find(|v| &v.name == field).unwrap();
+          let field = info.active_variables.iter().find(|v| &v.name == field).expect("2");
           let new_type = match field.type_ {
             ::gl::GL_UNSIGNED_INT => "uint".to_string(),
             x => unimplemented!("{:x}", x),
           };
 
-          Value::Buffer(new_type, unsafe{ p.offset(field.offset as isize) })
+          let length = Some(field.array_size);
+
+          Value::Buffer(new_type, unsafe{ p.offset(field.offset as isize) }, length)
+        },
+        Value::UVec3(v) => {
+          match field.as_ref() {
+            "x" => Value::Uint(v[0]),
+            "y" => Value::Uint(v[1]),
+            "z" => Value::Uint(v[2]),
+            x => unimplemented!("{}", x),
+          }
         },
         x => unimplemented!("{:?}", x),
       }
@@ -283,6 +332,13 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       lval.set(incred);
 
       result
+    },
+    Expression::BinaryNot(ref expr) => {
+      let v = eval(expr, vars, shader);
+      match v {
+        Value::Uint(u) => Value::Uint(!u),
+        x => unimplemented!("{:?}", x),
+      }
     },
     ref x => unimplemented!("{:?}", x),
   }
@@ -312,7 +368,7 @@ fn eval_lvalue<'a>(expression: &Expression, vars: &'a mut Vars, shader: &Shader)
       let container = eval(container, vars, shader);
 
       match container {
-        Value::Buffer(typ, p) => {
+        Value::Buffer(typ, p, _len) => {
           // TODO: maybe should use a separate types table instead of borrowing the interface info
 
           let info = shader.interfaces.iter().find(|iface| match iface {
@@ -391,8 +447,8 @@ void main (void) {
 
   let mut vars = Vars::new();
   {
-    vars.insert("sb_in".to_string(), Value::Buffer("Input".to_string(), input.as_mut_ptr() as *mut _));
-    vars.insert("sb_out".to_string(), Value::Buffer("Output".to_string(), output.as_mut_ptr() as *mut _));
+    vars.insert("sb_in".to_string(), Value::Buffer("Input".to_string(), input.as_mut_ptr() as *mut _, None));
+    vars.insert("sb_out".to_string(), Value::Buffer("Output".to_string(), output.as_mut_ptr() as *mut _, None));
 
     let main = &shader.functions[&"main".to_string()][0];
 

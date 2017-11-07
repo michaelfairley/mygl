@@ -547,7 +547,7 @@ pub enum LayoutQualifierId {
   // Shared,
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub struct FunctionPrototype {
   pub typ: FullySpecifiedType,
   pub name: Identifier,
@@ -586,7 +586,7 @@ pub enum TypeSpecifierNonArray {
   // TODO
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum Statement {
   Compound(Vec<Statement>),
   Declaration(FullySpecifiedType, String, Expression),
@@ -595,7 +595,7 @@ pub enum Statement {
   Builtin(super::interpret::BuiltinFunc),
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum Expression {
   Empty,
   Variable(String),
@@ -614,7 +614,7 @@ pub enum Expression {
   BinaryNot(Box<Expression>),
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum Comparison {
   Less,
   Greater,
