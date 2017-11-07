@@ -1,4 +1,5 @@
 use gl::{GLenum,GLuint,self};
+use std::collections::HashMap;
 
 mod lex;
 mod parse;
@@ -56,7 +57,7 @@ pub enum Interface {
 #[derive(Debug)]
 pub struct Shader {
   pub version: Version,
-  pub functions: Vec<(FunctionPrototype, Statement)>,
+  pub functions: HashMap<String, Vec<(FunctionPrototype, Statement)>>,
   pub interfaces: Vec<Interface>,
 }
 
@@ -64,12 +65,12 @@ impl Shader {
   pub fn new(translation_unit: parse::TranslationUnit, version: Version) -> Result<Self> {
     use self::parse::*;
 
-    let mut functions = vec![];
+    let mut functions = interpret::BuiltinFunc::all();
     let mut interfaces = vec![];
 
     for decl in translation_unit {
       if let ExternalDeclaration::FunctionDefinition(proto, body) = decl {
-        functions.push((proto, body));
+        functions.entry(proto.name.clone()).or_insert(vec![]).push((proto, body));
       } else if let ExternalDeclaration::Block(quals, name, members, _var_name) = decl {
         if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Buffer)) {
           let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
