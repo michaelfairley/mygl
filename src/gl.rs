@@ -1,4 +1,4 @@
-#![allow(non_snake_case)]
+ #![allow(non_snake_case)]
 use std::os::raw::*;
 use std::sync::mpsc;
 use std::thread;
@@ -302,6 +302,7 @@ pub struct Shader{
   type_: GLenum,
   source: RefCell<Vec<u8>>,
   compiled: RefCell<Option<glsl::Shader>>,
+  info_log: RefCell<String>,
 }
 
 impl Shader {
@@ -310,6 +311,7 @@ impl Shader {
       type_,
       source: RefCell::new(vec![]),
       compiled: RefCell::new(None),
+      info_log: RefCell::new(String::new()),
     }
   }
 }
@@ -1685,7 +1687,10 @@ pub extern "C" fn glCompileShader(shader: GLuint) -> () {
   let current = current();
   let shader = current.shaders.get_mut(&shader).unwrap();
 
-  *shader.compiled.borrow_mut() = glsl::compile(&shader.source.borrow(), shader.type_).ok();
+  let result = glsl::compile(&shader.source.borrow(), shader.type_);
+
+  *shader.info_log.borrow_mut() = result.as_ref().err().map(|e| e.clone()).unwrap_or_else(String::new);
+  *shader.compiled.borrow_mut() = result.ok();
 }
 
 #[allow(unused_variables)]
@@ -2475,18 +2480,7 @@ pub extern "C" fn glGetProgramResourceName(
     x => unimplemented!("{:x}", x),
   };
 
-  let num_to_write = (n.len() as GLsizei).min(bufSize - 1).max(0);
-
-  unsafe {
-    if bufSize > 0 {
-      ptr::copy(n.as_ptr() as *const i8, name, num_to_write as usize);
-      *name.offset(num_to_write as isize + 1) = 0;
-    }
-
-    if !length.is_null() {
-      *length = num_to_write;
-    }
-  }
+  unsafe{ write_string(n, name, bufSize, length) };
 }
 
 #[no_mangle]
@@ -2626,10 +2620,19 @@ pub extern "C" fn glGetSamplerParameteriv(sampler: GLuint, pname: GLenum, params
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetShaderInfoLog(shader: GLuint, bufSize: GLsizei, length: *mut GLsizei, infoLog: *mut GLchar) -> () {
-  unimplemented!()
+pub extern "C" fn glGetShaderInfoLog(
+  shader: GLuint,
+  bufSize: GLsizei,
+  length: *mut GLsizei,
+  infoLog: *mut GLchar
+) -> () {
+  let current = current();
+  let shader = current.shaders.get(&shader).unwrap();
+
+  let log = shader.info_log.borrow();
+
+  unsafe{ write_string(&log, infoLog, bufSize, length) };
 }
 
 #[allow(unused_variables)]
@@ -2645,10 +2648,12 @@ pub extern "C" fn glGetShaderSource(shader: GLuint, bufSize: GLsizei, length: *m
 }
 
 #[no_mangle]
-pub extern "C" fn glGetShaderiv(_shader: GLuint, pname: GLenum, params: *mut GLint) -> () {
+pub extern "C" fn glGetShaderiv(shader: GLuint, pname: GLenum, params: *mut GLint) -> () {
+  let current = current();
+  let shader = current.shaders.get(&shader).unwrap();
   let value = match pname {
-    GL_COMPILE_STATUS => GL_TRUE as GLint,
-    GL_INFO_LOG_LENGTH => 0,
+    GL_COMPILE_STATUS => if shader.compiled.borrow().is_some() { GL_TRUE as GLint } else { GL_FALSE as GLint },
+    GL_INFO_LOG_LENGTH => shader.info_log.borrow().len() as GLint,
     x => unimplemented!("{:x}", x),
   };
 
@@ -3892,4 +3897,23 @@ pub extern "C" fn glViewport(x: GLint, y: GLint, width: GLsizei, height: GLsizei
 #[no_mangle]
 pub extern "C" fn glWaitSync(sync: GLsync, flags: GLbitfield, timeout: GLuint64) -> () {
   unimplemented!()
+}
+
+
+unsafe fn write_string(src: &str,
+                       dest: *mut GLchar,
+                       buf_size: GLsizei,
+                       length: *mut GLsizei,
+) {
+
+  let num_to_write = (src.len() as GLsizei).min(buf_size - 1).max(0);
+
+  if buf_size > 0 {
+    ptr::copy(src.as_ptr() as *const i8, dest, num_to_write as usize);
+    *dest.offset(num_to_write as isize + 1) = 0;
+  }
+
+  if !length.is_null() {
+    *length = num_to_write;
+  }
 }

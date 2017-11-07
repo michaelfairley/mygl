@@ -243,6 +243,20 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         x => unimplemented!("{:?}", x),
       }
     },
+    Expression::Sub(ref left, ref right) => {
+      let left = eval(left, vars, shader);
+      let right = eval(right, vars, shader);
+
+      match (left, right) {
+        (Value::Float(a), Value::Float(b)) => Value::Float(a - b),
+        (Value::Uint(a), Value::Uint(b)) => Value::Uint(a - b),
+        (Value::Int(a), Value::Int(b)) => Value::Int(a - b),
+        (Value::UVec3(a), Value::UVec3(b)) => Value::UVec3([a[0] - b[0],
+                                                            a[1] - b[1],
+                                                            a[2] - b[2]]),
+        x => unimplemented!("{:?}", x),
+      }
+    },
     Expression::Multiply(ref left, ref right) => {
       let left = eval(left, vars, shader);
       let right = eval(right, vars, shader);

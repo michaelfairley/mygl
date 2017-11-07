@@ -265,26 +265,33 @@ impl<'a> Parser<'a> {
     self.parse_additive_expression()
   }
   fn parse_additive_expression(&mut self) -> Result<Expression> {
-    let a = self.parse_multiplicative_expression()?;
+    let mut a = self.parse_multiplicative_expression()?;
 
-    if self.consume(&Token::Plus)? {
-      let b = self.parse_additive_expression()?;
-      Ok(Expression::Add(Box::new(a), Box::new(b)))
-    } else {
-      Ok(a)
+    loop {
+      if self.consume(&Token::Plus)? {
+        let b = self.parse_multiplicative_expression()?;
+        a = Expression::Add(Box::new(a), Box::new(b));
+      } else if self.consume(&Token::Dash)? {
+        let b = self.parse_multiplicative_expression()?;
+        a = Expression::Sub(Box::new(a), Box::new(b));
+      } else {
+        return Ok(a)
+      }
     }
   }
   fn parse_multiplicative_expression(&mut self) -> Result<Expression> {
-    let a = self.parse_unary_expression()?;
+    let mut a = self.parse_unary_expression()?;
 
-    if self.consume(&Token::Star)? {
-      let b = self.parse_multiplicative_expression()?;
-      Ok(Expression::Multiply(Box::new(a), Box::new(b)))
-    } else if self.consume(&Token::Slash)? {
-      let b = self.parse_multiplicative_expression()?;
-      Ok(Expression::Divide(Box::new(a), Box::new(b)))
-    } else {
-      Ok(a)
+    loop {
+      if self.consume(&Token::Star)? {
+        let b = self.parse_multiplicative_expression()?;
+        a = Expression::Multiply(Box::new(a), Box::new(b));
+      } else if self.consume(&Token::Slash)? {
+        let b = self.parse_multiplicative_expression()?;
+        a = Expression::Divide(Box::new(a), Box::new(b));
+      } else {
+        return Ok(a)
+      }
     }
   }
   fn parse_unary_expression(&mut self) -> Result<Expression> {
@@ -299,6 +306,7 @@ impl<'a> Parser<'a> {
     let possible_function_name = match *self.peek()? {
       Token::Ident(ref name) => Some(name.clone()),
       Token::Uint => Some("uint".to_string()),
+      Token::Int => Some("int".to_string()),
       Token::Float => Some("float".to_string()),
       Token::Vec4 => Some("vec4".to_string()),
       _ => None,
@@ -394,6 +402,8 @@ impl<'a> Parser<'a> {
       TypeSpecifierNonArray::Void
     } else if self.consume(&Token::Uint)? {
       TypeSpecifierNonArray::Uint
+    } else if self.consume(&Token::Int)? {
+      TypeSpecifierNonArray::Int
     } else if self.consume(&Token::UVec3)? {
       TypeSpecifierNonArray::UVec3
     } else if self.consume(&Token::Float)? {
@@ -583,6 +593,7 @@ pub enum TypeSpecifierNonArray {
   UVec3,
   Float,
   Vec4,
+  Int,
   // TODO
 }
 
@@ -605,6 +616,7 @@ pub enum Expression {
   Multiply(Box<Expression>, Box<Expression>),
   Divide(Box<Expression>, Box<Expression>),
   Add(Box<Expression>, Box<Expression>),
+  Sub(Box<Expression>, Box<Expression>),
   FunctionCall(String, Vec<Expression>),
   FieldSelection(Box<Expression>, String),
   Comparison(Box<Expression>, Comparison, Box<Expression>),
@@ -722,6 +734,42 @@ void main (void) {}
                    params: vec![((vec![], (TypeSpecifierNonArray::Void, vec![])), None)],
                  },
                  Statement::Compound(vec![]),
+               ),
+             ]);
+}
+
+#[cfg(test)]
+#[test]
+fn test_parse_sub() {
+  let source = r"#version 310 es
+void main (void) {
+  int a = 3 - 2 - 1;
+}
+";
+
+  let version = super::lex::version(source).unwrap();
+  let tokens = super::lex::tokenize(source, version).unwrap();
+  let ast = parse(&tokens, version).unwrap();
+
+  assert_eq!(ast,
+             vec![
+               ExternalDeclaration::FunctionDefinition(
+                 FunctionPrototype{
+                   typ: (vec![], (TypeSpecifierNonArray::Void, vec![])),
+                   name: "main".to_string(),
+                   params: vec![((vec![], (TypeSpecifierNonArray::Void, vec![])), None)],
+                 },
+                 Statement::Compound(vec![
+                   Statement::Declaration(
+                     (vec![], (TypeSpecifierNonArray::Int, vec![])),
+                     "a".to_string(),
+                     Expression::Sub(
+                       Box::new(Expression::Sub(
+                         Box::new(Expression::IntConstant(3)),
+                         Box::new(Expression::IntConstant(2)))),
+                       Box::new(Expression::IntConstant(1)))
+                   )
+                 ]),
                ),
              ]);
 }
