@@ -41,7 +41,7 @@ pub struct Variable {
 }
 
 #[derive(Debug,Clone)]
-pub struct ShaderStorageBlockInfo {
+pub struct BlockInfo {
   pub name: String,
   pub var_name: String,
   pub binding: u32,
@@ -51,7 +51,8 @@ pub struct ShaderStorageBlockInfo {
 
 #[derive(Debug)]
 pub enum Interface {
-  ShaderStorageBlock(ShaderStorageBlockInfo),
+  ShaderStorageBlock(BlockInfo),
+  UniformBlock(BlockInfo),
   SomethingElse,
 }
 
@@ -74,53 +75,56 @@ impl Shader {
       if let &ExternalDeclaration::FunctionDefinition(ref proto, ref body) = decl {
         functions.entry(proto.name.clone()).or_insert(vec![]).push(((*proto).clone(), (*body).clone()));
       } else if let &ExternalDeclaration::Block(ref quals, ref name, ref members, ref var_name) = decl {
-        if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Buffer)) {
-          let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
-            lqs.iter().filter_map(|lq| if let &LayoutQualifierId::Int(ref name, val) = lq {
-              if name == "binding" { Some(val) } else { None }
-            } else { None }).next()
-          } else { None }).next().unwrap_or(0);
+        let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
+          lqs.iter().filter_map(|lq| if let &LayoutQualifierId::Int(ref name, val) = lq {
+            if name == "binding" { Some(val) } else { None }
+          } else { None }).next()
+        } else { None }).next().unwrap_or(0);
 
-          let mut size = 0;
+        let mut size = 0;
 
-          let active_variables = members.iter().flat_map(|&(ref type_, ref names)| {
-            let type_ = &(type_.1).0;
+        let active_variables = members.iter().flat_map(|&(ref type_, ref names)| {
+          let type_ = &(type_.1).0;
 
-            let (type_, type_size) = match type_ {
-              &TypeSpecifierNonArray::Uint => (gl::GL_UNSIGNED_INT, 4),
-              ref x => unimplemented!("{:?}", x),
+          let (type_, type_size) = match type_ {
+            &TypeSpecifierNonArray::Uint => (gl::GL_UNSIGNED_INT, 4),
+            ref x => unimplemented!("{:?}", x),
+          };
+
+          names.iter().map(|&(ref name, ref array)| {
+            let array_size: u32 = if array.is_empty() {
+              1
+            } else {
+              array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
             };
 
-            names.iter().map(|&(ref name, ref array)| {
-              let array_size: u32 = if array.is_empty() {
-                1
-              } else {
-                array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
-              };
+            let var = Variable{
+              name: name.clone(),
+              index: -1,
+              type_: type_,
+              array_size: array_size,
+              offset: size,
+            };
 
-              let var = Variable{
-                name: name.clone(),
-                index: -1,
-                type_: type_,
-                array_size: array_size,
-                offset: size,
-              };
+            size += type_size * array_size;
 
-              size += type_size * array_size;
+            var
+          }).collect::<Vec<_>>().into_iter()
+        }).collect();
 
-              var
-            }).collect::<Vec<_>>().into_iter()
-          }).collect();
+        let info = BlockInfo{
+          name: name.clone(),
+          var_name: var_name.as_ref().unwrap().clone(),
+          binding: binding as u32,
+          size: size,
+          active_variables: active_variables,
+        };
 
-          let info = ShaderStorageBlockInfo{
-            name: name.clone(),
-            var_name: var_name.as_ref().unwrap().clone(),
-            binding: binding as u32,
-            size: size,
-            active_variables: active_variables,
-          };
+        if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Buffer)) {
           interfaces.push(Interface::ShaderStorageBlock(info));
-        }
+        } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
+          interfaces.push(Interface::UniformBlock(info));
+        } else { unimplemented!(); }
       }
     }
 

@@ -16,6 +16,7 @@ type Rect = (GLint, GLint, GLsizei, GLsizei);
 pub type ColorMask = (bool, bool, bool, bool);
 
 const MAX_SHADER_STORAGE_BUFFER_BINDINGS: usize = 4;
+const MAX_UNIFORM_BUFFER_BINDINGS: usize = 72;
 
 #[derive(Debug)]
 pub struct Context {
@@ -56,6 +57,7 @@ pub struct Context {
   atomic_counter_buffer: GLuint,
   shader_storage_buffer: GLuint,
   indexed_shader_storage_buffer: [GLuint; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
+  indexed_uniform_buffer: Vec<GLuint>,
 
   vertex_array: GLuint,
 
@@ -126,6 +128,7 @@ impl Context {
       atomic_counter_buffer: 0,
       shader_storage_buffer: 0,
       indexed_shader_storage_buffer: [0; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
+      indexed_uniform_buffer: vec![0; MAX_UNIFORM_BUFFER_BINDINGS],
 
       vertex_array: 0,
 
@@ -196,6 +199,7 @@ impl Context {
   fn indexed_buffer_target_mut(&mut self, target: GLenum, i: usize) -> &mut GLuint {
     match target {
       GL_SHADER_STORAGE_BUFFER => &mut self.indexed_shader_storage_buffer[i],
+      GL_UNIFORM_BUFFER => &mut self.indexed_uniform_buffer[i],
       x => unimplemented!("{:x}", x),
     }
   }
@@ -285,7 +289,9 @@ enum Command {
 #[derive(Debug)]
 pub struct Program{
   shaders: Vec<Arc<Shader>>,
-  ssbos: HashMap<GLuint, glsl::ShaderStorageBlockInfo>,
+  ssbos: HashMap<GLuint, glsl::BlockInfo>,
+  ubos: HashMap<GLuint, glsl::BlockInfo>,
+  uniform_block_bindings: Vec<GLuint>,
 }
 
 impl Program {
@@ -293,6 +299,8 @@ impl Program {
     Self{
       shaders: vec![],
       ssbos: HashMap::new(),
+      ubos: HashMap::new(),
+      uniform_block_bindings: vec![],
     }
   }
 }
@@ -1972,6 +1980,17 @@ pub extern "C" fn glDispatchCompute(
                   });
 
                   vars.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size))
+                } else if let &Interface::UniformBlock(ref info) = iface {
+                  let buffer = current.indexed_uniform_buffer[info.binding as usize];
+                  let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+
+                  let size = info.active_variables.last().and_then(|v| {
+                    if v.array_size == 0 {
+                      Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
+                    } else { None }
+                  });
+
+                  vars.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size))
                 }
               }
 
@@ -2451,8 +2470,21 @@ pub extern "C" fn glGetProgramResourceIndex(program: GLuint, programInterface: G
         info.name == name
       }).unwrap().0
     },
+    GL_UNIFORM_BLOCK => {
+      *program.ubos.iter().find(|&(_, ref info)| {
+        info.name == name
+      }).unwrap().0
+    },
     GL_BUFFER_VARIABLE => {
       for (_, ref info) in &program.ssbos {
+        for var in &info.active_variables {
+          if name == format!("{}.{}", info.name, var.name) { return var.index as GLuint };
+        }
+      }
+      unimplemented!()
+    },
+    GL_UNIFORM => {
+      for (_, ref info) in &program.ubos {
         for var in &info.active_variables {
           if name == format!("{}.{}", info.name, var.name) { return var.index as GLuint };
         }
@@ -2483,7 +2515,9 @@ pub extern "C" fn glGetProgramResourceName(
 
   let n = match programInterface {
     GL_SHADER_STORAGE_BLOCK => { program.ssbos.get(&index).map(|s| &s.name).unwrap() },
+    GL_UNIFORM_BLOCK => { program.ubos.get(&index).map(|s| &s.name).unwrap() },
     GL_BUFFER_VARIABLE => { &program.ssbos.values().flat_map(|ssbo| ssbo.active_variables.iter()).find(|a| a.index == index as i32).unwrap().name },
+    GL_UNIFORM => { &program.ubos.values().flat_map(|ubo| ubo.active_variables.iter()).find(|a| a.index == index as i32).unwrap().name },
     x => unimplemented!("{:x}", x),
   };
 
@@ -2526,16 +2560,20 @@ pub extern "C" fn glGetProgramResourceiv(
   {
     let mut push = |val: GLint| pusher.push(val);
     match programInterface {
-      GL_SHADER_STORAGE_BLOCK => {
-        let ssbo = program.ssbos.get(&index).unwrap();
+      GL_SHADER_STORAGE_BLOCK | GL_UNIFORM_BLOCK => {
+        let info = match programInterface {
+          GL_SHADER_STORAGE_BLOCK => program.ssbos.get(&index).unwrap(),
+          GL_UNIFORM_BLOCK => program.ubos.get(&index).unwrap(),
+          x => unimplemented!("{:x}", x),
+        };
 
         for &prop in props {
           match prop {
-            GL_BUFFER_BINDING => push(ssbo.binding as GLint),
-            GL_BUFFER_DATA_SIZE => push(ssbo.size as GLint),
-            GL_NUM_ACTIVE_VARIABLES => push(ssbo.active_variables.len() as GLint),
-            GL_ACTIVE_VARIABLES => ssbo.active_variables.iter().for_each(|v| push(v.index)),
-            GL_NAME_LENGTH => push(ssbo.name.len() as GLint),
+            GL_BUFFER_BINDING => push(info.binding as GLint),
+            GL_BUFFER_DATA_SIZE => push(info.size as GLint),
+            GL_NUM_ACTIVE_VARIABLES => push(info.active_variables.len() as GLint),
+            GL_ACTIVE_VARIABLES => info.active_variables.iter().for_each(|v| push(v.index)),
+            GL_NAME_LENGTH => push(info.name.len() as GLint),
             x => unimplemented!("{:x}", x),
           };
         }
@@ -2557,7 +2595,26 @@ pub extern "C" fn glGetProgramResourceiv(
             x => unimplemented!("{:x}", x),
           };
         }
-      }
+      },
+      GL_UNIFORM => {
+        let var = program.ubos.values().flat_map(|ssbo| ssbo.active_variables.iter()).find(|a| a.index == index as i32).unwrap();
+        for &prop in props {
+          match prop {
+            GL_BLOCK_INDEX => push(*program.ubos.iter().find(|&(_, ref ssbo)| ssbo.active_variables.contains(var)).unwrap().0 as i32),
+            GL_TYPE => push(var.type_ as i32),
+            GL_ARRAY_SIZE => push(var.array_size as i32),
+            GL_OFFSET => push(var.offset as i32),
+            GL_ARRAY_STRIDE => push(size_of(var.type_) as i32),
+            GL_MATRIX_STRIDE => push(0), // TODO
+            GL_IS_ROW_MAJOR => push(0), // TODO
+            GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO
+            GL_TOP_LEVEL_ARRAY_STRIDE => push(0), // TODO
+            GL_NAME_LENGTH => push(var.name.len() as i32),
+            GL_ATOMIC_COUNTER_BUFFER_INDEX => push(0), // TODO
+            x => unimplemented!("{:x}", x),
+          };
+        }
+      },
       x => unimplemented!("{:x}", x),
     }
   }
@@ -2920,8 +2977,10 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
   let program = current.programs.get_mut(&program).unwrap();
 
   let mut ssbos = HashMap::new();
+  let mut ubos = HashMap::new();
 
-  let mut next_variable_location = 0;
+  let mut next_ssbo_variable_location = 0;
+  let mut next_ubo_variable_location = 0;
 
   for shader in &program.shaders {
     for iface in &shader.compiled.borrow().as_ref().unwrap().interfaces {
@@ -2929,15 +2988,26 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
         let i = ssbos.len() + 1;
         let mut info = info.clone();
         for ref mut var in info.active_variables.iter_mut() {
-          var.index = next_variable_location;
-          next_variable_location += 1;
+          var.index = next_ssbo_variable_location;
+          next_ssbo_variable_location += 1;
         }
         ssbos.insert(i as GLuint, info);
+      }
+      if let &glsl::Interface::UniformBlock(ref info) = iface {
+        let i = ubos.len() + 1;
+        let mut info = info.clone();
+        for ref mut var in info.active_variables.iter_mut() {
+          var.index = next_ubo_variable_location;
+          next_ubo_variable_location += 1;
+        }
+        ubos.insert(i as GLuint, info);
       }
     }
   }
 
   program.ssbos = ssbos;
+  program.uniform_block_bindings = vec![0; ubos.len()];
+  program.ubos = ubos;
 }
 
 #[no_mangle]
@@ -3686,8 +3756,15 @@ pub extern "C" fn glUniform4uiv(location: GLint, count: GLsizei, value: *const G
 
 #[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glUniformBlockBinding(program: GLuint, uniformBlockIndex: GLuint, uniformBlockBinding: GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glUniformBlockBinding(
+  program: GLuint,
+  uniformBlockIndex: GLuint,
+  uniformBlockBinding: GLuint
+) -> () {
+  let current = current();
+  let program = current.programs.get_mut(&program).unwrap();
+
+  program.uniform_block_bindings[uniformBlockIndex as usize - 1] = uniformBlockBinding;
 }
 
 #[allow(unused_variables)]

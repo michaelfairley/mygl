@@ -450,6 +450,8 @@ impl<'a> Parser<'a> {
         result.push(TypeQualifier::Storage(StorageQualifier::Out));
       } else if self.consume(&Token::Buffer)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Buffer));
+      } else if self.consume(&Token::Uniform)? {
+        result.push(TypeQualifier::Storage(StorageQualifier::Uniform));
       } else {
         return Ok(result)
       }
@@ -581,6 +583,7 @@ pub enum StorageQualifier {
   In,
   Out,
   Buffer,
+  Uniform,
   // TODO
 }
 

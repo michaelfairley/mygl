@@ -306,12 +306,12 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             return Value::Uint(len.unwrap())
           }
 
-          let info = shader.interfaces.iter().find(|iface| match iface {
-            &&super::Interface::ShaderStorageBlock(ref info) => info.name == typ,
+          let info = shader.interfaces.iter().filter_map(|iface| match iface {
+            &super::Interface::ShaderStorageBlock(ref info)
+              | &super::Interface::UniformBlock(ref info)
+              => if info.name == typ { Some(info) } else { None },
             x => unimplemented!("{:?}", x),
-          }).expect(&format!("Couldn't find info for {}", typ));
-
-          let info = if let &super::Interface::ShaderStorageBlock(ref info) = info { info } else { unimplemented!() };
+          }).next().unwrap();
 
           let field = info.active_variables.iter().find(|v| &v.name == field).expect("2");
           let new_type = match field.type_ {
@@ -383,14 +383,12 @@ fn eval_lvalue<'a>(expression: &Expression, vars: &'a mut Vars, shader: &Shader)
 
       match container {
         Value::Buffer(typ, p, _len) => {
-          // TODO: maybe should use a separate types table instead of borrowing the interface info
-
-          let info = shader.interfaces.iter().find(|iface| match iface {
-            &&super::Interface::ShaderStorageBlock(ref info) => info.name == typ,
+          let info = shader.interfaces.iter().filter_map(|iface| match iface {
+            &super::Interface::ShaderStorageBlock(ref info)
+              | &super::Interface::UniformBlock(ref info)
+              => if info.name == typ { Some(info) } else { None },
             x => unimplemented!("{:?}", x),
-          }).unwrap();
-
-          let info = if let &super::Interface::ShaderStorageBlock(ref info) = info { info } else { unimplemented!() };
+          }).next().unwrap();
 
           let field = info.active_variables.iter().find(|v| &v.name == field).unwrap();
           let new_type = match field.type_ {
