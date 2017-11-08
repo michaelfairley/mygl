@@ -55,11 +55,19 @@ pub struct UniformInfo {
   pub typ: GLuint,
 }
 
+#[derive(Debug,Clone)]
+pub struct SharedInfo {
+  pub name: String,
+  pub typ: GLuint,
+  pub size: usize,
+}
+
 #[derive(Debug)]
 pub enum Interface {
   ShaderStorageBlock(BlockInfo),
   UniformBlock(BlockInfo),
   Uniform(UniformInfo),
+  Shared(SharedInfo),
 }
 
 #[derive(Debug)]
@@ -131,7 +139,7 @@ impl Shader {
         } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
           interfaces.push(Interface::UniformBlock(info));
         } else { unimplemented!(); }
-      } else if let &ExternalDeclaration::Variable(ref typ, ref name, ref _array_spec) = decl {
+      } else if let &ExternalDeclaration::Variable(ref typ, ref name, ref array_spec) = decl {
         if typ.0.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
           let typ = match (typ.1).0 {
             TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
@@ -143,6 +151,20 @@ impl Shader {
             typ: typ,
           };
           interfaces.push(Interface::Uniform(info));
+        } else if typ.0.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Shared)) {
+          let typ = match (typ.1).0 {
+            TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
+            ref x => unimplemented!("{:?}", x),
+          };
+
+          let size: u32 = array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum();
+
+          let info = SharedInfo{
+            name: name.clone(),
+            typ: typ,
+            size: size as usize,
+          };
+          interfaces.push(Interface::Shared(info));
         }
       }
     }

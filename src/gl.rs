@@ -1924,7 +1924,6 @@ pub extern "C" fn glDisablei(target: GLenum, index: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDispatchCompute(
   num_groups_x: GLuint,
@@ -1945,6 +1944,7 @@ pub extern "C" fn glDispatchCompute(
   let num_in_work_group = (work_group_size[0] * work_group_size[1] * work_group_size[2]) as usize;
 
   let mut init_vars = HashMap::new();
+  let mut shared = vec![];
 
   for iface in &compiled.interfaces {
     match iface {
@@ -1982,11 +1982,13 @@ pub extern "C" fn glDispatchCompute(
             }
           }
         },
-
       &Interface::Uniform(ref info) => {
         let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
         let val = &program.uniform_values[index];
         init_vars.insert(info.name.clone(), val.clone());
+      },
+      &Interface::Shared(ref info) => {
+        shared.push(info.clone());
       },
     }
   }
@@ -1997,12 +1999,33 @@ pub extern "C" fn glDispatchCompute(
         let barrier = Arc::new(Barrier::new(num_in_work_group));
         let mut threads = Vec::with_capacity(num_in_work_group);
 
+        let mut shared_buffers = shared.iter().map(|s| {
+          let size = s.size * size_of(s.typ);
+          let mut buf = Vec::with_capacity(size);
+          unsafe{ buf.set_len(size); }
+
+          buf
+        }).collect::<Vec<Vec<u8>>>();
+
+        let mut init_vars = init_vars.clone();
+        for (ref info, ref mut buf) in shared.iter().zip(shared_buffers.iter_mut()) {
+          let typ = match info.typ {
+            ::gl::GL_UNSIGNED_INT => "uint".to_string(),
+            x => unimplemented!("{:x}", x),
+          };
+
+          init_vars.insert(info.name.clone(), Value::Buffer(typ, buf.as_mut_ptr(), Some(info.size as u32)));
+        }
+
+        let shared_buffers = Arc::new(shared_buffers);
+
         for lx in 0..work_group_size[0] {
           for ly in 0..work_group_size[1] {
             for lz in 0..work_group_size[2] {
               let compiled = Arc::clone(&compiled);
               let barrier = Arc::clone(&barrier);
               let init_vars = init_vars.clone();
+              let _shared_buffers = Arc::clone(&shared_buffers);
 
               let t = thread::spawn(move || {
 
@@ -3067,7 +3090,7 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
             next_ubo_variable_location += 1;
           }
           ubos.insert(i as GLuint, info);
-        }
+        },
         &glsl::Interface::Uniform(ref info) => {
           uniforms.push(info.clone());
 
@@ -3076,7 +3099,8 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
             x => unimplemented!("{:x}", x),
           };
           uniform_values.push(val);
-        }
+        },
+        &glsl::Interface::Shared(_) => {},
       }
     }
   }
