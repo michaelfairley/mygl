@@ -16,6 +16,8 @@ pub enum Value {
   Buffer(String, *mut u8, Option<u32>),
 }
 
+unsafe impl Send for Value {}
+
 #[derive(Debug)]
 pub enum LValue<'a> {
   Value(&'a mut Value),

@@ -309,7 +309,7 @@ impl Program {
 pub struct Shader{
   type_: GLenum,
   source: RefCell<Vec<u8>>,
-  compiled: RefCell<Option<glsl::Shader>>,
+  compiled: RefCell<Option<Arc<glsl::Shader>>>,
   info_log: RefCell<String>,
 }
 
@@ -1698,7 +1698,7 @@ pub extern "C" fn glCompileShader(shader: GLuint) -> () {
   let result = glsl::compile(&shader.source.borrow(), shader.type_);
 
   *shader.info_log.borrow_mut() = result.as_ref().err().map(|e| e.clone()).unwrap_or_else(String::new);
-  *shader.compiled.borrow_mut() = result.ok();
+  *shader.compiled.borrow_mut() = result.ok().map(Arc::new);
 }
 
 #[allow(unused_variables)]
@@ -1927,6 +1927,8 @@ pub extern "C" fn glDispatchCompute(
   num_groups_y: GLuint,
   num_groups_z: GLuint,
 ) -> () {
+  use std::ops::Deref;
+
   use glsl::interpret::{self,Vars,Value};
   use glsl::{Interface};
 
@@ -1934,73 +1936,91 @@ pub extern "C" fn glDispatchCompute(
   let program = current.programs.get(&current.program).unwrap();
 
   let shader = program.shaders.iter().find(|s| s.type_ == GL_COMPUTE_SHADER).unwrap();
-  let compiled = Ref::map(shader.compiled.borrow(), |s| s.as_ref().unwrap());
+  let compiled = Arc::clone(Ref::map(shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
   let work_group_size = compiled.work_group_size.unwrap();
+
+  let mut bufs = HashMap::new();
+
+  for iface in &compiled.interfaces {
+    if let &Interface::ShaderStorageBlock(ref info) = iface {
+      let buffer = current.indexed_shader_storage_buffer[info.binding as usize];
+      let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+
+      let size = info.active_variables.last().and_then(|v| {
+        if v.array_size == 0 {
+          Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
+        } else { None }
+      });
+
+      bufs.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size));
+    } else if let &Interface::UniformBlock(ref info) = iface {
+      let buffer = current.indexed_uniform_buffer[info.binding as usize];
+      let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+
+      let size = info.active_variables.last().and_then(|v| {
+        if v.array_size == 0 {
+          Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
+        } else { None }
+      });
+
+      bufs.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size));
+    }
+  }
 
   for gx in 0..num_groups_x {
     for gy in 0..num_groups_y {
       for gz in 0..num_groups_z {
+        let mut threads = vec![];
+
         for lx in 0..work_group_size[0] {
           for ly in 0..work_group_size[1] {
             for lz in 0..work_group_size[2] {
+              let compiled = Arc::clone(&compiled);
+              let bufs = bufs.clone();
 
-              // TODO: omg clean up
-              let mut vars = Vars::new();
-              vars.push();
-              vars.insert("gl_NumWorkGroups".to_string(), Value::UVec3([num_groups_x,
-                                                                        num_groups_y,
-                                                                        num_groups_z]));
-              vars.insert("gl_WorkGroupSize".to_string(), Value::UVec3(work_group_size));
+              let t = thread::spawn(move || {
 
-              vars.insert("gl_WorkGroupID".to_string(), Value::UVec3([gx, gy, gz]));
-              vars.insert("gl_LocalInvocationID".to_string(), Value::UVec3([lx, ly, lz]));
+                // TODO: omg clean up
+                let mut vars = Vars::new();
+                vars.push();
+                vars.insert("gl_NumWorkGroups".to_string(), Value::UVec3([num_groups_x,
+                                                                          num_groups_y,
+                                                                          num_groups_z]));
+                vars.insert("gl_WorkGroupSize".to_string(), Value::UVec3(work_group_size));
 
-              let gid = [
-                gx * work_group_size[0] + lx,
-                gy * work_group_size[1] + ly,
-                gz * work_group_size[2] + lz,
-              ];
-              vars.insert("gl_GlobalInvocationID".to_string(), Value::UVec3(gid));
+                vars.insert("gl_WorkGroupID".to_string(), Value::UVec3([gx, gy, gz]));
+                vars.insert("gl_LocalInvocationID".to_string(), Value::UVec3([lx, ly, lz]));
 
-              let lii = lz * work_group_size[0] * work_group_size[1]
-                + ly * work_group_size[0]
-                + lx;
+                let gid = [
+                  gx * work_group_size[0] + lx,
+                  gy * work_group_size[1] + ly,
+                  gz * work_group_size[2] + lz,
+                ];
+                vars.insert("gl_GlobalInvocationID".to_string(), Value::UVec3(gid));
 
-              vars.insert("gl_LocalInvocationIndex;".to_string(), Value::Uint(lii));
+                let lii = lz * work_group_size[0] * work_group_size[1]
+                  + ly * work_group_size[0]
+                  + lx;
 
-              for iface in &compiled.interfaces {
-                if let &Interface::ShaderStorageBlock(ref info) = iface {
-                  let buffer = current.indexed_shader_storage_buffer[info.binding as usize];
-                  let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+                vars.insert("gl_LocalInvocationIndex;".to_string(), Value::Uint(lii));
 
-                  let size = info.active_variables.last().and_then(|v| {
-                    if v.array_size == 0 {
-                      Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
-                    } else { None }
-                  });
-
-                  vars.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size))
-                } else if let &Interface::UniformBlock(ref info) = iface {
-                  let buffer = current.indexed_uniform_buffer[info.binding as usize];
-                  let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
-
-                  let size = info.active_variables.last().and_then(|v| {
-                    if v.array_size == 0 {
-                      Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
-                    } else { None }
-                  });
-
-                  vars.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size))
+                for (ref name, ref data) in &bufs {
+                  vars.insert((*name).clone(), (*data).clone());
                 }
-              }
 
-              vars.push();
+                vars.push();
 
-              let main = &compiled.functions[&"main".to_string()][0];
+                let main = &compiled.functions[&"main".to_string()][0];
 
-              interpret::execute(&main.1, &mut vars, &compiled);
+                interpret::execute(&main.1, &mut vars, &compiled);
+              });
+              threads.push(t);
             }
           }
+        }
+
+        for thread in threads {
+          thread.join().unwrap();
         }
       }
     }
