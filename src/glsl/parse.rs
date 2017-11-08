@@ -136,8 +136,10 @@ impl<'a> Parser<'a> {
         Ok(ExternalDeclaration::FunctionDefinition(function_proto, body))
       } else { self.unexpected() }
     } else {
+      let array_specifier = self.parse_array_specifier()?;
+
       self.must_consume(&Token::Semicolon)?;
-      Ok(ExternalDeclaration::Variable(fully_specified_type, name))
+      Ok(ExternalDeclaration::Variable(fully_specified_type, name, array_specifier))
     }
   }
 
@@ -204,6 +206,9 @@ impl<'a> Parser<'a> {
     if self.consume(&Token::Equal)? {
       let rhs = self.parse_expression()?;
       Ok(Expression::Assignment(Box::new(a), Box::new(rhs)))
+    } else if self.consume(&Token::AddAssign)? {
+      let rhs = self.parse_expression()?;
+      Ok(Expression::AddAssign(Box::new(a), Box::new(rhs)))
     } else {
       Ok(a)
     }
@@ -289,6 +294,9 @@ impl<'a> Parser<'a> {
       } else if self.consume(&Token::Slash)? {
         let b = self.parse_multiplicative_expression()?;
         a = Expression::Divide(Box::new(a), Box::new(b));
+      } else if self.consume(&Token::Percent)? {
+        let b = self.parse_multiplicative_expression()?;
+        a = Expression::Modulo(Box::new(a), Box::new(b));
       } else {
         return Ok(a)
       }
@@ -318,14 +326,18 @@ impl<'a> Parser<'a> {
         self.advance();
 
         let mut arguments = vec![];
-        if !self.consume(&Token::Void)? {
+
+        if self.consume(&Token::CloseParen)? {
+        } else if self.consume(&Token::Void)? {
+          self.must_consume(&Token::CloseParen)?;
+        } else {
           loop {
             let expr = self.parse_expression()?;
             arguments.push(expr);
             if !self.consume(&Token::Comma)? { break; }
           }
+          self.must_consume(&Token::CloseParen)?;
         }
-        self.must_consume(&Token::CloseParen)?;
 
         return Ok(Expression::FunctionCall(name, arguments));
       }
@@ -452,6 +464,10 @@ impl<'a> Parser<'a> {
         result.push(TypeQualifier::Storage(StorageQualifier::Buffer));
       } else if self.consume(&Token::Uniform)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Uniform));
+      } else if self.consume(&Token::Coherent)? {
+        result.push(TypeQualifier::Storage(StorageQualifier::Coherent));
+      } else if self.consume(&Token::Shared)? {
+        result.push(TypeQualifier::Storage(StorageQualifier::Shared));
       } else {
         return Ok(result)
       }
@@ -544,7 +560,7 @@ pub enum ExternalDeclaration {
   FunctionDefinition(FunctionPrototype, Statement),
   Block(Vec<TypeQualifier>, String, MemberList, Option<String>),
   TypeQualifier(Vec<TypeQualifier>),
-  Variable(FullySpecifiedType, Identifier),
+  Variable(FullySpecifiedType, Identifier, ArraySpecifier),
 }
 
 pub type MemberList = Vec<(FullySpecifiedType, Vec<(Identifier, ArraySpecifier)>)>;
@@ -584,6 +600,8 @@ pub enum StorageQualifier {
   Out,
   Buffer,
   Uniform,
+  Coherent,
+  Shared,
   // TODO
 }
 
@@ -618,6 +636,7 @@ pub enum Expression {
   FloatConstant(f32),
   Multiply(Box<Expression>, Box<Expression>),
   Divide(Box<Expression>, Box<Expression>),
+  Modulo(Box<Expression>, Box<Expression>),
   Add(Box<Expression>, Box<Expression>),
   Sub(Box<Expression>, Box<Expression>),
   FunctionCall(String, Vec<Expression>),
@@ -626,6 +645,7 @@ pub enum Expression {
   PostInc(Box<Expression>),
   Index(Box<Expression>, Box<Expression>),
   Assignment(Box<Expression>, Box<Expression>),
+  AddAssign(Box<Expression>, Box<Expression>),
   BinaryNot(Box<Expression>),
 }
 

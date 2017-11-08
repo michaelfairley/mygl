@@ -3,8 +3,9 @@ use super::Shader;
 
 use std::collections::HashMap;
 use std::mem;
+use std::sync::{Barrier,Arc};
 
-#[derive(Debug,PartialEq,Clone,PartialOrd)]
+#[derive(Debug,Clone)]
 pub enum Value {
   Int(i32),
   Uint(u32),
@@ -12,8 +13,36 @@ pub enum Value {
   UVec3([u32; 3]),
   Float(f32),
   Bool(bool),
+  Void,
 
   Buffer(String, *mut u8, Option<u32>),
+  Barrier(Arc<Barrier>),
+}
+
+impl PartialEq for Value {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (&Value::Float(a), &Value::Float(b)) => a == b,
+      (&Value::Uint(a), &Value::Uint(b)) => a == b,
+      (&Value::Int(a), &Value::Int(b)) => a == b,
+      (&Value::Vec4(a), &Value::Vec4(b)) => a == b,
+      (&Value::UVec3(a), &Value::UVec3(b)) => a == b,
+      (&Value::Bool(a), &Value::Bool(b)) => a == b,
+      (&Value::Void, &Value::Void) => true,
+      x => unreachable!("Can't compare: {:?}", x),
+    }
+  }
+}
+
+impl PartialOrd for Value {
+  fn partial_cmp(&self, other: &Self) -> Option<::std::cmp::Ordering> {
+    match (self, other) {
+      (&Value::Float(a), &Value::Float(b)) => a.partial_cmp(&b),
+      (&Value::Uint(a), &Value::Uint(b)) => a.partial_cmp(&b),
+      (&Value::Int(a), &Value::Int(b)) => a.partial_cmp(&b),
+      x => unreachable!("Can't compare: {:?}", x),
+    }
+  }
 }
 
 unsafe impl Send for Value {}
@@ -38,12 +67,27 @@ impl<'a> LValue<'a> {
       },
     }
   }
+
+  fn get(&self) -> Value {
+    match self {
+      &LValue::Value(ref slot) => (*slot).clone(),
+      &LValue::Buffer(ref _typ, _ptr) => unimplemented!(),
+      &LValue::Item(ref typ, ptr) => {
+        match typ.as_str() {
+          "uint" => Value::Uint(unsafe{ *(ptr as *const u32) }),
+          x => unimplemented!("{:?}", x),
+        }
+      }
+    }
+  }
 }
 
 #[derive(Debug,PartialEq,Clone,Copy)]
 pub enum BuiltinFunc {
   Vec4Float4,
   UintUint,
+  MemoryBarrierBuffer,
+  Barrier,
 }
 
 impl BuiltinFunc {
@@ -63,7 +107,15 @@ impl BuiltinFunc {
       },
       BuiltinFunc::UintUint => {
         vars.get(&"a".to_string()).clone()
-      }
+      },
+      BuiltinFunc::MemoryBarrierBuffer => { Value::Void },
+      BuiltinFunc::Barrier => {
+        if let &Value::Barrier(ref barrier) = vars.get(&"__barrier".to_string()) {
+          barrier.wait();
+        } else { unreachable!(); }
+
+        Value::Void
+      },
     }
   }
 
@@ -73,6 +125,7 @@ impl BuiltinFunc {
     let vec4 = (vec![], (TypeSpecifierNonArray::Vec4, vec![]));
     let uint = (vec![], (TypeSpecifierNonArray::Uint, vec![]));
     let float_ = (vec![], (TypeSpecifierNonArray::Float, vec![]));
+    let void = (vec![], (TypeSpecifierNonArray::Void, vec![]));
 
     let vec4_float4 = FunctionPrototype{
       typ: vec4,
@@ -93,8 +146,22 @@ impl BuiltinFunc {
       ],
     };
 
+    let memory_barrier_buffer = FunctionPrototype{
+      typ: void.clone(),
+      name: "memoryBarrierBuffer".to_string(),
+      params: vec![],
+    };
+
+    let barrier = FunctionPrototype{
+      typ: void.clone(),
+      name: "barrier".to_string(),
+      params: vec![],
+    };
+
     funcs.insert("vec4".to_string(), vec![(vec4_float4, Statement::Builtin(BuiltinFunc::Vec4Float4))]);
     funcs.insert("uint".to_string(), vec![(uint_uint, Statement::Builtin(BuiltinFunc::UintUint))]);
+    funcs.insert("memoryBarrierBuffer".to_string(), vec![(memory_barrier_buffer, Statement::Builtin(BuiltinFunc::MemoryBarrierBuffer))]);
+    funcs.insert("barrier".to_string(), vec![(barrier, Statement::Builtin(BuiltinFunc::Barrier))]);
 
     funcs
   }
@@ -189,6 +256,25 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       slot.set(value.clone());
       value
     },
+    Expression::AddAssign(ref lexpr, ref rexpr) => {
+      let rhs = eval(rexpr, vars, shader);
+      let mut slot = eval_lvalue(lexpr, vars, shader);
+
+      let orig_value = slot.get();
+
+      let new_value = match (orig_value, rhs) {
+        (Value::Float(a), Value::Float(b)) => Value::Float(a + b),
+        (Value::Uint(a), Value::Uint(b)) => Value::Uint(a + b),
+        (Value::Int(a), Value::Int(b)) => Value::Int(a + b),
+        (Value::UVec3(a), Value::UVec3(b)) => Value::UVec3([a[0] + b[0],
+                                                            a[1] + b[1],
+                                                            a[2] + b[2]]),
+        x => unimplemented!("{:?}", x),
+      };
+
+      slot.set(new_value.clone());
+      new_value
+    },
     Expression::FunctionCall(ref name, ref args) => {
       let args = args.iter().map(|a| eval(a, vars, shader)).collect::<Vec<_>>();
       let fs = shader.functions.get(name).expect(&format!("Didn't find function '{}'", name));
@@ -231,6 +317,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       };
       Value::Bool(result)
     },
+    // TODO: omg unify these maths
     Expression::Add(ref left, ref right) => {
       let left = eval(left, vars, shader);
       let right = eval(right, vars, shader);
@@ -281,6 +368,17 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         (Value::Float(a), Value::Float(b)) => Value::Float(a / b),
         (Value::Uint(a), Value::Uint(b)) => Value::Uint(a / b),
         (Value::Int(a), Value::Int(b)) => Value::Int(a / b),
+        x => unimplemented!("{:?}", x),
+      }
+    },
+    Expression::Modulo(ref left, ref right) => {
+      let left = eval(left, vars, shader);
+      let right = eval(right, vars, shader);
+
+      match (left, right) {
+        (Value::Float(a), Value::Float(b)) => Value::Float(a % b),
+        (Value::Uint(a), Value::Uint(b)) => Value::Uint(a % b),
+        (Value::Int(a), Value::Int(b)) => Value::Int(a % b),
         x => unimplemented!("{:?}", x),
       }
     },

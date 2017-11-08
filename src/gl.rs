@@ -5,7 +5,7 @@ use std::thread;
 use std::ptr;
 use std::ffi::{CStr};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc,Barrier};
 use std::cell::{RefCell,Ref};
 use std::mem;
 
@@ -1938,6 +1938,7 @@ pub extern "C" fn glDispatchCompute(
   let shader = program.shaders.iter().find(|s| s.type_ == GL_COMPUTE_SHADER).unwrap();
   let compiled = Arc::clone(Ref::map(shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
   let work_group_size = compiled.work_group_size.unwrap();
+  let num_in_work_group = (work_group_size[0] * work_group_size[1] * work_group_size[2]) as usize;
 
   let mut bufs = HashMap::new();
 
@@ -1970,12 +1971,14 @@ pub extern "C" fn glDispatchCompute(
   for gx in 0..num_groups_x {
     for gy in 0..num_groups_y {
       for gz in 0..num_groups_z {
-        let mut threads = vec![];
+        let barrier = Arc::new(Barrier::new(num_in_work_group));
+        let mut threads = Vec::with_capacity(num_in_work_group);
 
         for lx in 0..work_group_size[0] {
           for ly in 0..work_group_size[1] {
             for lz in 0..work_group_size[2] {
               let compiled = Arc::clone(&compiled);
+              let barrier = Arc::clone(&barrier);
               let bufs = bufs.clone();
 
               let t = thread::spawn(move || {
@@ -1983,6 +1986,8 @@ pub extern "C" fn glDispatchCompute(
                 // TODO: omg clean up
                 let mut vars = Vars::new();
                 vars.push();
+                vars.insert("__barrier".to_string(), Value::Barrier(barrier));
+
                 vars.insert("gl_NumWorkGroups".to_string(), Value::UVec3([num_groups_x,
                                                                           num_groups_y,
                                                                           num_groups_z]));

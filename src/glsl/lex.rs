@@ -460,6 +460,9 @@ pub(super) fn tokenize(source: &str, version: Version) -> Result<Vec<FullToken>>
         if l.peek() == Some('+') {
           l.advance();
           Token::IncOp
+        } else if l.peek() == Some('=') {
+          l.advance();
+          Token::AddAssign
         } else {
           Token::Plus
         }
@@ -549,6 +552,7 @@ impl<'a> LexHelper<'a> {
     } else { None }
   }
 
+  // TODO: a `consume` (like the parser) would be nice
   fn advance(&mut self) {
     if let Some(next) = self.buf.pop_front() {
       if next == '\n' {
