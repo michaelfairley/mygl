@@ -43,17 +43,23 @@ pub struct Variable {
 #[derive(Debug,Clone)]
 pub struct BlockInfo {
   pub name: String,
-  pub var_name: String,
+  pub var_name: Option<String>,
   pub binding: u32,
   pub size: u32,
   pub active_variables: Vec<Variable>,
+}
+
+#[derive(Debug,Clone)]
+pub struct UniformInfo {
+  pub name: String,
+  pub typ: GLuint,
 }
 
 #[derive(Debug)]
 pub enum Interface {
   ShaderStorageBlock(BlockInfo),
   UniformBlock(BlockInfo),
-  SomethingElse,
+  Uniform(UniformInfo),
 }
 
 #[derive(Debug)]
@@ -114,7 +120,7 @@ impl Shader {
 
         let info = BlockInfo{
           name: name.clone(),
-          var_name: var_name.as_ref().unwrap().clone(),
+          var_name: var_name.clone(),
           binding: binding as u32,
           size: size,
           active_variables: active_variables,
@@ -125,6 +131,19 @@ impl Shader {
         } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
           interfaces.push(Interface::UniformBlock(info));
         } else { unimplemented!(); }
+      } else if let &ExternalDeclaration::Variable(ref typ, ref name, ref _array_spec) = decl {
+        if typ.0.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
+          let typ = match (typ.1).0 {
+            TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
+            ref x => unimplemented!("{:?}", x),
+          };
+
+          let info = UniformInfo{
+            name: name.clone(),
+            typ: typ,
+          };
+          interfaces.push(Interface::Uniform(info));
+        }
       }
     }
 

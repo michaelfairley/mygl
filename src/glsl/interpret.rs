@@ -88,6 +88,7 @@ pub enum BuiltinFunc {
   UintUint,
   MemoryBarrierBuffer,
   Barrier,
+  AtomicAddUint,
 }
 
 impl BuiltinFunc {
@@ -112,9 +113,22 @@ impl BuiltinFunc {
       BuiltinFunc::Barrier => {
         if let &Value::Barrier(ref barrier) = vars.get(&"__barrier".to_string()) {
           barrier.wait();
-        } else { unreachable!(); }
+        } else { unreachable!() }
 
         Value::Void
+      },
+      BuiltinFunc::AtomicAddUint => {
+        use std::sync::atomic::{AtomicU32,Ordering};
+
+        match (vars.get(&"mem".to_string()), vars.get(&"data".to_string())) {
+          (&Value::Buffer(ref typ, p, _), &Value::Uint(v)) if typ == "uint" => {
+            let a = unsafe{ &*(p as *const AtomicU32) };
+
+            let old = a.fetch_add(v, Ordering::AcqRel);
+            Value::Uint(old + v)
+          },
+          _ => unreachable!(),
+        }
       },
     }
   }
@@ -158,10 +172,21 @@ impl BuiltinFunc {
       params: vec![],
     };
 
+
+    let atomic_add_uint = FunctionPrototype{
+      typ: uint.clone(),
+      name: "atomicAdd".to_string(),
+      params: vec![
+        (uint.clone(), Some(("mem".to_string(), vec![]))),
+        (uint.clone(), Some(("data".to_string(), vec![]))),
+      ],
+    };
+
     funcs.insert("vec4".to_string(), vec![(vec4_float4, Statement::Builtin(BuiltinFunc::Vec4Float4))]);
     funcs.insert("uint".to_string(), vec![(uint_uint, Statement::Builtin(BuiltinFunc::UintUint))]);
     funcs.insert("memoryBarrierBuffer".to_string(), vec![(memory_barrier_buffer, Statement::Builtin(BuiltinFunc::MemoryBarrierBuffer))]);
     funcs.insert("barrier".to_string(), vec![(barrier, Statement::Builtin(BuiltinFunc::Barrier))]);
+    funcs.insert("atomicAdd".to_string(), vec![(atomic_add_uint, Statement::Builtin(BuiltinFunc::AtomicAddUint))]);
 
     funcs
   }
@@ -283,6 +308,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
           match (a, &((p.0).1).0) {
             (&Value::Float(_), &TypeSpecifierNonArray::Float) => true,
             (&Value::Uint(_), &TypeSpecifierNonArray::Uint) => true,
+            (&Value::Buffer(ref typ, _, Some(1)), &TypeSpecifierNonArray::Uint) if typ == "uint" => true,
             _ => false,
           }
         })
@@ -474,7 +500,9 @@ fn eval_lvalue<'a>(expression: &Expression, vars: &'a mut Vars, shader: &Shader)
       let container = eval_lvalue(container, vars, shader);
 
       match container {
-        LValue::Buffer(ref s, p) if s == "uint" => unsafe{ LValue::Item("uint".to_string(), p.offset((index as usize * mem::size_of::<u32>() / mem::size_of::<u8>()) as isize)) },
+        LValue::Buffer(ref s, p)
+          | LValue::Value(&mut Value::Buffer(ref s, p, _))
+          if s == "uint" => unsafe{ LValue::Item("uint".to_string(), p.offset((index as usize * mem::size_of::<u32>() / mem::size_of::<u8>()) as isize)) },
         x => unimplemented!("{:?}", x),
       }
     },

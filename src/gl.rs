@@ -292,6 +292,8 @@ pub struct Program{
   ssbos: HashMap<GLuint, glsl::BlockInfo>,
   ubos: HashMap<GLuint, glsl::BlockInfo>,
   uniform_block_bindings: Vec<GLuint>,
+  uniforms: Vec<glsl::UniformInfo>,
+  uniform_values: Vec<glsl::interpret::Value>,
 }
 
 impl Program {
@@ -301,6 +303,8 @@ impl Program {
       ssbos: HashMap::new(),
       ubos: HashMap::new(),
       uniform_block_bindings: vec![],
+      uniforms: vec![],
+      uniform_values: vec![],
     }
   }
 }
@@ -1940,31 +1944,50 @@ pub extern "C" fn glDispatchCompute(
   let work_group_size = compiled.work_group_size.unwrap();
   let num_in_work_group = (work_group_size[0] * work_group_size[1] * work_group_size[2]) as usize;
 
-  let mut bufs = HashMap::new();
+  let mut init_vars = HashMap::new();
 
   for iface in &compiled.interfaces {
-    if let &Interface::ShaderStorageBlock(ref info) = iface {
-      let buffer = current.indexed_shader_storage_buffer[info.binding as usize];
-      let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+    match iface {
+      &Interface::ShaderStorageBlock(ref info)
+        | &Interface::UniformBlock(ref info)
+        => {
+          let buffer = match iface {
+            &Interface::ShaderStorageBlock(_) => current.indexed_shader_storage_buffer[info.binding as usize],
+            &Interface::UniformBlock(_) => current.indexed_uniform_buffer[info.binding as usize],
+            _ => unreachable!(),
+          };
 
-      let size = info.active_variables.last().and_then(|v| {
-        if v.array_size == 0 {
-          Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
-        } else { None }
-      });
+          let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
 
-      bufs.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size));
-    } else if let &Interface::UniformBlock(ref info) = iface {
-      let buffer = current.indexed_uniform_buffer[info.binding as usize];
-      let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+          let size = info.active_variables.last().and_then(|v| {
+            if v.array_size == 0 {
+              Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
+            } else { None }
+          });
 
-      let size = info.active_variables.last().and_then(|v| {
-        if v.array_size == 0 {
-          Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
-        } else { None }
-      });
+          if let Some(ref var_name) = info.var_name {
+            init_vars.insert(var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size));
+          } else {
+            // TODO: unify with Expression::FieldSelection
+            for field in &info.active_variables {
+              let new_type = match field.type_ {
+                ::gl::GL_UNSIGNED_INT => "uint".to_string(),
+                x => unimplemented!("{:x}", x),
+              };
 
-      bufs.insert(info.var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size));
+              let length = Some(if field.array_size > 0 { field.array_size } else { size.unwrap() });
+
+              let val = Value::Buffer(new_type, unsafe{ buffer.as_mut_ptr().offset(field.offset as isize) }, length);
+              init_vars.insert(field.name.clone(), val);
+            }
+          }
+        },
+
+      &Interface::Uniform(ref info) => {
+        let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
+        let val = &program.uniform_values[index];
+        init_vars.insert(info.name.clone(), val.clone());
+      },
     }
   }
 
@@ -1979,7 +2002,7 @@ pub extern "C" fn glDispatchCompute(
             for lz in 0..work_group_size[2] {
               let compiled = Arc::clone(&compiled);
               let barrier = Arc::clone(&barrier);
-              let bufs = bufs.clone();
+              let init_vars = init_vars.clone();
 
               let t = thread::spawn(move || {
 
@@ -2009,7 +2032,7 @@ pub extern "C" fn glDispatchCompute(
 
                 vars.insert("gl_LocalInvocationIndex;".to_string(), Value::Uint(lii));
 
-                for (ref name, ref data) in &bufs {
+                for (ref name, ref data) in &init_vars {
                   vars.insert((*name).clone(), (*data).clone());
                 }
 
@@ -2503,7 +2526,12 @@ pub extern "C" fn glGetProgramResourceIndex(program: GLuint, programInterface: G
     GL_BUFFER_VARIABLE => {
       for (_, ref info) in &program.ssbos {
         for var in &info.active_variables {
-          if name == format!("{}.{}", info.name, var.name) { return var.index as GLuint };
+          if info.var_name.is_some() {
+            if name == format!("{}.{}", info.name, var.name) { return var.index as GLuint };
+          } else {
+            if name == format!("{}", var.name) { return var.index as GLuint };
+            if name == format!("{}[0]", var.name) { return var.index as GLuint };
+          }
         }
       }
       unimplemented!()
@@ -2815,10 +2843,20 @@ pub extern "C" fn glGetUniformIndices(program: GLuint, uniformCount: GLsizei, un
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetUniformLocation(program: GLuint, name: *const GLchar) -> GLint {
-  unimplemented!()
+pub extern "C" fn glGetUniformLocation(
+  program: GLuint,
+  name: *const GLchar,
+) -> GLint {
+  let current = current();
+  let program = current.programs.get(&program).unwrap();
+
+  let name = unsafe{ CStr::from_ptr(name) };
+  let name = name.to_str().unwrap();
+
+  program.uniforms.iter().enumerate().find(|&(_i, info)| {
+    info.name == name
+  }).unwrap().0 as GLint
 }
 
 #[allow(unused_variables)]
@@ -3003,29 +3041,42 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
 
   let mut ssbos = HashMap::new();
   let mut ubos = HashMap::new();
+  let mut uniforms = vec![];
+  let mut uniform_values = vec![];
 
   let mut next_ssbo_variable_location = 0;
   let mut next_ubo_variable_location = 0;
 
   for shader in &program.shaders {
     for iface in &shader.compiled.borrow().as_ref().unwrap().interfaces {
-      if let &glsl::Interface::ShaderStorageBlock(ref info) = iface {
-        let i = ssbos.len() + 1;
-        let mut info = info.clone();
-        for ref mut var in info.active_variables.iter_mut() {
-          var.index = next_ssbo_variable_location;
-          next_ssbo_variable_location += 1;
+      match iface {
+        &glsl::Interface::ShaderStorageBlock(ref info) => {
+          let i = ssbos.len() + 1;
+          let mut info = info.clone();
+          for ref mut var in info.active_variables.iter_mut() {
+            var.index = next_ssbo_variable_location;
+            next_ssbo_variable_location += 1;
+          }
+          ssbos.insert(i as GLuint, info);
+        },
+        &glsl::Interface::UniformBlock(ref info) => {
+          let i = ubos.len() + 1;
+          let mut info = info.clone();
+          for ref mut var in info.active_variables.iter_mut() {
+            var.index = next_ubo_variable_location;
+            next_ubo_variable_location += 1;
+          }
+          ubos.insert(i as GLuint, info);
         }
-        ssbos.insert(i as GLuint, info);
-      }
-      if let &glsl::Interface::UniformBlock(ref info) = iface {
-        let i = ubos.len() + 1;
-        let mut info = info.clone();
-        for ref mut var in info.active_variables.iter_mut() {
-          var.index = next_ubo_variable_location;
-          next_ubo_variable_location += 1;
+        &glsl::Interface::Uniform(ref info) => {
+          uniforms.push(info.clone());
+
+          let val = match info.typ {
+            GL_UNSIGNED_INT => glsl::interpret::Value::Uint(0),
+            x => unimplemented!("{:x}", x),
+          };
+          uniform_values.push(val);
         }
-        ubos.insert(i as GLuint, info);
       }
     }
   }
@@ -3033,13 +3084,13 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
   program.ssbos = ssbos;
   program.uniform_block_bindings = vec![0; ubos.len()];
   program.ubos = ubos;
+  program.uniforms = uniforms;
+  program.uniform_values = uniform_values;
 }
 
 #[no_mangle]
 pub extern "C" fn glMapBufferRange(target: GLenum, offset: GLintptr, _length: GLsizeiptr, _access: GLbitfield) -> *mut c_void {
   let current = current();
-
-  // println!("{:#?}", current);
 
   let target_name = *current.buffer_target(target);
   let mut buffer = current.buffers.get_mut(&target_name);
@@ -3048,10 +3099,11 @@ pub extern "C" fn glMapBufferRange(target: GLenum, offset: GLintptr, _length: GL
   range.as_mut_ptr() as _
 }
 
-#[allow(unused_variables)]
+
 #[no_mangle]
-pub extern "C" fn glMemoryBarrier(barriers: GLbitfield) -> () {
-  unimplemented!()
+pub extern "C" fn glMemoryBarrier(
+  _barriers: GLbitfield,
+) -> () {
 }
 
 #[allow(unused_variables)]
@@ -3659,10 +3711,15 @@ pub extern "C" fn glUniform1iv(location: GLint, count: GLsizei, value: *const GL
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glUniform1ui(location: GLint, v0: GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glUniform1ui(
+  location: GLint,
+  v0: GLuint,
+) -> () {
+  let current = current();
+  let program = current.programs.get_mut(&current.program).unwrap();
+
+  program.uniform_values[location as usize] = glsl::interpret::Value::Uint(v0);
 }
 
 #[allow(unused_variables)]
