@@ -157,7 +157,11 @@ impl Shader {
             ref x => unimplemented!("{:?}", x),
           };
 
-          let size: u32 = array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum();
+          let size: u32 = if array_spec.is_empty() {
+            1
+          } else {
+            array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
+          };
 
           let info = SharedInfo{
             name: name.clone(),

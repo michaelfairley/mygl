@@ -136,7 +136,7 @@ impl BuiltinFunc {
             let a = unsafe{ &*(p as *const AtomicU32) };
 
             let old = a.fetch_add(v, Ordering::AcqRel);
-            Value::Uint(old + v)
+            Value::Uint(old)
           },
           _ => unreachable!(),
         }
