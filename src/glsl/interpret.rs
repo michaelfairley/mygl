@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::mem;
 use std::sync::{Barrier,Arc};
 
+use gl;
+
 const DEBUG: bool = false;
 
 #[derive(Debug,Clone)]
@@ -12,10 +14,16 @@ pub enum Value {
   Int(i32),
   Uint(u32),
   Vec4([f32; 4]),
+  UVec4([u32; 4]),
   UVec3([u32; 3]),
+  UVec2([u32; 2]),
+  IVec2([i32; 2]),
   Float(f32),
   Bool(bool),
   Void,
+
+  UImage2DUnit(usize),
+  UImage2D(Arc<gl::Texture>),
 
   Buffer(String, *mut u8, Option<u32>),
   Barrier(Arc<Barrier>),
@@ -97,9 +105,11 @@ unsafe impl Send for Value {}
 pub enum BuiltinFunc {
   Vec4Float4,
   UintUint,
+  IVec2UVec2,
   MemoryBarrierBuffer,
   Barrier,
   AtomicAddUint,
+  ImageLoadU2D,
 }
 
 impl BuiltinFunc {
@@ -119,6 +129,27 @@ impl BuiltinFunc {
       },
       BuiltinFunc::UintUint => {
         vars.get(&"a".to_string()).clone()
+      },
+      BuiltinFunc::IVec2UVec2 => {
+        if let &UVec2(ref v) = vars.get(&"a".to_string()) {
+          IVec2([v[0] as i32, v[1] as i32])
+        } else { unreachable!() }
+      },
+      BuiltinFunc::ImageLoadU2D => {
+        if let (&UImage2D(ref i),
+                &IVec2(ref t))
+          = (vars.get(&"a".to_string()),
+             vars.get(&"b".to_string())) {
+
+            let (x, y) = (t[0] as usize, t[1] as usize);
+            let texel = y * i.width + x;
+
+            let p = i.buffer.as_ptr() as *const u32;
+
+            let r = unsafe{ *p.offset(texel as isize) };
+
+            UVec4([r, 0, 0, 1])
+          } else { unreachable!() }
       },
       BuiltinFunc::MemoryBarrierBuffer => { Value::Void },
       BuiltinFunc::Barrier => {
@@ -148,9 +179,13 @@ impl BuiltinFunc {
     let mut funcs = HashMap::new();
 
     let vec4 = (vec![], (TypeSpecifierNonArray::Vec4, vec![]));
+    let uvec4 = (vec![], (TypeSpecifierNonArray::UVec4, vec![]));
+    let uvec2 = (vec![], (TypeSpecifierNonArray::UVec2, vec![]));
+    let ivec2 = (vec![], (TypeSpecifierNonArray::IVec2, vec![]));
     let uint = (vec![], (TypeSpecifierNonArray::Uint, vec![]));
     let uint_inout = (vec![TypeQualifier::Storage(StorageQualifier::Inout)], (TypeSpecifierNonArray::Uint, vec![]));
     let float_ = (vec![], (TypeSpecifierNonArray::Float, vec![]));
+    let uimage2d = (vec![], (TypeSpecifierNonArray::UImage2D, vec![]));
     let void = (vec![], (TypeSpecifierNonArray::Void, vec![]));
 
     let vec4_float4 = FunctionPrototype{
@@ -172,6 +207,14 @@ impl BuiltinFunc {
       ],
     };
 
+    let ivec2_uvec2 = FunctionPrototype{
+      typ: ivec2.clone(),
+      name: "ivec2".to_string(),
+      params: vec![
+        (uvec2.clone(), Some(("a".to_string(), vec![]))),
+      ],
+    };
+
     let memory_barrier_buffer = FunctionPrototype{
       typ: void.clone(),
       name: "memoryBarrierBuffer".to_string(),
@@ -185,6 +228,15 @@ impl BuiltinFunc {
     };
 
 
+    let imageload_u2d = FunctionPrototype{
+      typ: uvec4.clone(),
+      name: "imageLoad".to_string(),
+      params: vec![
+        (uimage2d.clone(), Some(("a".to_string(), vec![]))),
+        (ivec2.clone(), Some(("b".to_string(), vec![]))),
+      ],
+    };
+
     let atomic_add_uint = FunctionPrototype{
       typ: uint.clone(),
       name: "atomicAdd".to_string(),
@@ -196,9 +248,11 @@ impl BuiltinFunc {
 
     funcs.insert("vec4".to_string(), vec![(vec4_float4, Statement::Builtin(BuiltinFunc::Vec4Float4))]);
     funcs.insert("uint".to_string(), vec![(uint_uint, Statement::Builtin(BuiltinFunc::UintUint))]);
+    funcs.insert("ivec2".to_string(), vec![(ivec2_uvec2, Statement::Builtin(BuiltinFunc::IVec2UVec2))]);
     funcs.insert("memoryBarrierBuffer".to_string(), vec![(memory_barrier_buffer, Statement::Builtin(BuiltinFunc::MemoryBarrierBuffer))]);
     funcs.insert("barrier".to_string(), vec![(barrier, Statement::Builtin(BuiltinFunc::Barrier))]);
     funcs.insert("atomicAdd".to_string(), vec![(atomic_add_uint, Statement::Builtin(BuiltinFunc::AtomicAddUint))]);
+    funcs.insert("imageLoad".to_string(), vec![(imageload_u2d, Statement::Builtin(BuiltinFunc::ImageLoadU2D))]);
 
     funcs
   }
@@ -326,6 +380,9 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
           match (a.get(), &((p.0).1).0) {
             (Value::Float(_), &TypeSpecifierNonArray::Float) => true,
             (Value::Uint(_), &TypeSpecifierNonArray::Uint) => true,
+            (Value::UVec2(_), &TypeSpecifierNonArray::UVec2) => true,
+            (Value::IVec2(_), &TypeSpecifierNonArray::IVec2) => true,
+            (Value::UImage2D(_), &TypeSpecifierNonArray::UImage2D) => true,
             _ => false,
           }
         })
@@ -473,6 +530,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             &super::Interface::ShaderStorageBlock(ref info)
               | &super::Interface::UniformBlock(ref info)
               => if info.name == typ { Some(info) } else { None },
+            &super::Interface::Uniform(_) => None,
             x => unimplemented!("{:?}", x),
           }).next().unwrap();
 
@@ -491,6 +549,13 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             "x" => Value::Uint(v[0]),
             "y" => Value::Uint(v[1]),
             "z" => Value::Uint(v[2]),
+            "xy" => Value::UVec2([v[0], v[1]]),
+            x => unimplemented!("{}", x),
+          }
+        },
+        Value::UVec4(v) => {
+          match field.as_ref() {
+            "x" => Value::Uint(v[0]),
             x => unimplemented!("{}", x),
           }
         },

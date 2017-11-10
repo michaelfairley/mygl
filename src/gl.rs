@@ -6,7 +6,7 @@ use std::ptr;
 use std::ffi::{CStr};
 use std::collections::HashMap;
 use std::sync::{Arc,Barrier};
-use std::cell::{RefCell,Ref};
+use std::cell::{RefCell,Ref,Cell};
 use std::mem;
 
 use egl::{self,Config,Surface};
@@ -17,6 +17,8 @@ pub type ColorMask = (bool, bool, bool, bool);
 
 const MAX_SHADER_STORAGE_BUFFER_BINDINGS: usize = 4;
 const MAX_UNIFORM_BUFFER_BINDINGS: usize = 72;
+const MAX_IMAGE_UNITS: usize = 8;
+
 
 #[derive(Debug)]
 pub struct Context {
@@ -68,6 +70,10 @@ pub struct Context {
   programs: HashMap<GLuint, Program>,
   shaders: HashMap<GLuint, Arc<Shader>>,
   program: GLuint,
+
+  textures: HashMap<GLuint, Option<Arc<Texture>>>,
+  texture_2d: GLuint,
+  images: [GLuint; MAX_IMAGE_UNITS],
 
 
   depth_range: (GLfloat, GLfloat),
@@ -140,6 +146,10 @@ impl Context {
       shaders: HashMap::new(),
       program: 0,
 
+      textures: HashMap::new(),
+      texture_2d: 0,
+      images: [0; MAX_IMAGE_UNITS],
+
       depth_range: (0.0, 1.0),
       line_width: 1.0,
       primitive_restart_fixed_index: false,
@@ -160,20 +170,20 @@ impl Context {
     self.tx.send(Command::SetSurfaces(unsafe{ draw.as_mut() }, unsafe{ read.as_mut() })).unwrap();
   }
 
-  fn buffer_target(&self, target: GLenum) -> &GLuint {
+  fn buffer_target(&self, target: GLenum) -> GLuint {
     match target {
-      GL_ARRAY_BUFFER => &self.array_buffer,
-      GL_ELEMENT_ARRAY_BUFFER => &self.element_array_buffer,
-      GL_PIXEL_PACK_BUFFER => &self.pixel_pack_buffer,
-      GL_PIXEL_UNPACK_BUFFER => &self.pixel_unpack_buffer,
-      GL_UNIFORM_BUFFER => &self.uniform_buffer,
-      GL_TRANSFORM_FEEDBACK_BUFFER => &self.transform_feedback_buffer,
-      GL_DISPATCH_INDIRECT_BUFFER => &self.dispatch_indirect_buffer,
-      GL_COPY_READ_BUFFER => &self.copy_read_buffer,
-      GL_COPY_WRITE_BUFFER => &self.copy_write_buffer,
-      GL_DRAW_INDIRECT_BUFFER => &self.draw_indirect_buffer,
-      GL_ATOMIC_COUNTER_BUFFER => &self.atomic_counter_buffer,
-      GL_SHADER_STORAGE_BUFFER => &self.shader_storage_buffer,
+      GL_ARRAY_BUFFER => self.array_buffer,
+      GL_ELEMENT_ARRAY_BUFFER => self.element_array_buffer,
+      GL_PIXEL_PACK_BUFFER => self.pixel_pack_buffer,
+      GL_PIXEL_UNPACK_BUFFER => self.pixel_unpack_buffer,
+      GL_UNIFORM_BUFFER => self.uniform_buffer,
+      GL_TRANSFORM_FEEDBACK_BUFFER => self.transform_feedback_buffer,
+      GL_DISPATCH_INDIRECT_BUFFER => self.dispatch_indirect_buffer,
+      GL_COPY_READ_BUFFER => self.copy_read_buffer,
+      GL_COPY_WRITE_BUFFER => self.copy_write_buffer,
+      GL_DRAW_INDIRECT_BUFFER => self.draw_indirect_buffer,
+      GL_ATOMIC_COUNTER_BUFFER => self.atomic_counter_buffer,
+      GL_SHADER_STORAGE_BUFFER => self.shader_storage_buffer,
       x => unimplemented!("{:x}", x),
     }
   }
@@ -200,6 +210,20 @@ impl Context {
     match target {
       GL_SHADER_STORAGE_BUFFER => &mut self.indexed_shader_storage_buffer[i],
       GL_UNIFORM_BUFFER => &mut self.indexed_uniform_buffer[i],
+      x => unimplemented!("{:x}", x),
+    }
+  }
+
+  fn texture_target(&self, target: GLenum) -> GLuint {
+    match target {
+      GL_TEXTURE_2D => self.texture_2d,
+      x => unimplemented!("{:x}", x),
+    }
+  }
+
+  fn texture_target_mut(&mut self, target: GLenum) -> &mut GLuint {
+    match target {
+      GL_TEXTURE_2D => &mut self.texture_2d,
       x => unimplemented!("{:x}", x),
     }
   }
@@ -310,7 +334,7 @@ impl Program {
 }
 
 #[derive(Debug)]
-pub struct Shader{
+pub struct Shader {
   type_: GLenum,
   source: RefCell<Vec<u8>>,
   compiled: RefCell<Option<Arc<glsl::Shader>>>,
@@ -326,6 +350,16 @@ impl Shader {
       info_log: RefCell::new(String::new()),
     }
   }
+}
+
+#[derive(Debug)]
+pub struct Texture {
+  pub width: usize,
+  pub height: usize,
+  pub buffer: Vec<u8>,
+
+  mag_filter: Cell<GLenum>,
+  min_filter: Cell<GLenum>,
 }
 
 
@@ -1467,10 +1501,24 @@ pub extern "C" fn glBindFramebuffer(target: GLenum, framebuffer: GLuint) -> () {
   assert_eq!(framebuffer, 0);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBindImageTexture(unit: GLuint, texture: GLuint, level: GLint, layered: GLboolean, layer: GLint, access: GLenum, format: GLenum) -> () {
-  unimplemented!()
+pub extern "C" fn glBindImageTexture(
+  unit: GLuint,
+  texture: GLuint,
+  level: GLint,
+  layered: GLboolean,
+  layer: GLint,
+  access: GLenum,
+  format: GLenum,
+) -> () {
+  assert_eq!(layered, GL_FALSE);
+  assert_eq!(layer, 0);
+  assert_eq!(level, 0);
+  assert_eq!(access, GL_READ_ONLY);
+  assert_eq!(format, GL_R32UI);
+
+  let current = current();
+  current.images[unit as usize] = texture;
 }
 
 #[no_mangle]
@@ -1490,10 +1538,13 @@ pub extern "C" fn glBindSampler(unit: GLuint, sampler: GLuint) -> () {
   assert_eq!(sampler, 0);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBindTexture(target: GLenum, texture: GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glBindTexture(
+  target: GLenum,
+  texture: GLuint,
+) -> () {
+  let current = current();
+  *current.texture_target_mut(target) = texture;
 }
 
 #[allow(unused_variables)]
@@ -1595,7 +1646,7 @@ pub extern "C" fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const c_
     Vec::from(slice)
   };
 
-  let name = *current.buffer_target(target);
+  let name = current.buffer_target(target);
   current.buffers.insert(name, Some(vec));
 }
 
@@ -1871,7 +1922,12 @@ pub extern "C" fn glDeleteSync(sync: GLsync) -> () {
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDeleteTextures(n: GLsizei, textures: *const GLuint) -> () {
-  unimplemented!()
+  let current = current();
+
+  let textures = unsafe{ ::std::slice::from_raw_parts(textures, n as usize) };
+  for name in textures {
+    current.textures.remove(&name);
+  }
 }
 
 #[allow(unused_variables)]
@@ -1985,7 +2041,17 @@ pub extern "C" fn glDispatchCompute(
       &Interface::Uniform(ref info) => {
         let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
         let val = &program.uniform_values[index];
-        init_vars.insert(info.name.clone(), val.clone());
+        let val = match val {
+          &Value::UImage2DUnit(unit) => {
+            let unit_target = current.images[unit];
+            let texture = current.textures.get(&unit_target).expect("No texture for unit");
+            let texture = texture.as_ref().expect("No texture in slot");
+
+            Value::UImage2D(Arc::clone(texture))
+          }
+          x => x.clone(),
+        };
+        init_vars.insert(info.name.clone(), val);
       },
       &Interface::Shared(ref info) => {
         shared.push(info.clone());
@@ -2076,6 +2142,10 @@ pub extern "C" fn glDispatchCompute(
       }
     }
   }
+
+  // println!("{:?}", current.buffers);
+  // println!("{:?}", current.textures);
+
 }
 
 #[allow(unused_variables)]
@@ -2286,10 +2356,19 @@ pub extern "C" fn glGenSamplers(count: GLsizei, samplers: *mut GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGenTextures(n: GLsizei, textures: *mut GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glGenTextures(
+  n: GLsizei,
+  textures: *mut GLuint,
+) -> () {
+  let current = current();
+
+  let mut search = 1;
+  for i in 0..n {
+    while current.textures.contains_key(&search) { search += 1 };
+    current.textures.insert(search, None );
+    unsafe{ ptr::write(textures.offset(i as isize), search); }
+  }
 }
 
 #[allow(unused_variables)]
@@ -3096,6 +3175,7 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
 
           let val = match info.typ {
             GL_UNSIGNED_INT => glsl::interpret::Value::Uint(0),
+            GL_UNSIGNED_INT_IMAGE_2D => glsl::interpret::Value::UImage2DUnit(info.binding),
             x => unimplemented!("{:x}", x),
           };
           uniform_values.push(val);
@@ -3116,7 +3196,7 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
 pub extern "C" fn glMapBufferRange(target: GLenum, offset: GLintptr, _length: GLsizeiptr, _access: GLbitfield) -> *mut c_void {
   let current = current();
 
-  let target_name = *current.buffer_target(target);
+  let target_name = current.buffer_target(target);
   let mut buffer = current.buffers.get_mut(&target_name);
   let buffer = buffer.as_mut().unwrap().as_mut().unwrap();
   let range = &mut buffer[(offset as usize)..];
@@ -3657,10 +3737,21 @@ pub extern "C" fn glTexParameterfv(target: GLenum, pname: GLenum, params: *const
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glTexParameteri(target: GLenum, pname: GLenum, param: GLint) -> () {
-  unimplemented!()
+pub extern "C" fn glTexParameteri(
+  target: GLenum,
+  pname: GLenum,
+  param: GLint,
+) -> () {
+  let current = current();
+
+  let texture = current.textures.get(&current.texture_target(target)).unwrap().as_ref().unwrap();
+
+  match pname {
+    GL_TEXTURE_MAG_FILTER => texture.mag_filter.set(param as GLenum),
+    GL_TEXTURE_MIN_FILTER => texture.min_filter.set(param as GLenum),
+    x => unimplemented!("{:x}", x),
+  }
 }
 
 #[allow(unused_variables)]
@@ -3669,10 +3760,36 @@ pub extern "C" fn glTexParameteriv(target: GLenum, pname: GLenum, params: *const
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glTexStorage2D(target: GLenum, levels: GLsizei, internalformat: GLenum, width: GLsizei, height: GLsizei) -> () {
-  unimplemented!()
+pub extern "C" fn glTexStorage2D(
+  target: GLenum,
+  levels: GLsizei,
+  internalformat: GLenum,
+  width: GLsizei,
+  height: GLsizei,
+) -> () {
+  let current = current();
+
+  assert_eq!(levels, 1);
+
+  let width = width as usize;
+  let height = height as usize;
+  let size = width * height;
+  let byte_size = size * format_size_of(internalformat);
+
+  let buffer = vec![0u8; byte_size];
+
+  let texture = Texture{
+    width: width,
+    height: height,
+    buffer: buffer,
+
+    mag_filter: Cell::new(GL_LINEAR),
+    min_filter: Cell::new(GL_NEAREST_MIPMAP_LINEAR),
+  };
+
+  let index = current.texture_target(target);
+  current.textures.insert(index, Some(Arc::new(texture)));
 }
 
 #[allow(unused_variables)]
@@ -3693,10 +3810,45 @@ pub extern "C" fn glTexStorage3DMultisample(target: GLenum, samples: GLsizei, in
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glTexSubImage2D(target: GLenum, level: GLint, xoffset: GLint, yoffset: GLint, width: GLsizei, height: GLsizei, format: GLenum, type_: GLenum, pixels: *const c_void) -> () {
-  unimplemented!()
+pub extern "C" fn glTexSubImage2D(
+  target: GLenum,
+  level: GLint,
+  xoffset: GLint,
+  yoffset: GLint,
+  width: GLsizei,
+  height: GLsizei,
+  format: GLenum,
+  type_: GLenum,
+  pixels: *const c_void,
+) -> () {
+  let current = current();
+
+  let index = current.texture_target(target);
+  let texture = current.textures.get(&index).unwrap().as_ref().unwrap();
+
+  assert_eq!(format, GL_RED_INTEGER);
+  assert_eq!(type_, GL_UNSIGNED_INT);
+  assert_eq!(level, 0);
+
+  let width = width as usize;
+  let height = height as usize;
+  let xoffset = xoffset as usize;
+  let yoffset = yoffset as usize;
+
+  let src = pixels as *const u8;
+  let dst = texture.buffer.as_ptr() as *mut u8;
+
+  for i in 0..(width*height) {
+    let x = i % width + xoffset;
+    let y = i / width + yoffset;
+
+    let target_index = y * texture.width + x;
+
+    unsafe{ ptr::copy(src.offset(i as isize * 4),
+                      dst.offset(target_index as isize * 4),
+                      4); }
+  }
 }
 
 #[allow(unused_variables)]
@@ -4105,6 +4257,13 @@ unsafe fn write_string(src: &str,
 fn size_of(typ: GLenum) -> usize {
   match typ {
     GL_UNSIGNED_INT => mem::size_of::<GLuint>(),
+    x => unimplemented!("{:x}", x),
+  }
+}
+
+fn format_size_of(typ: GLenum) -> usize {
+  match typ {
+    GL_R32UI => 32/8,
     x => unimplemented!("{:x}", x),
   }
 }

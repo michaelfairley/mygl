@@ -317,10 +317,11 @@ impl<'a> Parser<'a> {
       Token::Int => Some("int".to_string()),
       Token::Float => Some("float".to_string()),
       Token::Vec4 => Some("vec4".to_string()),
+      Token::IVec2 => Some("ivec2".to_string()),
       _ => None,
     };
 
-    if let Some(name) = possible_function_name {
+    let mut expr = if let Some(name) = possible_function_name {
       if self.peekn(1)? == &Token::OpenParen {
         self.advance();
         self.advance();
@@ -339,11 +340,10 @@ impl<'a> Parser<'a> {
           self.must_consume(&Token::CloseParen)?;
         }
 
-        return Ok(Expression::FunctionCall(name, arguments));
-      }
-    }
+        Expression::FunctionCall(name, arguments)
+      } else { self.parse_primary_expression()? }
+    } else { self.parse_primary_expression()? };
 
-    let mut expr = self.parse_primary_expression()?;
     loop {
       if self.consume(&Token::OpenBracket)? {
         let inner = self.parse_expression()?;
@@ -422,6 +422,8 @@ impl<'a> Parser<'a> {
       TypeSpecifierNonArray::Float
     } else if self.consume(&Token::Vec4)? {
       TypeSpecifierNonArray::Vec4
+    } else if self.consume(&Token::UImage2D)? {
+      TypeSpecifierNonArray::UImage2D
     } else { self.unexpected()? };
 
     Ok((typ, self.parse_array_specifier()?))
@@ -470,6 +472,16 @@ impl<'a> Parser<'a> {
         result.push(TypeQualifier::Storage(StorageQualifier::Coherent));
       } else if self.consume(&Token::Shared)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Shared));
+      } else if self.consume(&Token::Readonly)? {
+        result.push(TypeQualifier::Storage(StorageQualifier::Readonly));
+      } else if self.consume(&Token::Writeonly)? {
+        result.push(TypeQualifier::Storage(StorageQualifier::Writeonly));
+      } else if self.consume(&Token::HighPrecision)? {
+        result.push(TypeQualifier::Precision(PrecisionQualifier::High));
+      } else if self.consume(&Token::MediumPrecision)? {
+        result.push(TypeQualifier::Precision(PrecisionQualifier::Medium));
+      } else if self.consume(&Token::LowPrecision)? {
+        result.push(TypeQualifier::Precision(PrecisionQualifier::Low));
       } else {
         return Ok(result)
       }
@@ -593,7 +605,15 @@ pub type FullySpecifiedType = (Vec<TypeQualifier>, TypeSpecifier);
 pub enum TypeQualifier {
   Layout(LayoutQualifier),
   Storage(StorageQualifier),
+  Precision(PrecisionQualifier),
   // TODO
+}
+
+#[derive(Debug,PartialEq,Clone)]
+pub enum PrecisionQualifier {
+  High,
+  Medium,
+  Low,
 }
 
 #[derive(Debug,PartialEq,Clone)]
@@ -605,6 +625,8 @@ pub enum StorageQualifier {
   Uniform,
   Coherent,
   Shared,
+  Readonly,
+  Writeonly,
   // TODO
 }
 
@@ -614,10 +636,14 @@ pub type TypeSpecifier = (TypeSpecifierNonArray, ArraySpecifier);
 pub enum TypeSpecifierNonArray {
   Void,
   Uint,
+  UVec4,
   UVec3,
+  UVec2,
+  IVec2,
   Float,
   Vec4,
   Int,
+  UImage2D,
   // TODO
 }
 

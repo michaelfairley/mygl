@@ -53,6 +53,7 @@ pub struct BlockInfo {
 pub struct UniformInfo {
   pub name: String,
   pub typ: GLuint,
+  pub binding: usize,
 }
 
 #[derive(Debug,Clone)]
@@ -139,21 +140,31 @@ impl Shader {
         } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
           interfaces.push(Interface::UniformBlock(info));
         } else { unimplemented!(); }
-      } else if let &ExternalDeclaration::Variable(ref typ, ref name, ref array_spec) = decl {
-        if typ.0.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
-          let typ = match (typ.1).0 {
+      } else if let &ExternalDeclaration::Variable((ref quals, ref typespec), ref name, ref array_spec) = decl {
+        if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
+          let typ = match typespec.0 {
             TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
+            TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
             ref x => unimplemented!("{:?}", x),
           };
 
+          let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
+            lqs.iter().filter_map(|lq| if let &LayoutQualifierId::Int(ref name, val) = lq {
+              if name == "binding" { Some(val) } else { None }
+            } else { None }).next()
+          } else { None }).next().unwrap_or(0);
+
+
           let info = UniformInfo{
             name: name.clone(),
+            binding: binding as usize,
             typ: typ,
           };
           interfaces.push(Interface::Uniform(info));
-        } else if typ.0.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Shared)) {
-          let typ = match (typ.1).0 {
+        } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Shared)) {
+          let typ = match typespec.0 {
             TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
+            TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
             ref x => unimplemented!("{:?}", x),
           };
 
