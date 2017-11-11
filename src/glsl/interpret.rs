@@ -103,9 +103,6 @@ unsafe impl Send for Value {}
 
 #[derive(Debug,PartialEq,Clone,Copy)]
 pub enum BuiltinFunc {
-  Vec4Float4,
-  UintUint,
-  IVec2UVec2,
   MemoryBarrierBuffer,
   Barrier,
   AtomicAddUint,
@@ -117,24 +114,6 @@ impl BuiltinFunc {
     use self::Value::*;
 
     match *self {
-      BuiltinFunc::Vec4Float4 => {
-        if let (&Float(a), &Float(b), &Float(c), &Float(d)) = (
-          vars.get(&"a".to_string()),
-          vars.get(&"b".to_string()),
-          vars.get(&"c".to_string()),
-          vars.get(&"d".to_string()),
-        ) {
-          Vec4([a, b, c, d])
-        } else { unreachable!() }
-      },
-      BuiltinFunc::UintUint => {
-        vars.get(&"a".to_string()).clone()
-      },
-      BuiltinFunc::IVec2UVec2 => {
-        if let &UVec2(ref v) = vars.get(&"a".to_string()) {
-          IVec2([v[0] as i32, v[1] as i32])
-        } else { unreachable!() }
-      },
       BuiltinFunc::ImageLoadU2D => {
         if let (&UImage2D(ref i),
                 &IVec2(ref t))
@@ -175,57 +154,30 @@ impl BuiltinFunc {
     }
   }
 
+  // Do a lazy static thing
   pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
     let mut funcs = HashMap::new();
 
-    let vec4 = (vec![], (TypeSpecifierNonArray::Vec4, vec![]));
     let uvec4 = (vec![], (TypeSpecifierNonArray::UVec4, vec![]));
-    let uvec2 = (vec![], (TypeSpecifierNonArray::UVec2, vec![]));
     let ivec2 = (vec![], (TypeSpecifierNonArray::IVec2, vec![]));
     let uint = (vec![], (TypeSpecifierNonArray::Uint, vec![]));
     let uint_inout = (vec![TypeQualifier::Storage(StorageQualifier::Inout)], (TypeSpecifierNonArray::Uint, vec![]));
-    let float_ = (vec![], (TypeSpecifierNonArray::Float, vec![]));
     let uimage2d = (vec![], (TypeSpecifierNonArray::UImage2D, vec![]));
     let void = (vec![], (TypeSpecifierNonArray::Void, vec![]));
-
-    let vec4_float4 = FunctionPrototype{
-      typ: vec4,
-      name: "vec4".to_string(),
-      params: vec![
-        (float_.clone(), Some(("a".to_string(), vec![]))),
-        (float_.clone(), Some(("b".to_string(), vec![]))),
-        (float_.clone(), Some(("c".to_string(), vec![]))),
-        (float_.clone(), Some(("d".to_string(), vec![]))),
-      ],
-    };
-
-    let uint_uint = FunctionPrototype{
-      typ: uint.clone(),
-      name: "uint".to_string(),
-      params: vec![
-        (uint.clone(), Some(("a".to_string(), vec![]))),
-      ],
-    };
-
-    let ivec2_uvec2 = FunctionPrototype{
-      typ: ivec2.clone(),
-      name: "ivec2".to_string(),
-      params: vec![
-        (uvec2.clone(), Some(("a".to_string(), vec![]))),
-      ],
-    };
 
     let memory_barrier_buffer = FunctionPrototype{
       typ: void.clone(),
       name: "memoryBarrierBuffer".to_string(),
       params: vec![],
     };
+    funcs.insert("memoryBarrierBuffer".to_string(), vec![(memory_barrier_buffer, Statement::Builtin(BuiltinFunc::MemoryBarrierBuffer))]);
 
     let barrier = FunctionPrototype{
       typ: void.clone(),
       name: "barrier".to_string(),
       params: vec![],
     };
+    funcs.insert("barrier".to_string(), vec![(barrier, Statement::Builtin(BuiltinFunc::Barrier))]);
 
 
     let imageload_u2d = FunctionPrototype{
@@ -236,6 +188,7 @@ impl BuiltinFunc {
         (ivec2.clone(), Some(("b".to_string(), vec![]))),
       ],
     };
+    funcs.insert("imageLoad".to_string(), vec![(imageload_u2d, Statement::Builtin(BuiltinFunc::ImageLoadU2D))]);
 
     let atomic_add_uint = FunctionPrototype{
       typ: uint.clone(),
@@ -245,14 +198,7 @@ impl BuiltinFunc {
         (uint.clone(), Some(("data".to_string(), vec![]))),
       ],
     };
-
-    funcs.insert("vec4".to_string(), vec![(vec4_float4, Statement::Builtin(BuiltinFunc::Vec4Float4))]);
-    funcs.insert("uint".to_string(), vec![(uint_uint, Statement::Builtin(BuiltinFunc::UintUint))]);
-    funcs.insert("ivec2".to_string(), vec![(ivec2_uvec2, Statement::Builtin(BuiltinFunc::IVec2UVec2))]);
-    funcs.insert("memoryBarrierBuffer".to_string(), vec![(memory_barrier_buffer, Statement::Builtin(BuiltinFunc::MemoryBarrierBuffer))]);
-    funcs.insert("barrier".to_string(), vec![(barrier, Statement::Builtin(BuiltinFunc::Barrier))]);
     funcs.insert("atomicAdd".to_string(), vec![(atomic_add_uint, Statement::Builtin(BuiltinFunc::AtomicAddUint))]);
-    funcs.insert("imageLoad".to_string(), vec![(imageload_u2d, Statement::Builtin(BuiltinFunc::ImageLoadU2D))]);
 
     funcs
   }
@@ -374,6 +320,17 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
     },
     Expression::FunctionCall(ref name, ref args) => {
       let args = args.iter().map(|a| eval(a, vars, shader)).collect::<Vec<_>>();
+
+      if name == "uint"
+        || name == "int"
+        || name == "float"
+        || name == "vec4"
+        || name == "ivec2"
+        || name == "uvec4"
+      {
+        return convert(name, &args)
+      }
+
       let fs = shader.functions.get(name).expect(&format!("Didn't find function '{}'", name));
       let &(ref func, ref body) = fs.iter().find(|&&(ref f,_)| {
         args.len() == f.params.len() && args.iter().zip(f.params.iter()).all(|(a,p)| {
@@ -583,6 +540,107 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       }
     },
     ref x => unimplemented!("{:?}", x),
+  }
+}
+
+fn convert(name: &str, args: &[Value]) -> Value {
+  let (unit, num) = match name {
+    "uint" => ("uint", 1),
+    "uvec2" => ("uint", 2),
+    "uvec3" => ("uint", 3),
+    "uvec4" => ("uint", 4),
+    "int" => ("int", 1),
+    "ivec2" => ("int", 2),
+    "ivec3" => ("int", 3),
+    "ivec4" => ("int", 4),
+    "float" => ("float", 1),
+    "vec2" => ("float", 2),
+    "vec3" => ("float", 3),
+    "vec4" => ("float", 4),
+    x => unimplemented!("{}", x),
+  };
+
+  match unit {
+    "uint" => {
+      let mut vals = args.iter().map(Value::get).flat_map(|v| into_uint(&v));
+
+      let a = vals.next().unwrap_or(0);
+      let b = vals.next().unwrap_or(0);
+      let c = vals.next().unwrap_or(0);
+      let d = vals.next().unwrap_or(1);
+
+      match num {
+        1 => Value::Uint(a),
+        2 => Value::UVec2([a, b]),
+        3 => Value::UVec3([a, b, c]),
+        4 => Value::UVec4([a, b, c, d]),
+        x => unimplemented!("{}", x),
+      }
+    },
+    "int" => {
+      let mut vals = args.iter().map(Value::get).flat_map(|v| into_int(&v));
+
+      let a = vals.next().unwrap_or(0);
+      let b = vals.next().unwrap_or(0);
+      let _c = vals.next().unwrap_or(0);
+      let _d = vals.next().unwrap_or(1);
+
+      match num {
+        1 => Value::Int(a),
+        2 => Value::IVec2([a, b]),
+        // 3 => Value::IVec3([a, b, c]),
+        // 4 => Value::IVec4([a, b, c, d]),
+        x => unimplemented!("{}", x),
+      }
+    },
+    "float" => {
+      let mut vals = args.iter().map(Value::get).flat_map(|v| into_float(&v));
+
+      let a = vals.next().unwrap_or(0.0);
+      let b = vals.next().unwrap_or(0.0);
+      let c = vals.next().unwrap_or(0.0);
+      let d = vals.next().unwrap_or(1.0);
+
+      match num {
+        1 => Value::Float(a),
+        // 2 => Value::Vec2([a, b]),
+        // 3 => Value::Vec3([a, b, c]),
+        4 => Value::Vec4([a, b, c, d]),
+        x => unimplemented!("{}", x),
+      }
+    },
+    x => unimplemented!("{}", x),
+  }
+}
+
+fn into_uint(val: &Value) -> Vec<u32> {
+  match val {
+    &Value::Uint(u) => vec![u as u32],
+    &Value::IVec2(ref v) => vec![v[0] as u32, v[1] as u32],
+    &Value::Float(a) => vec![a as u32],
+    &Value::Int(a) => vec![a as u32],
+    x => unimplemented!("{:?}", x),
+  }
+}
+
+fn into_int(val: &Value) -> Vec<i32> {
+  match val {
+    &Value::Uint(u) => vec![u as i32],
+    &Value::IVec2(ref v) => vec![v[0] as i32, v[1] as i32],
+    &Value::UVec2(ref v) => vec![v[0] as i32, v[1] as i32],
+    &Value::Float(a) => vec![a as i32],
+    &Value::Int(a) => vec![a as i32],
+    x => unimplemented!("{:?}", x),
+  }
+}
+
+fn into_float(val: &Value) -> Vec<f32> {
+  match val {
+    &Value::Uint(u) => vec![u as f32],
+    &Value::IVec2(ref v) => vec![v[0] as f32, v[1] as f32],
+    &Value::Float(a) => vec![a as f32],
+    &Value::Int(a) => vec![a as f32],
+    x => unimplemented!("{:?}", x),
   }
 }
 
