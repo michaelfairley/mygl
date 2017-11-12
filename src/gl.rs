@@ -2157,8 +2157,7 @@ pub extern "C" fn glDispatchCompute(
                 let lii = lz * work_group_size[0] * work_group_size[1]
                   + ly * work_group_size[0]
                   + lx;
-
-                vars.insert("gl_LocalInvocationIndex;".to_string(), Value::Uint(lii));
+                vars.insert("gl_LocalInvocationIndex".to_string(), Value::Uint(lii));
 
                 for (ref name, ref data) in &init_vars {
                   vars.insert((*name).clone(), (*data).clone());

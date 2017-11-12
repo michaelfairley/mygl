@@ -153,7 +153,7 @@ impl<'a> Parser<'a> {
       }
 
       return Ok(Statement::Compound(statements));
-    } if self.consume(&Token::For)? {
+    } else if self.consume(&Token::For)? {
       self.must_consume(&Token::OpenParen)?;
 
       let init = self.parse_statement()?;
@@ -170,6 +170,20 @@ impl<'a> Parser<'a> {
       let body = self.parse_statement()?;
 
       return Ok(Statement::For(Box::new(init), condition, iter, Box::new(body)));
+    } else if self.consume(&Token::If)? {
+      self.must_consume(&Token::OpenParen)?;
+
+      let condition = self.parse_expression()?;
+
+      self.must_consume(&Token::CloseParen)?;
+
+      let body = self.parse_statement()?;
+
+      let else_body = if self.consume(&Token::Else)? {
+        Some(self.parse_statement()?)
+      } else { None };
+
+      return Ok(Statement::If(condition, Box::new(body), Box::new(else_body)));
     }
 
 
@@ -242,11 +256,21 @@ impl<'a> Parser<'a> {
     self.parse_equality_expression()
   }
   fn parse_equality_expression(&mut self) -> Result<Expression> {
-    // TODO
-    self.parse_relational_expression()
+    let mut a = self.parse_relational_expression()?;
+
+    loop {
+      if self.consume(&Token::EqOp)? {
+        let b = self.parse_equality_expression()?;
+        a = Expression::Comparison(Box::new(a), Comparison::Equal, Box::new(b))
+      } else if self.consume(&Token::NeOp)? {
+        let b = self.parse_equality_expression()?;
+        a = Expression::Comparison(Box::new(a), Comparison::NotEqual, Box::new(b))
+      } else { break; }
+    }
+
+    Ok(a)
   }
   fn parse_relational_expression(&mut self) -> Result<Expression> {
-    // TODO
     let a = self.parse_shift_expression()?;
 
     if self.consume(&Token::OpenAngle)? {
@@ -655,6 +679,7 @@ pub enum Statement {
   For(Box<Statement>, Expression, Expression, Box<Statement>),
   Expression(Expression),
   Builtin(super::interpret::BuiltinFunc),
+  If(Expression, Box<Statement>, Box<Option<Statement>>),
 }
 
 #[derive(Debug,PartialEq,Clone)]

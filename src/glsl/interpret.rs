@@ -4,6 +4,7 @@ use super::Shader;
 use std::collections::HashMap;
 use std::mem;
 use std::sync::{Barrier,Arc};
+use std::ops::Deref;
 
 use gl;
 
@@ -108,6 +109,7 @@ pub enum BuiltinFunc {
   AtomicAddUint,
   ImageLoadU2D,
   ImageStoreU2D,
+  ImageAtomicAddU2D,
 }
 
 impl BuiltinFunc {
@@ -125,7 +127,6 @@ impl BuiltinFunc {
             let texel = y * i.width + x;
 
             let p = i.buffer.as_ptr() as *const u32;
-
             let r = unsafe{ *p.offset(texel as isize) };
 
             UVec4([r, 0, 0, 1])
@@ -146,6 +147,26 @@ impl BuiltinFunc {
 
             unsafe{ *p.offset(texel as isize) = v[0] };
             Void
+          } else { unreachable!() }
+      },
+      BuiltinFunc::ImageAtomicAddU2D => {
+        use std::sync::atomic::{AtomicU32,Ordering};
+
+        if let (&UImage2D(ref i),
+                &IVec2(ref t),
+                &Uint(d))
+          = (vars.get(&"a".to_string()),
+             vars.get(&"b".to_string()),
+             vars.get(&"c".to_string())) {
+
+            let (x, y) = (t[0] as usize, t[1] as usize);
+            let texel = y * i.width + x;
+
+            let p = i.buffer.as_ptr() as *const AtomicU32;
+            let p = unsafe{ &*p.offset(texel as isize) };
+
+            let old = p.fetch_add(d, Ordering::AcqRel);
+            Value::Uint(old)
           } else { unreachable!() }
       },
       BuiltinFunc::MemoryBarrierBuffer => { Value::Void },
@@ -218,6 +239,17 @@ impl BuiltinFunc {
       ],
     };
     funcs.insert("imageStore".to_string(), vec![(imagestore_u2d, Statement::Builtin(BuiltinFunc::ImageStoreU2D))]);
+
+    let imageatomicadd_u2d = FunctionPrototype{
+      typ: uint.clone(),
+      name: "imageAtomicAdd".to_string(),
+      params: vec![
+        (uimage2d.clone(), Some(("a".to_string(), vec![]))),
+        (ivec2.clone(), Some(("b".to_string(), vec![]))),
+        (uint.clone(), Some(("c".to_string(), vec![]))),
+      ],
+    };
+    funcs.insert("imageAtomicAdd".to_string(), vec![(imageatomicadd_u2d, Statement::Builtin(BuiltinFunc::ImageAtomicAddU2D))]);
 
     let atomic_add_uint = FunctionPrototype{
       typ: uint.clone(),
@@ -314,6 +346,16 @@ pub fn execute(statement: &Statement, vars: &mut Vars, shader: &Shader) -> Optio
 
       vars.insert(name.clone(), value);
     },
+    &Statement::If(ref cond, ref body, ref else_body) => {
+      let cond_res = eval(cond, vars, shader).get();
+      let cond_res = if let Value::Bool(cond_res) = cond_res { cond_res } else { unreachable!() };
+
+      if cond_res {
+        return execute(body, vars, shader);
+      } else if let &Some(ref else_body) = else_body.deref() {
+        return execute(else_body, vars, shader);
+      }
+    }
   }
   None
 }

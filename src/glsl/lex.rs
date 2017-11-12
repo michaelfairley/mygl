@@ -444,7 +444,15 @@ pub(super) fn tokenize(source: &str, version: Version) -> Result<Vec<FullToken>>
       ')' => { l.advance(); Token::CloseParen },
       '{' => { l.advance(); Token::OpenBrace },
       '}' => { l.advance(); Token::CloseBrace },
-      '=' => { l.advance(); Token::Equal },
+      '=' => {
+        l.advance();
+        if l.peek() == Some('=') {
+          l.advance();
+          Token::EqOp
+        } else {
+          Token::Equal
+        }
+      },
       ';' => { l.advance(); Token::Semicolon },
       ',' => { l.advance(); Token::Comma },
       '[' => { l.advance(); Token::OpenBracket },
