@@ -1,11 +1,11 @@
- #![allow(non_snake_case)]
+#![allow(non_snake_case)]
 use std::os::raw::*;
 use std::sync::mpsc;
 use std::thread;
 use std::ptr;
 use std::ffi::{CStr};
 use std::collections::HashMap;
-use std::sync::{Arc,Barrier};
+use std::sync::{Arc,Barrier,RwLock};
 use std::cell::{RefCell,Ref,Cell};
 use std::mem;
 
@@ -74,6 +74,10 @@ pub struct Context {
   textures: HashMap<GLuint, Option<Arc<Texture>>>,
   texture_2d: GLuint,
   images: [GLuint; MAX_IMAGE_UNITS],
+
+  framebuffers: HashMap<GLuint, Option<Arc<RwLock<Framebuffer>>>>,
+  draw_framebuffer: GLuint,
+  read_framebuffer: GLuint,
 
 
   depth_range: (GLfloat, GLfloat),
@@ -149,6 +153,10 @@ impl Context {
       textures: HashMap::new(),
       texture_2d: 0,
       images: [0; MAX_IMAGE_UNITS],
+
+      framebuffers: HashMap::new(),
+      draw_framebuffer: 0,
+      read_framebuffer: 0,
 
       depth_range: (0.0, 1.0),
       line_width: 1.0,
@@ -362,6 +370,10 @@ pub struct Texture {
   min_filter: Cell<GLenum>,
 }
 
+#[derive(Debug)]
+pub struct Framebuffer {
+  color0: Option<Arc<Texture>>,
+}
 
 // Common types from OpenGL 1.1
 pub type GLenum = c_uint;
@@ -1495,10 +1507,28 @@ pub extern "C" fn glBindBufferRange(target: GLenum, index: GLuint, buffer: GLuin
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBindFramebuffer(target: GLenum, framebuffer: GLuint) -> () {
-  assert_eq!(framebuffer, 0);
+pub extern "C" fn glBindFramebuffer(
+  target: GLenum,
+  framebuffer: GLuint,
+) -> () {
+  let current = current();
+
+  if framebuffer != 0 && current.framebuffers[&framebuffer].is_none() {
+    current.framebuffers.insert(framebuffer, Some(Arc::new(RwLock::new(Framebuffer{
+      color0: None,
+    }))));
+  }
+
+  match target {
+    GL_DRAW_FRAMEBUFFER => current.draw_framebuffer = framebuffer,
+    GL_READ_FRAMEBUFFER => current.read_framebuffer = framebuffer,
+    GL_FRAMEBUFFER => {
+      current.draw_framebuffer = framebuffer;
+      current.read_framebuffer = framebuffer;
+    },
+    x => unimplemented!("{:x}", x),
+  }
 }
 
 #[no_mangle]
@@ -1508,13 +1538,12 @@ pub extern "C" fn glBindImageTexture(
   level: GLint,
   layered: GLboolean,
   layer: GLint,
-  access: GLenum,
+  _access: GLenum,
   format: GLenum,
 ) -> () {
   assert_eq!(layered, GL_FALSE);
   assert_eq!(layer, 0);
   assert_eq!(level, 0);
-  assert_eq!(access, GL_READ_ONLY);
   assert_eq!(format, GL_R32UI);
 
   let current = current();
@@ -1656,10 +1685,13 @@ pub extern "C" fn glBufferSubData(target: GLenum, offset: GLintptr, size: GLsize
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glCheckFramebufferStatus(target: GLenum) -> GLenum {
-  unimplemented!()
+pub extern "C" fn glCheckFramebufferStatus(
+  _target: GLenum,
+) -> GLenum {
+  // TODO
+
+  GL_FRAMEBUFFER_COMPLETE
 }
 
 #[no_mangle]
@@ -1869,10 +1901,17 @@ pub extern "C" fn glDeleteBuffers(n: GLsizei, buffers: *const GLuint) -> () {
   }
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glDeleteFramebuffers(n: GLsizei, framebuffers: *const GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glDeleteFramebuffers(
+  n: GLsizei,
+  framebuffers: *const GLuint,
+) -> () {
+  let current = current();
+
+  let framebuffers = unsafe{ ::std::slice::from_raw_parts(framebuffers, n as usize) };
+  for name in framebuffers {
+    current.framebuffers.remove(&name);
+  }
 }
 
 #[no_mangle]
@@ -2297,10 +2336,30 @@ pub extern "C" fn glFramebufferTexture(target: GLenum, attachment: GLenum, textu
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glFramebufferTexture2D(target: GLenum, attachment: GLenum, textarget: GLenum, texture: GLuint, level: GLint) -> () {
-  unimplemented!()
+pub extern "C" fn glFramebufferTexture2D(
+  target: GLenum,
+  attachment: GLenum,
+  textarget: GLenum,
+  texture: GLuint,
+  level: GLint,
+) -> () {
+  assert_eq!(level, 0);
+  assert_eq!(textarget, GL_TEXTURE_2D);
+  assert_eq!(attachment, GL_COLOR_ATTACHMENT0);
+
+  let current = current();
+
+  let fbid = match target {
+    GL_DRAW_FRAMEBUFFER | GL_FRAMEBUFFER => current.draw_framebuffer,
+    GL_READ_FRAMEBUFFER => current.read_framebuffer,
+    x => unimplemented!("{:x}", x),
+  };
+
+  let mut framebuffer = current.framebuffers.get_mut(&fbid).unwrap().as_ref().unwrap().write().unwrap();
+  let texture = &current.textures[&texture].as_ref().unwrap();
+
+  framebuffer.color0 = Some(Arc::clone(texture));
 }
 
 #[allow(unused_variables)]
@@ -2326,10 +2385,19 @@ pub extern "C" fn glGenBuffers(n: GLsizei, buffers: *mut GLuint) -> () {
   }
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGenFramebuffers(n: GLsizei, framebuffers: *mut GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glGenFramebuffers(
+  n: GLsizei,
+  framebuffers: *mut GLuint,
+) -> () {
+  let current = current();
+
+  let mut search = 1;
+  for i in 0..n {
+    while current.framebuffers.contains_key(&search) { search += 1 };
+    current.framebuffers.insert(search, None);
+    unsafe{ ptr::write(framebuffers.offset(i as isize), search); }
+  }
 }
 
 #[allow(unused_variables)]
@@ -3485,45 +3553,90 @@ pub extern "C" fn glPushDebugGroup(source: GLenum, id: GLuint, length: GLsizei, 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glReadBuffer(src: GLenum) -> () {
-  assert_eq!(src, GL_BACK);
+pub extern "C" fn glReadBuffer(
+  src: GLenum,
+) -> () {
+  let current = current();
+
+  if current.read_framebuffer == 0 {
+    assert_eq!(src, GL_BACK);
+  } else {
+    assert_eq!(src, GL_COLOR_ATTACHMENT0);
+  }
 }
 
 #[no_mangle]
-pub extern "C" fn glReadPixels(x: GLint, y: GLint, width: GLsizei, height: GLsizei, format: GLenum, type_: GLenum, pixels: *mut c_void) -> () {
-  assert_eq!(format, GL_RGBA);
-  assert_eq!(type_, GL_UNSIGNED_BYTE);
+pub extern "C" fn glReadPixels(
+  x: GLint,
+  y: GLint,
+  width: GLsizei,
+  height: GLsizei,
+  format: GLenum,
+  type_: GLenum,
+  pixels: *mut c_void,
+) -> () {
+  // TODO: this needs a ton of work. It is super hardcoded right now
 
   let current = current();
 
   glFinish();
 
-  let read = unsafe{ current.read_surface.as_ref() };
-  let read = read.as_ref().unwrap();
+  match (format, type_) {
+    (GL_RGBA, GL_UNSIGNED_BYTE) => {
+      let read = unsafe{ current.read_surface.as_ref() };
+      let read = read.as_ref().unwrap();
 
-  let mut pos = pixels as *mut u8;
+      assert_eq!(current.read_framebuffer, 0);
+      let mut pos = pixels as *mut u8;
 
-  for y in y..(y+height) {
-    for x in x..(x+width) {
-      let (red, green, blue, alpha) = read.get_pixel(x, y);
+      for y in y..(y+height) {
+        for x in x..(x+width) {
 
-      // TODO: find a way to not roundtrip 8 bit formats through floats
-      let red = (red * 0xFF as f32) as u8;
-      let green = (green * 0xFF as f32) as u8;
-      let blue = (blue * 0xFF as f32) as u8;
-      let alpha = (alpha * 0xFF as f32) as u8;
+          let (red, green, blue, alpha) = read.get_pixel(x, y);
 
-      unsafe {
-        ptr::write(pos.offset(0), red);
-        ptr::write(pos.offset(1), green);
-        ptr::write(pos.offset(2), blue);
-        ptr::write(pos.offset(3), alpha);
+          // TODO: find a way to not roundtrip 8 bit formats through floats
+          let red = (red * 0xFF as f32) as u8;
+          let green = (green * 0xFF as f32) as u8;
+          let blue = (blue * 0xFF as f32) as u8;
+          let alpha = (alpha * 0xFF as f32) as u8;
 
-        pos = pos.offset(4);
+          unsafe {
+            ptr::write(pos.offset(0), red);
+            ptr::write(pos.offset(1), green);
+            ptr::write(pos.offset(2), blue);
+            ptr::write(pos.offset(3), alpha);
+
+            pos = pos.offset(4);
+          }
+        }
       }
-    }
+    },
+    (GL_RGBA_INTEGER, GL_UNSIGNED_INT) => {
+      assert!(current.read_framebuffer != 0);
+      let mut pos = pixels as *mut u32;
+      let framebuffer = current.framebuffers.get(&current.read_framebuffer).unwrap().as_ref().unwrap().read().unwrap();
+      let texture = framebuffer.color0.as_ref().unwrap();
+      let tex_pos = texture.buffer.as_ptr() as *const u32;
+
+      for y in y..(y+height) {
+        for x in x..(x+width) {
+          unsafe {
+            let pixel = y * texture.width as i32 + x;
+
+            let red = *tex_pos.offset(pixel as isize);
+
+            *pos.offset(0) = red;
+            *pos.offset(1) = 0;
+            *pos.offset(2) = 0;
+            *pos.offset(3) = 0;
+
+            pos = pos.offset(4);
+          }
+        }
+      }
+    },
+    (f, t) => unimplemented!("{:x} {:x}", f, t),
   }
 }
 

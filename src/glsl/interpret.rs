@@ -107,6 +107,7 @@ pub enum BuiltinFunc {
   Barrier,
   AtomicAddUint,
   ImageLoadU2D,
+  ImageStoreU2D,
 }
 
 impl BuiltinFunc {
@@ -128,6 +129,23 @@ impl BuiltinFunc {
             let r = unsafe{ *p.offset(texel as isize) };
 
             UVec4([r, 0, 0, 1])
+          } else { unreachable!() }
+      },
+      BuiltinFunc::ImageStoreU2D => {
+        if let (&UImage2D(ref i),
+                &IVec2(ref t),
+                &UVec4(ref v))
+          = (vars.get(&"a".to_string()),
+             vars.get(&"b".to_string()),
+             vars.get(&"c".to_string())) {
+
+            let (x, y) = (t[0] as usize, t[1] as usize);
+            let texel = y * i.width + x;
+
+            let p = i.buffer.as_ptr() as *mut u32;
+
+            unsafe{ *p.offset(texel as isize) = v[0] };
+            Void
           } else { unreachable!() }
       },
       BuiltinFunc::MemoryBarrierBuffer => { Value::Void },
@@ -189,6 +207,17 @@ impl BuiltinFunc {
       ],
     };
     funcs.insert("imageLoad".to_string(), vec![(imageload_u2d, Statement::Builtin(BuiltinFunc::ImageLoadU2D))]);
+
+    let imagestore_u2d = FunctionPrototype{
+      typ: void.clone(),
+      name: "imageStore".to_string(),
+      params: vec![
+        (uimage2d.clone(), Some(("a".to_string(), vec![]))),
+        (ivec2.clone(), Some(("b".to_string(), vec![]))),
+        (uvec4.clone(), Some(("c".to_string(), vec![]))),
+      ],
+    };
+    funcs.insert("imageStore".to_string(), vec![(imagestore_u2d, Statement::Builtin(BuiltinFunc::ImageStoreU2D))]);
 
     let atomic_add_uint = FunctionPrototype{
       typ: uint.clone(),
@@ -338,6 +367,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             (Value::Float(_), &TypeSpecifierNonArray::Float) => true,
             (Value::Uint(_), &TypeSpecifierNonArray::Uint) => true,
             (Value::UVec2(_), &TypeSpecifierNonArray::UVec2) => true,
+            (Value::UVec4(_), &TypeSpecifierNonArray::UVec4) => true,
             (Value::IVec2(_), &TypeSpecifierNonArray::IVec2) => true,
             (Value::UImage2D(_), &TypeSpecifierNonArray::UImage2D) => true,
             _ => false,

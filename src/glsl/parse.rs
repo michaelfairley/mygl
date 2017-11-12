@@ -318,6 +318,7 @@ impl<'a> Parser<'a> {
       Token::Float => Some("float".to_string()),
       Token::Vec4 => Some("vec4".to_string()),
       Token::IVec2 => Some("ivec2".to_string()),
+      Token::UVec4 => Some("uvec4".to_string()),
       _ => None,
     };
 
