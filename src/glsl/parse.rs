@@ -439,6 +439,8 @@ impl<'a> Parser<'a> {
       TypeSpecifierNonArray::Void
     } else if self.consume(&Token::Uint)? {
       TypeSpecifierNonArray::Uint
+    } else if self.consume(&Token::AtomicUint)? {
+      TypeSpecifierNonArray::AtomicUint
     } else if self.consume(&Token::Int)? {
       TypeSpecifierNonArray::Int
     } else if self.consume(&Token::UVec3)? {
@@ -668,6 +670,7 @@ pub enum TypeSpecifierNonArray {
   Float,
   Vec4,
   Int,
+  AtomicUint,
   UImage2D,
   // TODO
 }

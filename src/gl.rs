@@ -17,6 +17,7 @@ pub type ColorMask = (bool, bool, bool, bool);
 
 const MAX_SHADER_STORAGE_BUFFER_BINDINGS: usize = 4;
 const MAX_UNIFORM_BUFFER_BINDINGS: usize = 72;
+const MAX_ATOMIC_COUNTER_BUFFER_BINDINGS: usize = 1;
 const MAX_IMAGE_UNITS: usize = 8;
 
 
@@ -60,6 +61,7 @@ pub struct Context {
   shader_storage_buffer: GLuint,
   indexed_shader_storage_buffer: [GLuint; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
   indexed_uniform_buffer: Vec<GLuint>,
+  indexed_atomic_counter_buffer: [GLuint; MAX_ATOMIC_COUNTER_BUFFER_BINDINGS],
 
   vertex_array: GLuint,
 
@@ -139,6 +141,7 @@ impl Context {
       shader_storage_buffer: 0,
       indexed_shader_storage_buffer: [0; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
       indexed_uniform_buffer: vec![0; MAX_UNIFORM_BUFFER_BINDINGS],
+      indexed_atomic_counter_buffer: [0; MAX_ATOMIC_COUNTER_BUFFER_BINDINGS],
 
       vertex_array: 0,
 
@@ -218,6 +221,7 @@ impl Context {
     match target {
       GL_SHADER_STORAGE_BUFFER => &mut self.indexed_shader_storage_buffer[i],
       GL_UNIFORM_BUFFER => &mut self.indexed_uniform_buffer[i],
+      GL_ATOMIC_COUNTER_BUFFER => &mut self.indexed_atomic_counter_buffer[i],
       x => unimplemented!("{:x}", x),
     }
   }
@@ -326,6 +330,7 @@ pub struct Program{
   uniform_block_bindings: Vec<GLuint>,
   uniforms: Vec<glsl::UniformInfo>,
   uniform_values: Vec<glsl::interpret::Value>,
+  atomic_counters: HashMap<GLuint, glsl::AtomicCounterInfo>,
 }
 
 impl Program {
@@ -337,6 +342,7 @@ impl Program {
       uniform_block_bindings: vec![],
       uniforms: vec![],
       uniform_values: vec![],
+      atomic_counters: HashMap::new(),
     }
   }
 }
@@ -2087,13 +2093,19 @@ pub extern "C" fn glDispatchCompute(
             let texture = texture.as_ref().expect("No texture in slot");
 
             Value::UImage2D(Arc::clone(texture))
-          }
+          },
           x => x.clone(),
         };
+        if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
         init_vars.insert(info.name.clone(), val);
       },
       &Interface::Shared(ref info) => {
         shared.push(info.clone());
+      },
+      &Interface::AtomicCounter(ref info) => {
+        let buffer = current.indexed_atomic_counter_buffer[info.binding as usize];
+        let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+        init_vars.insert(info.name.clone(), Value::Buffer("atomic_uint".to_string(), buffer.as_mut_ptr(), Some(info.size as u32)));
       },
     }
   }
@@ -2671,9 +2683,12 @@ pub extern "C" fn glGetProgramPipelineiv(pipeline: GLuint, pname: GLenum, params
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetProgramResourceIndex(program: GLuint, programInterface: GLenum, name: *const GLchar) -> GLuint {
+pub extern "C" fn glGetProgramResourceIndex(
+  program: GLuint,
+  programInterface: GLenum,
+  name: *const GLchar,
+) -> GLuint {
   let current = current();
 
   let program = current.programs.get(&program).unwrap();
@@ -2710,6 +2725,9 @@ pub extern "C" fn glGetProgramResourceIndex(program: GLuint, programInterface: G
         for var in &info.active_variables {
           if name == format!("{}.{}", info.name, var.name) { return var.index as GLuint };
         }
+      }
+      for info in &program.uniforms {
+        if name == info.name { return info.index as GLuint };
       }
       unimplemented!()
     },
@@ -2819,20 +2837,39 @@ pub extern "C" fn glGetProgramResourceiv(
         }
       },
       GL_UNIFORM => {
-        let var = program.ubos.values().flat_map(|ssbo| ssbo.active_variables.iter()).find(|a| a.index == index as i32).unwrap();
+        if let Some(var) = program.ubos.values().flat_map(|ubo| ubo.active_variables.iter()).find(|a| a.index == index as i32) {
+          for &prop in props {
+            match prop {
+              GL_BLOCK_INDEX => push(*program.ubos.iter().find(|&(_, ref ssbo)| ssbo.active_variables.contains(var)).unwrap().0 as i32),
+              GL_TYPE => push(var.type_ as i32),
+              GL_ARRAY_SIZE => push(var.array_size as i32),
+              GL_OFFSET => push(var.offset as i32),
+              GL_ARRAY_STRIDE => push(size_of(var.type_) as i32),
+              GL_MATRIX_STRIDE => push(0), // TODO
+              GL_IS_ROW_MAJOR => push(0), // TODO
+              GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO
+              GL_TOP_LEVEL_ARRAY_STRIDE => push(0), // TODO
+              GL_NAME_LENGTH => push(var.name.len() as i32),
+              GL_ATOMIC_COUNTER_BUFFER_INDEX => push(0), // TODO
+              x => unimplemented!("{:x}", x),
+            };
+          }
+        } else if let Some(var) = program.uniforms.iter().find(|i| i.index == index as i32) {
+          for &prop in props {
+            match prop {
+              GL_ATOMIC_COUNTER_BUFFER_INDEX => push(*program.atomic_counters.iter().find(|&(_, ac)| var.name == ac.name).unwrap().0 as i32),
+              GL_OFFSET => push(0), // TODO
+              x => unimplemented!("{:x}", x),
+            };
+          }
+        } else { unreachable!() }
+      },
+      GL_ATOMIC_COUNTER_BUFFER => {
+        // TODO
+        let info = program.atomic_counters.get(&index).unwrap();
         for &prop in props {
           match prop {
-            GL_BLOCK_INDEX => push(*program.ubos.iter().find(|&(_, ref ssbo)| ssbo.active_variables.contains(var)).unwrap().0 as i32),
-            GL_TYPE => push(var.type_ as i32),
-            GL_ARRAY_SIZE => push(var.array_size as i32),
-            GL_OFFSET => push(var.offset as i32),
-            GL_ARRAY_STRIDE => push(size_of(var.type_) as i32),
-            GL_MATRIX_STRIDE => push(0), // TODO
-            GL_IS_ROW_MAJOR => push(0), // TODO
-            GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO
-            GL_TOP_LEVEL_ARRAY_STRIDE => push(0), // TODO
-            GL_NAME_LENGTH => push(var.name.len() as i32),
-            GL_ATOMIC_COUNTER_BUFFER_INDEX => push(0), // TODO
+            GL_BUFFER_DATA_SIZE => push((mem::size_of::<u32>() * info.size) as i32),
             x => unimplemented!("{:x}", x),
           };
         }
@@ -3212,9 +3249,10 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
   let mut ubos = HashMap::new();
   let mut uniforms = vec![];
   let mut uniform_values = vec![];
+  let mut atomic_counters = HashMap::new();
 
-  let mut next_ssbo_variable_location = 0;
-  let mut next_ubo_variable_location = 0;
+  let mut next_ssbo_variable_index = 0;
+  let mut next_uniform_index = 0;
 
   for shader in &program.shaders {
     for iface in &shader.compiled.borrow().as_ref().unwrap().interfaces {
@@ -3223,8 +3261,8 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
           let i = ssbos.len() + 1;
           let mut info = info.clone();
           for ref mut var in info.active_variables.iter_mut() {
-            var.index = next_ssbo_variable_location;
-            next_ssbo_variable_location += 1;
+            var.index = next_ssbo_variable_index;
+            next_ssbo_variable_index += 1;
           }
           ssbos.insert(i as GLuint, info);
         },
@@ -3232,22 +3270,31 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
           let i = ubos.len() + 1;
           let mut info = info.clone();
           for ref mut var in info.active_variables.iter_mut() {
-            var.index = next_ubo_variable_location;
-            next_ubo_variable_location += 1;
+            var.index = next_uniform_index;
+            next_uniform_index += 1;
           }
           ubos.insert(i as GLuint, info);
         },
         &glsl::Interface::Uniform(ref info) => {
+          let mut info = info.clone();
+          info.index = next_uniform_index;
+          next_uniform_index += 1;
           uniforms.push(info.clone());
 
           let val = match info.typ {
             GL_UNSIGNED_INT => glsl::interpret::Value::Uint(0),
             GL_UNSIGNED_INT_IMAGE_2D => glsl::interpret::Value::UImage2DUnit(info.binding),
+            GL_UNSIGNED_INT_ATOMIC_COUNTER => glsl::interpret::Value::Void,
             x => unimplemented!("{:x}", x),
           };
           uniform_values.push(val);
         },
         &glsl::Interface::Shared(_) => {},
+        &glsl::Interface::AtomicCounter(ref info) => {
+          let i = atomic_counters.len() + 1;
+          let mut info = info.clone();
+          atomic_counters.insert(i as GLuint, info);
+        },
       }
     }
   }
@@ -3257,6 +3304,7 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
   program.ubos = ubos;
   program.uniforms = uniforms;
   program.uniform_values = uniform_values;
+  program.atomic_counters = atomic_counters;
 }
 
 #[no_mangle]

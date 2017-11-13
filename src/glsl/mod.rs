@@ -54,6 +54,7 @@ pub struct UniformInfo {
   pub name: String,
   pub typ: GLuint,
   pub binding: usize,
+  pub index: i32,
 }
 
 #[derive(Debug,Clone)]
@@ -63,12 +64,20 @@ pub struct SharedInfo {
   pub size: usize,
 }
 
+#[derive(Debug,Clone)]
+pub struct AtomicCounterInfo {
+  pub name: String,
+  pub size: usize,
+  pub binding: usize,
+}
+
 #[derive(Debug)]
 pub enum Interface {
   ShaderStorageBlock(BlockInfo),
   UniformBlock(BlockInfo),
   Uniform(UniformInfo),
   Shared(SharedInfo),
+  AtomicCounter(AtomicCounterInfo),
 }
 
 #[derive(Debug)]
@@ -144,6 +153,7 @@ impl Shader {
         if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
           let typ = match typespec.0 {
             TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
+            TypeSpecifierNonArray::AtomicUint => gl::GL_UNSIGNED_INT_ATOMIC_COUNTER,
             TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
             ref x => unimplemented!("{:?}", x),
           };
@@ -154,11 +164,26 @@ impl Shader {
             } else { None }).next()
           } else { None }).next().unwrap_or(0);
 
+          if typ == gl::GL_UNSIGNED_INT_ATOMIC_COUNTER {
+            let size: u32 = if array_spec.is_empty() {
+              1
+            } else {
+              array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
+            };
+
+            let atomic_info = AtomicCounterInfo{
+              name: name.clone(),
+              size: size as usize,
+              binding: binding as usize,
+            };
+            interfaces.push(Interface::AtomicCounter(atomic_info));
+          }
 
           let info = UniformInfo{
             name: name.clone(),
             binding: binding as usize,
             typ: typ,
+            index: -1,
           };
           interfaces.push(Interface::Uniform(info));
         } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Shared)) {

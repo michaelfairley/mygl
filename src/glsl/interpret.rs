@@ -55,9 +55,10 @@ impl Value {
         let inner = unsafe{ &*inner };
         inner.get()
       },
-      &Value::Buffer(ref typ, ptr, _) => {
+      &Value::Buffer(ref typ, ptr, size) => {
         match typ.as_str() {
           "uint" => Value::Uint(unsafe{ *(ptr as *const u32) }),
+          "atomic_uint" => Value::Buffer(typ.clone(), ptr, size),
           x => unimplemented!("{:?}", x),
         }
       },
@@ -110,6 +111,7 @@ pub enum BuiltinFunc {
   ImageLoadU2D,
   ImageStoreU2D,
   ImageAtomicAddU2D,
+  AtomicCounterIncrement,
 }
 
 impl BuiltinFunc {
@@ -190,6 +192,16 @@ impl BuiltinFunc {
           _ => unreachable!(),
         }
       },
+      BuiltinFunc::AtomicCounterIncrement => {
+        use std::sync::atomic::{AtomicU32,Ordering};
+
+        if let &Value::Buffer(ref _typ, p, _) = vars.get(&"mem".to_string()) {
+          let a = unsafe{ &*(p as *const AtomicU32) };
+
+          let old = a.fetch_add(1, Ordering::AcqRel);
+          Value::Uint(old)
+        } else { unreachable!() }
+      },
     }
   }
 
@@ -200,6 +212,7 @@ impl BuiltinFunc {
     let uvec4 = (vec![], (TypeSpecifierNonArray::UVec4, vec![]));
     let ivec2 = (vec![], (TypeSpecifierNonArray::IVec2, vec![]));
     let uint = (vec![], (TypeSpecifierNonArray::Uint, vec![]));
+    let atomic_uint = (vec![], (TypeSpecifierNonArray::AtomicUint, vec![]));
     let uint_inout = (vec![TypeQualifier::Storage(StorageQualifier::Inout)], (TypeSpecifierNonArray::Uint, vec![]));
     let uimage2d = (vec![], (TypeSpecifierNonArray::UImage2D, vec![]));
     let void = (vec![], (TypeSpecifierNonArray::Void, vec![]));
@@ -260,6 +273,15 @@ impl BuiltinFunc {
       ],
     };
     funcs.insert("atomicAdd".to_string(), vec![(atomic_add_uint, Statement::Builtin(BuiltinFunc::AtomicAddUint))]);
+
+    let atomic_counter_increment = FunctionPrototype{
+      typ: uint.clone(),
+      name: "atomicCounterIncrement".to_string(),
+      params: vec![
+        (atomic_uint.clone(), Some(("mem".to_string(), vec![]))),
+      ],
+    };
+    funcs.insert("atomicCounterIncrement".to_string(), vec![(atomic_counter_increment, Statement::Builtin(BuiltinFunc::AtomicCounterIncrement))]);
 
     funcs
   }
@@ -412,6 +434,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             (Value::UVec4(_), &TypeSpecifierNonArray::UVec4) => true,
             (Value::IVec2(_), &TypeSpecifierNonArray::IVec2) => true,
             (Value::UImage2D(_), &TypeSpecifierNonArray::UImage2D) => true,
+            (Value::Buffer(ref t, _, _), &TypeSpecifierNonArray::AtomicUint) if t == "atomic_uint" => true,
             _ => false,
           }
         })
