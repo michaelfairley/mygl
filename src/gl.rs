@@ -3290,6 +3290,9 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
 
           let val = match info.typ {
             GL_UNSIGNED_INT => glsl::interpret::Value::Uint(0),
+            GL_UNSIGNED_INT_VEC2 => glsl::interpret::Value::UVec2([0, 0]),
+            GL_UNSIGNED_INT_VEC3 => glsl::interpret::Value::UVec3([0, 0, 0]),
+            GL_UNSIGNED_INT_VEC4 => glsl::interpret::Value::UVec4([0, 0, 0, 0]),
             GL_UNSIGNED_INT_IMAGE_2D => glsl::interpret::Value::UImage2DUnit(info.binding),
             GL_UNSIGNED_INT_ATOMIC_COUNTER => glsl::interpret::Value::Void,
             x => unimplemented!("{:x}", x),
@@ -4101,10 +4104,21 @@ pub extern "C" fn glUniform2ui(location: GLint, v0: GLuint, v1: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glUniform2uiv(location: GLint, count: GLsizei, value: *const GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glUniform2uiv(
+  location: GLint,
+  count: GLsizei,
+  value: *const GLuint
+) -> () {
+  assert_eq!(count, 1);
+
+  let current = current();
+  let program = current.programs.get_mut(&current.program).unwrap();
+
+  let value = value as *const [GLuint; 2];
+  let value = unsafe{ *value };
+
+  program.uniform_values[location as usize] = glsl::interpret::Value::UVec2(value);
 }
 
 #[allow(unused_variables)]
@@ -4421,9 +4435,12 @@ unsafe fn write_string(src: &str,
   }
 }
 
-fn size_of(typ: GLenum) -> usize {
+pub fn size_of(typ: GLenum) -> usize {
   match typ {
     GL_UNSIGNED_INT => mem::size_of::<GLuint>(),
+    GL_UNSIGNED_INT_VEC2 => mem::size_of::<GLuint>() * 2,
+    GL_UNSIGNED_INT_VEC3 => mem::size_of::<GLuint>() * 3,
+    GL_UNSIGNED_INT_VEC4 => mem::size_of::<GLuint>() * 4,
     x => unimplemented!("{:x}", x),
   }
 }

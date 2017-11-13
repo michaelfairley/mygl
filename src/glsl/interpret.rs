@@ -42,6 +42,7 @@ impl Value {
       &mut Value::Buffer(ref typ, ptr, _) => {
         match (typ.as_str(), val) {
           ("uint", Value::Uint(u)) => unsafe{ *(ptr as *mut u32) = u },
+          ("uvec3", Value::UVec3(u)) => unsafe{ *(ptr as *mut [u32; 3]) = u },
           x => unimplemented!("{:?}", x),
         }
       },
@@ -558,8 +559,16 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       };
 
       match container {
-        Value::Buffer(ref s, p, _len) if s == "uint" => {
-          Value::Buffer("uint".to_string(), unsafe{ p.offset((index as usize * mem::size_of::<u32>() / mem::size_of::<u8>()) as isize) }, None)
+        Value::Buffer(ref s, p, _len) => {
+          let size = match s.as_str() {
+            "uint" => mem::size_of::<u32>(),
+            "uvec3" => mem::size_of::<u32>() * 3,
+            x => unimplemented!("{:?}", x),
+          };
+
+          Value::Buffer(s.clone(),
+                        unsafe{ p.offset(index as isize * size as isize) },
+                        None)
         },
         x => unimplemented!("{:?}", x),
       }
@@ -589,6 +598,9 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
           let field = info.active_variables.iter().find(|v| &v.name == field).expect("2");
           let new_type = match field.type_ {
             ::gl::GL_UNSIGNED_INT => "uint".to_string(),
+            ::gl::GL_UNSIGNED_INT_VEC2 => "uvec2".to_string(),
+            ::gl::GL_UNSIGNED_INT_VEC3 => "uvec3".to_string(),
+            ::gl::GL_UNSIGNED_INT_VEC4 => "uvec4".to_string(),
             x => unimplemented!("{:x}", x),
           };
 
@@ -601,6 +613,14 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             "x" => Value::Uint(v[0]),
             "y" => Value::Uint(v[1]),
             "z" => Value::Uint(v[2]),
+            "xy" => Value::UVec2([v[0], v[1]]),
+            x => unimplemented!("{}", x),
+          }
+        },
+        Value::UVec2(v) => {
+          match field.as_ref() {
+            "x" => Value::Uint(v[0]),
+            "y" => Value::Uint(v[1]),
             "xy" => Value::UVec2([v[0], v[1]]),
             x => unimplemented!("{}", x),
           }

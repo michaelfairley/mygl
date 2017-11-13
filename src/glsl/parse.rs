@@ -335,6 +335,7 @@ impl<'a> Parser<'a> {
     }
   }
   fn parse_postfix_expression(&mut self) -> Result<Expression> {
+    // TODO: cleanup
     let possible_function_name = match *self.peek()? {
       Token::Ident(ref name) => Some(name.clone()),
       Token::Uint => Some("uint".to_string()),
@@ -343,6 +344,7 @@ impl<'a> Parser<'a> {
       Token::Vec4 => Some("vec4".to_string()),
       Token::IVec2 => Some("ivec2".to_string()),
       Token::UVec4 => Some("uvec4".to_string()),
+      Token::UVec2 => Some("uvec2".to_string()),
       _ => None,
     };
 
@@ -435,6 +437,7 @@ impl<'a> Parser<'a> {
   }
 
   fn parse_type(&mut self) -> Result<TypeSpecifier> {
+    // TODO: cleanup
     let typ = if self.consume(&Token::Void)? {
       TypeSpecifierNonArray::Void
     } else if self.consume(&Token::Uint)? {
@@ -445,6 +448,8 @@ impl<'a> Parser<'a> {
       TypeSpecifierNonArray::Int
     } else if self.consume(&Token::UVec3)? {
       TypeSpecifierNonArray::UVec3
+    } else if self.consume(&Token::UVec2)? {
+      TypeSpecifierNonArray::UVec2
     } else if self.consume(&Token::Float)? {
       TypeSpecifierNonArray::Float
     } else if self.consume(&Token::Vec4)? {

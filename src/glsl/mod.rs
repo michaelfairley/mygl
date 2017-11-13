@@ -110,10 +110,14 @@ impl Shader {
         let active_variables = members.iter().flat_map(|&(ref type_, ref names)| {
           let type_ = &(type_.1).0;
 
-          let (type_, type_size) = match type_ {
-            &TypeSpecifierNonArray::Uint => (gl::GL_UNSIGNED_INT, 4),
+          let type_ = match type_ {
+            &TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
+            &TypeSpecifierNonArray::UVec2 => gl::GL_UNSIGNED_INT_VEC2,
+            &TypeSpecifierNonArray::UVec3 => gl::GL_UNSIGNED_INT_VEC3,
+            &TypeSpecifierNonArray::UVec4 => gl::GL_UNSIGNED_INT_VEC4,
             ref x => unimplemented!("{:?}", x),
           };
+          let type_size = ::gl::size_of(type_) as u32;
 
           names.iter().map(|&(ref name, ref array)| {
             let array_size: u32 = if array.is_empty() {
@@ -155,6 +159,8 @@ impl Shader {
             TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
             TypeSpecifierNonArray::AtomicUint => gl::GL_UNSIGNED_INT_ATOMIC_COUNTER,
             TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
+            TypeSpecifierNonArray::UVec2 => gl::GL_UNSIGNED_INT_VEC2,
+            TypeSpecifierNonArray::UVec3 => gl::GL_UNSIGNED_INT_VEC3,
             ref x => unimplemented!("{:?}", x),
           };
 
