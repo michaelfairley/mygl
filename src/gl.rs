@@ -2977,10 +2977,17 @@ pub extern "C" fn glGetShaderiv(shader: GLuint, pname: GLenum, params: *mut GLin
   unsafe{ ptr::write(params, value) };
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetString(name: GLenum) -> *const GLubyte {
-  unimplemented!()
+pub extern "C" fn glGetString(
+  name: GLenum,
+) -> *const GLubyte {
+  match name {
+    GL_VENDOR => b"Michael Fairley\0" as *const u8,
+    GL_RENDERER => b"Mygl\0" as *const u8,
+    GL_VERSION => b"OpenGL ES 3.2\0" as *const u8,
+    GL_SHADING_LANGUAGE_VERSION => b"OpenGL ES GLSL ES 3.20\0" as *const u8,
+    x => unimplemented!("{:x}", x)
+  }
 }
 
 #[allow(unused_variables)]

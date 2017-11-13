@@ -21,3 +21,7 @@ prepare_cts:
 	mkdir -p cts_build
 	cd cts_build && cmake ../VK-GL-CTS/ -DDEQP_TARGET=mygl -DGLCTS_GTF_TARGET=gles32 -DCMAKE_BUILD_TYPE=Debug
 	cd cts_build && cmake --build .
+
+good: build
+	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.functional.compute.basic.*
+	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.info.*
