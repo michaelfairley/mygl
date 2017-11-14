@@ -85,7 +85,8 @@ pub enum Interface {
 
 #[derive(Debug,Clone)]
 pub struct CustomType {
-  size: usize,
+  pub size: usize,
+  pub fields: Vec<Variable>,
 }
 pub fn size_of(
   type_: &TypeSpecifierNonArray,
@@ -96,6 +97,7 @@ pub fn size_of(
     &TypeSpecifierNonArray::UVec2 => mem::size_of::<u32>() * 2,
     &TypeSpecifierNonArray::UVec3 => mem::size_of::<u32>() * 3,
     &TypeSpecifierNonArray::UVec4 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::Float => mem::size_of::<f32>(),
     &TypeSpecifierNonArray::Custom(ref n) => types.unwrap().get(n).unwrap().size,
     ref x => unimplemented!("{:?}", x),
   }
@@ -247,15 +249,37 @@ impl Shader {
           if let TypeSpecifierNonArray::Struct(ref name, ref members) = (typ.1).0 {
             let name = name.as_ref().unwrap();
 
-            let size = members.iter().map(|&(ref mtype, ref _names)| {
-              match &(mtype.1).0 {
-                &TypeSpecifierNonArray::Float => mem::size_of::<f32>(),
-                x => unimplemented!("{:?}", x),
-              }
-            }).sum();
+            let mut size = 0;
+
+            let fields = members.iter().flat_map(|&(ref type_, ref names)| {
+              let type_ = &(type_.1).0;
+              let type_size = size_of(type_, Some(&types));
+
+              names.iter().map(|&(ref name, ref array)| {
+                let array_size: u32 = if array.is_empty() {
+                  1
+                } else {
+                  array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
+                };
+
+                let var = Variable{
+                  name: name.clone(),
+                  index: -1,
+                  type_: type_.clone(),
+                  array_size: array_size,
+                  offset: size,
+                };
+
+                size += type_size as u32 * array_size;
+
+                var
+              }).collect::<Vec<_>>().into_iter()
+            }).collect();
+
 
             let custom_type = CustomType{
-              size: size,
+              size: size as usize,
+              fields: fields,
             };
 
             types.insert(name.clone(), custom_type);

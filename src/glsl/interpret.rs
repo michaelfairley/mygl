@@ -41,6 +41,7 @@ impl Value {
       &mut Value::Buffer(ref typ, ptr, _) => {
         match (typ, val) {
           (&TypeSpecifierNonArray::Uint, Value::Uint(u)) => unsafe{ *(ptr as *mut u32) = u },
+          (&TypeSpecifierNonArray::Float, Value::Float(f)) => unsafe{ *(ptr as *mut f32) = f },
           (&TypeSpecifierNonArray::UVec3, Value::UVec3(u)) => unsafe{ *(ptr as *mut [u32; 3]) = u },
           x => unimplemented!("{:?}", x),
         }
@@ -58,6 +59,7 @@ impl Value {
       &Value::Buffer(ref typ, ptr, size) => {
         match typ {
           &TypeSpecifierNonArray::Uint => Value::Uint(unsafe{ *(ptr as *const u32) }),
+          &TypeSpecifierNonArray::Float => Value::Float(unsafe{ *(ptr as *const f32) }),
           &TypeSpecifierNonArray::AtomicUint => Value::Buffer(typ.clone(), ptr, size),
           x => unimplemented!("{:?}", x),
         }
@@ -112,6 +114,7 @@ pub enum BuiltinFunc {
   ImageStoreU2D,
   ImageAtomicAddU2D,
   AtomicCounterIncrement,
+  AbsFloat,
 }
 
 impl BuiltinFunc {
@@ -202,6 +205,11 @@ impl BuiltinFunc {
           Value::Uint(old)
         } else { unreachable!() }
       },
+      BuiltinFunc::AbsFloat => {
+        if let &Float(f) = vars.get(&"a".to_string()) {
+          Value::Float(f.abs())
+        } else { unreachable!() }
+      },
     }
   }
 
@@ -216,6 +224,7 @@ impl BuiltinFunc {
     let uint_inout = (vec![TypeQualifier::Storage(StorageQualifier::Inout)], (TypeSpecifierNonArray::Uint, vec![]));
     let uimage2d = (vec![], (TypeSpecifierNonArray::UImage2D, vec![]));
     let void = (vec![], (TypeSpecifierNonArray::Void, vec![]));
+    let float = (vec![], (TypeSpecifierNonArray::Float, vec![]));
 
     let memory_barrier_buffer = FunctionPrototype{
       typ: void.clone(),
@@ -282,6 +291,15 @@ impl BuiltinFunc {
       ],
     };
     funcs.insert("atomicCounterIncrement".to_string(), vec![(atomic_counter_increment, Statement::Builtin(BuiltinFunc::AtomicCounterIncrement))]);
+
+    let abs_float = FunctionPrototype{
+      typ: float.clone(),
+      name: "absB".to_string(),
+      params: vec![
+        (float.clone(), Some(("a".to_string(), vec![]))),
+      ],
+    };
+    funcs.insert("abs".to_string(), vec![(abs_float, Statement::Builtin(BuiltinFunc::AbsFloat))]);
 
     funcs
   }
@@ -584,20 +602,26 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
 
       match container {
         Value::Buffer(typ, p, len) => {
-          // TODO: maybe should use a separate types table instead of borrowing the interface info
           if field == "length" {
             return Value::Uint(len.unwrap())
           }
 
-          let info = shader.interfaces.iter().filter_map(|iface| match iface {
-            &super::Interface::ShaderStorageBlock(ref info)
-              | &super::Interface::UniformBlock(ref info)
-              => if TypeSpecifierNonArray::Custom(info.name.clone()) == typ { Some(info) } else { None },
-            &super::Interface::Uniform(_) => None,
-            x => unimplemented!("{:?}", x),
-          }).next().unwrap();
+          let typ = if let TypeSpecifierNonArray::Custom(ref t) = typ { t } else { unreachable!() };
 
-          let field = info.active_variables.iter().find(|v| &v.name == field).expect("2");
+          let field = if let Some(custom_type) = shader.types.get(typ) {
+            custom_type.fields.iter().find(|v| &v.name == field).unwrap()
+          } else {
+            // TODO: maybe should use the types table for these as well?
+            let info = shader.interfaces.iter().filter_map(|iface| match iface {
+              &super::Interface::ShaderStorageBlock(ref info)
+                | &super::Interface::UniformBlock(ref info)
+                => if &info.name == typ { Some(info) } else { None },
+              &super::Interface::Uniform(_) => None,
+              x => unimplemented!("{:?}", x),
+            }).next().unwrap();
+
+            info.active_variables.iter().find(|v| &v.name == field).expect("2")
+          };
 
           let length = Some(if field.array_size > 0 { field.array_size } else { len.unwrap() });
 
