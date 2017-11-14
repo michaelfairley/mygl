@@ -37,10 +37,10 @@ impl<'a> Parser<'a> {
     self.tokens.get(n).map(|t| &t.typ).ok_or("Ran out of input too soon".to_string())
   }
 
-  fn consume(&mut self, typ: &Token) -> Result<bool> {
+  fn consume(&mut self, typ: Token) -> Result<bool> {
     let (first, rest) = self.tokens.split_first().ok_or(format!("Ran out of input too soon; expected {:?}", typ))?;
 
-    if &first.typ == typ {
+    if first.typ == typ {
       self.tokens = rest;
       Ok(true)
     } else {
@@ -48,8 +48,8 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn must_consume(&mut self, typ: &Token) -> Result<()> {
-    if !self.consume(typ)? {
+  fn must_consume(&mut self, typ: Token) -> Result<()> {
+    if !self.consume(typ.clone())? {
       let next = self.tokens.first().unwrap();
       Err(format!("Expected {:?}, got {:?} at {}:{}", typ, next.typ, next.line, next.col))
     } else { Ok(()) }
@@ -90,11 +90,11 @@ impl<'a> Parser<'a> {
   }
 
   fn parse_external_declaration(&mut self) -> Result<ExternalDeclaration> {
-    if self.consume(&Token::Precision)? { unimplemented!() }
+    if self.consume(Token::Precision)? { unimplemented!() }
 
     let type_qualifiers = self.parse_type_qualifiers()?;
 
-    if self.consume(&Token::Semicolon)? {
+    if self.consume(Token::Semicolon)? {
       return Ok(ExternalDeclaration::TypeQualifier(type_qualifiers));
     }
 
@@ -106,12 +106,12 @@ impl<'a> Parser<'a> {
         unimplemented!()
       } else if peek1 == &Token::OpenBrace {
         let block_name = self.must_consume_ident()?;
-        self.must_consume(&Token::OpenBrace)?;
+        self.must_consume(Token::OpenBrace)?;
 
         let member_list = self.parse_member_list()?;
 
         let instance_name = self.consume_ident()?;
-        self.must_consume(&Token::Semicolon)?;
+        self.must_consume(Token::Semicolon)?;
 
         return Ok(ExternalDeclaration::Block(type_qualifiers, block_name, member_list, instance_name));
       }
@@ -120,13 +120,13 @@ impl<'a> Parser<'a> {
     let typ = self.parse_type()?;
     let fully_specified_type = (type_qualifiers, typ);
 
-    if self.consume(&Token::Semicolon)? {
+    if self.consume(Token::Semicolon)? {
       return Ok(ExternalDeclaration::TypeDeclaration(fully_specified_type))
     }
 
     let name = self.must_consume_ident()?;
 
-    if self.consume(&Token::OpenParen)? {
+    if self.consume(Token::OpenParen)? {
       let parameters = self.parse_parameter_declarations()?;
 
       let function_proto = FunctionPrototype{
@@ -135,7 +135,7 @@ impl<'a> Parser<'a> {
         params: parameters,
       };
 
-      if self.consume(&Token::Semicolon)? {
+      if self.consume(Token::Semicolon)? {
         Ok(ExternalDeclaration::FunctionPrototype(function_proto))
       } else if self.peek()? == &Token::OpenBrace {
         let body = self.parse_statement()?;
@@ -144,48 +144,48 @@ impl<'a> Parser<'a> {
     } else {
       let array_specifier = self.parse_array_specifier()?;
 
-      self.must_consume(&Token::Semicolon)?;
+      self.must_consume(Token::Semicolon)?;
       Ok(ExternalDeclaration::Variable(fully_specified_type, name, array_specifier))
     }
   }
 
   fn parse_statement(&mut self) -> Result<Statement> {
-    if self.consume(&Token::OpenBrace)? {
+    if self.consume(Token::OpenBrace)? {
       let mut statements = vec![];
 
-      while !self.consume(&Token::CloseBrace)? {
+      while !self.consume(Token::CloseBrace)? {
         let statement = self.parse_statement()?;
         statements.push(statement);
       }
 
       return Ok(Statement::Compound(statements));
-    } else if self.consume(&Token::For)? {
-      self.must_consume(&Token::OpenParen)?;
+    } else if self.consume(Token::For)? {
+      self.must_consume(Token::OpenParen)?;
 
       let init = self.parse_statement()?;
       let condition = self.parse_expression()?;
-      self.must_consume(&Token::Semicolon)?;
-      let iter = if self.consume(&Token::CloseParen)? {
+      self.must_consume(Token::Semicolon)?;
+      let iter = if self.consume(Token::CloseParen)? {
         Expression::Empty
       } else {
         let expr = self.parse_expression()?;
-        self.must_consume(&Token::CloseParen)?;
+        self.must_consume(Token::CloseParen)?;
         expr
       };
 
       let body = self.parse_statement()?;
 
       return Ok(Statement::For(Box::new(init), condition, iter, Box::new(body)));
-    } else if self.consume(&Token::If)? {
-      self.must_consume(&Token::OpenParen)?;
+    } else if self.consume(Token::If)? {
+      self.must_consume(Token::OpenParen)?;
 
       let condition = self.parse_expression()?;
 
-      self.must_consume(&Token::CloseParen)?;
+      self.must_consume(Token::CloseParen)?;
 
       let body = self.parse_statement()?;
 
-      let else_body = if self.consume(&Token::Else)? {
+      let else_body = if self.consume(Token::Else)? {
         Some(self.parse_statement()?)
       } else { None };
 
@@ -204,15 +204,15 @@ impl<'a> Parser<'a> {
 
       let name = self.must_consume_ident()?;
 
-      let initializer = if self.consume(&Token::Equal)? {
+      let initializer = if self.consume(Token::Equal)? {
         Some(self.parse_expression()?)
       } else { None };
-      self.must_consume(&Token::Semicolon)?;
+      self.must_consume(Token::Semicolon)?;
 
       Ok(Statement::Declaration(fully_specified_type, name, initializer))
     } else {
       let expr = self.parse_expression()?;
-      self.must_consume(&Token::Semicolon)?;
+      self.must_consume(Token::Semicolon)?;
       Ok(Statement::Expression(expr))
     }
   }
@@ -223,10 +223,10 @@ impl<'a> Parser<'a> {
   fn parse_assignment_expression(&mut self) -> Result<Expression> {
     let a = self.parse_conditional_expression()?;
 
-    if self.consume(&Token::Equal)? {
+    if self.consume(Token::Equal)? {
       let rhs = self.parse_expression()?;
       Ok(Expression::Assignment(Box::new(a), Box::new(rhs)))
-    } else if self.consume(&Token::AddAssign)? {
+    } else if self.consume(Token::AddAssign)? {
       let rhs = self.parse_expression()?;
       Ok(Expression::AddAssign(Box::new(a), Box::new(rhs)))
     } else {
@@ -265,10 +265,10 @@ impl<'a> Parser<'a> {
     let mut a = self.parse_relational_expression()?;
 
     loop {
-      if self.consume(&Token::EqOp)? {
+      if self.consume(Token::EqOp)? {
         let b = self.parse_equality_expression()?;
         a = Expression::Comparison(Box::new(a), Comparison::Equal, Box::new(b))
-      } else if self.consume(&Token::NeOp)? {
+      } else if self.consume(Token::NeOp)? {
         let b = self.parse_equality_expression()?;
         a = Expression::Comparison(Box::new(a), Comparison::NotEqual, Box::new(b))
       } else { break; }
@@ -279,16 +279,16 @@ impl<'a> Parser<'a> {
   fn parse_relational_expression(&mut self) -> Result<Expression> {
     let a = self.parse_shift_expression()?;
 
-    if self.consume(&Token::OpenAngle)? {
+    if self.consume(Token::OpenAngle)? {
       let b = self.parse_expression()?;
       Ok(Expression::Comparison(Box::new(a), Comparison::Less, Box::new(b)))
-    } else if self.consume(&Token::CloseAngle)? {
+    } else if self.consume(Token::CloseAngle)? {
       let b = self.parse_expression()?;
       Ok(Expression::Comparison(Box::new(a), Comparison::Greater, Box::new(b)))
-    } else if self.consume(&Token::LeOp)? {
+    } else if self.consume(Token::LeOp)? {
       let b = self.parse_expression()?;
       Ok(Expression::Comparison(Box::new(a), Comparison::LessEqual, Box::new(b)))
-    } else if self.consume(&Token::GeOp)? {
+    } else if self.consume(Token::GeOp)? {
       let b = self.parse_expression()?;
       Ok(Expression::Comparison(Box::new(a), Comparison::GreaterEqual, Box::new(b)))
     } else {
@@ -303,10 +303,10 @@ impl<'a> Parser<'a> {
     let mut a = self.parse_multiplicative_expression()?;
 
     loop {
-      if self.consume(&Token::Plus)? {
+      if self.consume(Token::Plus)? {
         let b = self.parse_multiplicative_expression()?;
         a = Expression::Add(Box::new(a), Box::new(b));
-      } else if self.consume(&Token::Dash)? {
+      } else if self.consume(Token::Dash)? {
         let b = self.parse_multiplicative_expression()?;
         a = Expression::Sub(Box::new(a), Box::new(b));
       } else {
@@ -318,13 +318,13 @@ impl<'a> Parser<'a> {
     let mut a = self.parse_unary_expression()?;
 
     loop {
-      if self.consume(&Token::Star)? {
+      if self.consume(Token::Star)? {
         let b = self.parse_multiplicative_expression()?;
         a = Expression::Multiply(Box::new(a), Box::new(b));
-      } else if self.consume(&Token::Slash)? {
+      } else if self.consume(Token::Slash)? {
         let b = self.parse_multiplicative_expression()?;
         a = Expression::Divide(Box::new(a), Box::new(b));
-      } else if self.consume(&Token::Percent)? {
+      } else if self.consume(Token::Percent)? {
         let b = self.parse_multiplicative_expression()?;
         a = Expression::Modulo(Box::new(a), Box::new(b));
       } else {
@@ -333,7 +333,7 @@ impl<'a> Parser<'a> {
     }
   }
   fn parse_unary_expression(&mut self) -> Result<Expression> {
-    if self.consume(&Token::Tilde)? {
+    if self.consume(Token::Tilde)? {
       let a = self.parse_expression()?;
       Ok(Expression::BinaryNot(Box::new(a)))
     } else {
@@ -361,16 +361,16 @@ impl<'a> Parser<'a> {
 
         let mut arguments = vec![];
 
-        if self.consume(&Token::CloseParen)? {
-        } else if self.consume(&Token::Void)? {
-          self.must_consume(&Token::CloseParen)?;
+        if self.consume(Token::CloseParen)? {
+        } else if self.consume(Token::Void)? {
+          self.must_consume(Token::CloseParen)?;
         } else {
           loop {
             let expr = self.parse_expression()?;
             arguments.push(expr);
-            if !self.consume(&Token::Comma)? { break; }
+            if !self.consume(Token::Comma)? { break; }
           }
-          self.must_consume(&Token::CloseParen)?;
+          self.must_consume(Token::CloseParen)?;
         }
 
         Expression::FunctionCall(name, arguments)
@@ -378,19 +378,19 @@ impl<'a> Parser<'a> {
     } else { self.parse_primary_expression()? };
 
     loop {
-      if self.consume(&Token::OpenBracket)? {
+      if self.consume(Token::OpenBracket)? {
         let inner = self.parse_expression()?;
-        self.must_consume(&Token::CloseBracket)?;
+        self.must_consume(Token::CloseBracket)?;
 
         expr = Expression::Index(Box::new(expr), Box::new(inner));
-      } else if self.consume(&Token::Dot)? {
+      } else if self.consume(Token::Dot)? {
         let field = self.must_consume_ident()?;
 
-        if field.as_str() == "length" && self.consume(&Token::OpenParen)? {
-          self.must_consume(&Token::CloseParen)?;
+        if field.as_str() == "length" && self.consume(Token::OpenParen)? {
+          self.must_consume(Token::CloseParen)?;
         }
         expr = Expression::FieldSelection(Box::new(expr), field);
-      } else if self.consume(&Token::IncOp)? {
+      } else if self.consume(Token::IncOp)? {
         expr = Expression::PostInc(Box::new(expr))
       } else {
         return Ok(expr)
@@ -398,9 +398,9 @@ impl<'a> Parser<'a> {
     }
   }
   fn parse_primary_expression(&mut self) -> Result<Expression> {
-    if self.consume(&Token::OpenParen)? {
+    if self.consume(Token::OpenParen)? {
       let expr = self.parse_expression()?;
-      self.must_consume(&Token::CloseParen)?;
+      self.must_consume(Token::CloseParen)?;
       return Ok(expr)
     }
 
@@ -416,7 +416,7 @@ impl<'a> Parser<'a> {
   }
 
   fn parse_member_list(&mut self) -> Result<MemberList> {
-    if self.consume(&Token::CloseBrace)? { return Ok(vec![]); }
+    if self.consume(Token::CloseBrace)? { return Ok(vec![]); }
 
     let mut result = vec![];
 
@@ -430,13 +430,13 @@ impl<'a> Parser<'a> {
       loop {
         let declarator = self.must_consume_ident()?;
         declarators.push((declarator, self.parse_array_specifier()?));
-        if !self.consume(&Token::Comma)? { break; }
+        if !self.consume(Token::Comma)? { break; }
       }
-      self.must_consume(&Token::Semicolon)?;
+      self.must_consume(Token::Semicolon)?;
 
       result.push((fully_specified, declarators));
 
-      if self.consume(&Token::CloseBrace)? { break; }
+      if self.consume(Token::CloseBrace)? { break; }
     }
 
     Ok(result)
@@ -444,27 +444,27 @@ impl<'a> Parser<'a> {
 
   fn parse_type(&mut self) -> Result<TypeSpecifier> {
     // TODO: cleanup
-    let typ = if self.consume(&Token::Void)? {
+    let typ = if self.consume(Token::Void)? {
       TypeSpecifierNonArray::Void
-    } else if self.consume(&Token::Uint)? {
+    } else if self.consume(Token::Uint)? {
       TypeSpecifierNonArray::Uint
-    } else if self.consume(&Token::AtomicUint)? {
+    } else if self.consume(Token::AtomicUint)? {
       TypeSpecifierNonArray::AtomicUint
-    } else if self.consume(&Token::Int)? {
+    } else if self.consume(Token::Int)? {
       TypeSpecifierNonArray::Int
-    } else if self.consume(&Token::UVec3)? {
+    } else if self.consume(Token::UVec3)? {
       TypeSpecifierNonArray::UVec3
-    } else if self.consume(&Token::UVec2)? {
+    } else if self.consume(Token::UVec2)? {
       TypeSpecifierNonArray::UVec2
-    } else if self.consume(&Token::Float)? {
+    } else if self.consume(Token::Float)? {
       TypeSpecifierNonArray::Float
-    } else if self.consume(&Token::Vec4)? {
+    } else if self.consume(Token::Vec4)? {
       TypeSpecifierNonArray::Vec4
-    } else if self.consume(&Token::UImage2D)? {
+    } else if self.consume(Token::UImage2D)? {
       TypeSpecifierNonArray::UImage2D
-    } else if self.consume(&Token::Struct)? {
+    } else if self.consume(Token::Struct)? {
       let name = self.consume_ident()?;
-      self.must_consume(&Token::OpenBrace)?;
+      self.must_consume(Token::OpenBrace)?;
       let members = self.parse_member_list()?;
       TypeSpecifierNonArray::Struct(name, members)
     } else if let Some(name) = self.consume_ident()? {
@@ -478,15 +478,15 @@ impl<'a> Parser<'a> {
     let mut result = vec![];
 
     loop {
-      if self.consume(&Token::Layout)? {
-        self.must_consume(&Token::OpenParen)?;
+      if self.consume(Token::Layout)? {
+        self.must_consume(Token::OpenParen)?;
 
         let mut layout_qualifier_ids = vec![];
 
         loop {
           if let &Token::Ident(ref name) = self.peek()? {
             self.advance();
-            if self.consume(&Token::Equal)? {
+            if self.consume(Token::Equal)? {
               if let &Token::IntConstant(val) = self.peek()? {
                 self.advance();
                 layout_qualifier_ids.push(LayoutQualifierId::Int(name.clone(), val));
@@ -495,37 +495,37 @@ impl<'a> Parser<'a> {
               layout_qualifier_ids.push(LayoutQualifierId::Ident(name.clone()));
             }
           } else { self.unexpected()? }
-          if self.consume(&Token::CloseParen)? {
+          if self.consume(Token::CloseParen)? {
             break;
           } else {
-            self.must_consume(&Token::Comma)?;
+            self.must_consume(Token::Comma)?;
           }
         }
 
         result.push(TypeQualifier::Layout(layout_qualifier_ids));
-      } else if self.consume(&Token::In)? {
+      } else if self.consume(Token::In)? {
         result.push(TypeQualifier::Storage(StorageQualifier::In));
-      } else if self.consume(&Token::Out)? {
+      } else if self.consume(Token::Out)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Out));
-      } else if self.consume(&Token::Inout)? {
+      } else if self.consume(Token::Inout)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Inout));
-      } else if self.consume(&Token::Buffer)? {
+      } else if self.consume(Token::Buffer)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Buffer));
-      } else if self.consume(&Token::Uniform)? {
+      } else if self.consume(Token::Uniform)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Uniform));
-      } else if self.consume(&Token::Coherent)? {
+      } else if self.consume(Token::Coherent)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Coherent));
-      } else if self.consume(&Token::Shared)? {
+      } else if self.consume(Token::Shared)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Shared));
-      } else if self.consume(&Token::Readonly)? {
+      } else if self.consume(Token::Readonly)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Readonly));
-      } else if self.consume(&Token::Writeonly)? {
+      } else if self.consume(Token::Writeonly)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Writeonly));
-      } else if self.consume(&Token::HighPrecision)? {
+      } else if self.consume(Token::HighPrecision)? {
         result.push(TypeQualifier::Precision(PrecisionQualifier::High));
-      } else if self.consume(&Token::MediumPrecision)? {
+      } else if self.consume(Token::MediumPrecision)? {
         result.push(TypeQualifier::Precision(PrecisionQualifier::Medium));
-      } else if self.consume(&Token::LowPrecision)? {
+      } else if self.consume(Token::LowPrecision)? {
         result.push(TypeQualifier::Precision(PrecisionQualifier::Low));
       } else {
         return Ok(result)
@@ -534,7 +534,7 @@ impl<'a> Parser<'a> {
   }
 
   fn parse_parameter_declarations(&mut self) -> Result<Vec<ParameterDeclaration>> {
-    if self.consume(&Token::CloseParen)? {
+    if self.consume(Token::CloseParen)? {
       return Ok(vec![])
     }
 
@@ -553,10 +553,10 @@ impl<'a> Parser<'a> {
 
       result.push((fully_specified, ident));
 
-      if self.consume(&Token::CloseParen)? {
+      if self.consume(Token::CloseParen)? {
         break;
       } else {
-        self.must_consume(&Token::Comma)?;
+        self.must_consume(Token::Comma)?;
       }
     }
 
@@ -567,12 +567,12 @@ impl<'a> Parser<'a> {
     let mut result = vec![];
 
     loop {
-      if !self.consume(&Token::OpenBracket)? { break; }
-      let expr = if self.consume(&Token::CloseBracket)? {
+      if !self.consume(Token::OpenBracket)? { break; }
+      let expr = if self.consume(Token::CloseBracket)? {
         None
       } else {
         let expr = self.parse_constant_expression()?;
-        self.must_consume(&Token::CloseBracket)?;
+        self.must_consume(Token::CloseBracket)?;
         Some(expr)
       };
 
