@@ -1498,19 +1498,33 @@ pub extern "C" fn glBindBuffer(target: GLenum, buffer: GLuint) -> () {
   *current.buffer_target_mut(target) = buffer;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBindBufferBase(target: GLenum, index: GLuint, buffer: GLuint) -> () {
+pub extern "C" fn glBindBufferBase(
+  target: GLenum,
+  index: GLuint,
+  buffer: GLuint,
+) -> () {
   let current = current();
 
   *current.buffer_target_mut(target) = buffer;
   *current.indexed_buffer_target_mut(target, index as usize) = buffer;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBindBufferRange(target: GLenum, index: GLuint, buffer: GLuint, offset: GLintptr, size: GLsizeiptr) -> () {
-  unimplemented!()
+pub extern "C" fn glBindBufferRange(
+  target: GLenum,
+  index: GLuint,
+  buffer: GLuint,
+  offset: GLintptr,
+  size: GLsizeiptr,
+) -> () {
+  let current = current();
+
+  let buf = current.buffers[&buffer].as_ref().unwrap();
+  assert_eq!(offset, 0);
+  assert_eq!(size, buf.len() as isize);
+
+  glBindBufferBase(target, index, buffer);
 }
 
 #[no_mangle]
@@ -2062,23 +2076,18 @@ pub extern "C" fn glDispatchCompute(
 
           let size = info.active_variables.last().and_then(|v| {
             if v.array_size == 0 {
-              Some(((buffer.len() - v.offset as usize) / size_of(v.type_)) as u32)
+              Some(((buffer.len() - v.offset as usize) / glsl::size_of(&v.type_, Some(&compiled.types))) as u32)
             } else { None }
           });
 
           if let Some(ref var_name) = info.var_name {
-            init_vars.insert(var_name.clone(), Value::Buffer(info.name.clone(), buffer.as_mut_ptr(), size));
+            init_vars.insert(var_name.clone(), Value::Buffer(glsl::TypeSpecifierNonArray::Custom(info.name.clone()), buffer.as_mut_ptr(), size));
           } else {
             // TODO: unify with Expression::FieldSelection
             for field in &info.active_variables {
-              let new_type = match field.type_ {
-                ::gl::GL_UNSIGNED_INT => "uint".to_string(),
-                x => unimplemented!("{:x}", x),
-              };
-
               let length = Some(if field.array_size > 0 { field.array_size } else { size.unwrap() });
 
-              let val = Value::Buffer(new_type, unsafe{ buffer.as_mut_ptr().offset(field.offset as isize) }, length);
+              let val = Value::Buffer(field.type_.clone(), unsafe{ buffer.as_mut_ptr().offset(field.offset as isize) }, length);
               init_vars.insert(field.name.clone(), val);
             }
           }
@@ -2105,7 +2114,7 @@ pub extern "C" fn glDispatchCompute(
       &Interface::AtomicCounter(ref info) => {
         let buffer = current.indexed_atomic_counter_buffer[info.binding as usize];
         let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
-        init_vars.insert(info.name.clone(), Value::Buffer("atomic_uint".to_string(), buffer.as_mut_ptr(), Some(info.size as u32)));
+        init_vars.insert(info.name.clone(), Value::Buffer(glsl::TypeSpecifierNonArray::AtomicUint, buffer.as_mut_ptr(), Some(info.size as u32)));
       },
     }
   }
@@ -2117,7 +2126,7 @@ pub extern "C" fn glDispatchCompute(
         let mut threads = Vec::with_capacity(num_in_work_group);
 
         let mut shared_buffers = shared.iter().map(|s| {
-          let size = s.size * size_of(s.typ);
+          let size = s.size * glsl::size_of(&s.typ, Some(&compiled.types));
           let mut buf = Vec::with_capacity(size);
           unsafe{ buf.set_len(size); }
 
@@ -2126,12 +2135,7 @@ pub extern "C" fn glDispatchCompute(
 
         let mut init_vars = init_vars.clone();
         for (ref info, ref mut buf) in shared.iter().zip(shared_buffers.iter_mut()) {
-          let typ = match info.typ {
-            ::gl::GL_UNSIGNED_INT => "uint".to_string(),
-            x => unimplemented!("{:x}", x),
-          };
-
-          init_vars.insert(info.name.clone(), Value::Buffer(typ, buf.as_mut_ptr(), Some(info.size as u32)));
+          init_vars.insert(info.name.clone(), Value::Buffer(info.typ.clone(), buf.as_mut_ptr(), Some(info.size as u32)));
         }
 
         let shared_buffers = Arc::new(shared_buffers);
@@ -2823,10 +2827,10 @@ pub extern "C" fn glGetProgramResourceiv(
         for &prop in props {
           match prop {
             GL_BLOCK_INDEX => push(*program.ssbos.iter().find(|&(_, ref ssbo)| ssbo.active_variables.contains(var)).unwrap().0 as i32),
-            GL_TYPE => push(var.type_ as i32),
+            GL_TYPE => push(glsl::gl_type(&var.type_) as i32),
             GL_ARRAY_SIZE => push(var.array_size as i32),
             GL_OFFSET => push(var.offset as i32),
-            GL_ARRAY_STRIDE => push(size_of(var.type_) as i32),
+            GL_ARRAY_STRIDE => push(glsl::size_of(&var.type_, None) as i32),
             GL_MATRIX_STRIDE => push(0), // TODO
             GL_IS_ROW_MAJOR => push(0), // TODO
             GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO
@@ -2841,10 +2845,10 @@ pub extern "C" fn glGetProgramResourceiv(
           for &prop in props {
             match prop {
               GL_BLOCK_INDEX => push(*program.ubos.iter().find(|&(_, ref ssbo)| ssbo.active_variables.contains(var)).unwrap().0 as i32),
-              GL_TYPE => push(var.type_ as i32),
+              GL_TYPE => push(glsl::gl_type(&var.type_) as i32),
               GL_ARRAY_SIZE => push(var.array_size as i32),
               GL_OFFSET => push(var.offset as i32),
-              GL_ARRAY_STRIDE => push(size_of(var.type_) as i32),
+              GL_ARRAY_STRIDE => push(glsl::size_of(&var.type_, None) as i32),
               GL_MATRIX_STRIDE => push(0), // TODO
               GL_IS_ROW_MAJOR => push(0), // TODO
               GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO
@@ -4441,6 +4445,7 @@ pub fn size_of(typ: GLenum) -> usize {
     GL_UNSIGNED_INT_VEC2 => mem::size_of::<GLuint>() * 2,
     GL_UNSIGNED_INT_VEC3 => mem::size_of::<GLuint>() * 3,
     GL_UNSIGNED_INT_VEC4 => mem::size_of::<GLuint>() * 4,
+    GL_FLOAT => mem::size_of::<GLfloat>(),
     x => unimplemented!("{:x}", x),
   }
 }

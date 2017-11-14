@@ -1,11 +1,14 @@
 use gl::{GLenum,GLuint,self};
 use std::collections::HashMap;
+use std::mem;
 
 mod lex;
 mod parse;
 pub mod interpret;
 
 use self::parse::{FunctionPrototype,Statement};
+
+pub use self::parse::TypeSpecifierNonArray;
 
 pub type Result<T> = ::std::result::Result<T, String>;
 
@@ -35,7 +38,7 @@ pub fn compile(source: &[u8], type_: GLenum) -> Result<Shader> {
 pub struct Variable {
   pub name: String,
   pub index: i32,
-  pub type_: GLuint,
+  pub type_: parse::TypeSpecifierNonArray,
   pub array_size: GLuint,
   pub offset: GLuint,
 }
@@ -60,7 +63,7 @@ pub struct UniformInfo {
 #[derive(Debug,Clone)]
 pub struct SharedInfo {
   pub name: String,
-  pub typ: GLuint,
+  pub typ: TypeSpecifierNonArray,
   pub size: usize,
 }
 
@@ -80,12 +83,44 @@ pub enum Interface {
   AtomicCounter(AtomicCounterInfo),
 }
 
+#[derive(Debug,Clone)]
+pub struct CustomType {
+  size: usize,
+}
+pub fn size_of(
+  type_: &TypeSpecifierNonArray,
+  types: Option<&HashMap<String, CustomType>>,
+) -> usize {
+  match type_ {
+    &TypeSpecifierNonArray::Uint => mem::size_of::<u32>(),
+    &TypeSpecifierNonArray::UVec2 => mem::size_of::<u32>() * 2,
+    &TypeSpecifierNonArray::UVec3 => mem::size_of::<u32>() * 3,
+    &TypeSpecifierNonArray::UVec4 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::Custom(ref n) => types.unwrap().get(n).unwrap().size,
+    ref x => unimplemented!("{:?}", x),
+  }
+}
+pub fn gl_type(
+  type_: &TypeSpecifierNonArray,
+) -> GLenum {
+  match type_ {
+    &TypeSpecifierNonArray::Uint => ::gl::GL_UNSIGNED_INT,
+    &TypeSpecifierNonArray::UVec2 => ::gl::GL_UNSIGNED_INT_VEC2,
+    &TypeSpecifierNonArray::UVec3 => ::gl::GL_UNSIGNED_INT_VEC3,
+    &TypeSpecifierNonArray::UVec4 => ::gl::GL_UNSIGNED_INT_VEC4,
+    &TypeSpecifierNonArray::Float => ::gl::GL_FLOAT,
+    // INCOMPLETE
+    x => unimplemented!("{:?}", x),
+  }
+}
+
 #[derive(Debug)]
 pub struct Shader {
   pub version: Version,
   pub functions: HashMap<String, Vec<(FunctionPrototype, Statement)>>,
   pub interfaces: Vec<Interface>,
   pub work_group_size: Option<[u32; 3]>,
+  pub types: HashMap<String, CustomType>,
 }
 
 impl Shader {
@@ -95,123 +130,137 @@ impl Shader {
     let mut functions = interpret::BuiltinFunc::all();
     let mut interfaces = vec![];
 
+    let mut types: HashMap<String, CustomType> = HashMap::new();
+
     for decl in &translation_unit {
-      if let &ExternalDeclaration::FunctionDefinition(ref proto, ref body) = decl {
-        functions.entry(proto.name.clone()).or_insert(vec![]).push(((*proto).clone(), (*body).clone()));
-      } else if let &ExternalDeclaration::Block(ref quals, ref name, ref members, ref var_name) = decl {
-        let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
-          lqs.iter().filter_map(|lq| if let &LayoutQualifierId::Int(ref name, val) = lq {
-            if name == "binding" { Some(val) } else { None }
-          } else { None }).next()
-        } else { None }).next().unwrap_or(0);
-
-        let mut size = 0;
-
-        let active_variables = members.iter().flat_map(|&(ref type_, ref names)| {
-          let type_ = &(type_.1).0;
-
-          let type_ = match type_ {
-            &TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
-            &TypeSpecifierNonArray::UVec2 => gl::GL_UNSIGNED_INT_VEC2,
-            &TypeSpecifierNonArray::UVec3 => gl::GL_UNSIGNED_INT_VEC3,
-            &TypeSpecifierNonArray::UVec4 => gl::GL_UNSIGNED_INT_VEC4,
-            ref x => unimplemented!("{:?}", x),
-          };
-          let type_size = ::gl::size_of(type_) as u32;
-
-          names.iter().map(|&(ref name, ref array)| {
-            let array_size: u32 = if array.is_empty() {
-              1
-            } else {
-              array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
-            };
-
-            let var = Variable{
-              name: name.clone(),
-              index: -1,
-              type_: type_,
-              array_size: array_size,
-              offset: size,
-            };
-
-            size += type_size * array_size;
-
-            var
-          }).collect::<Vec<_>>().into_iter()
-        }).collect();
-
-        let info = BlockInfo{
-          name: name.clone(),
-          var_name: var_name.clone(),
-          binding: binding as u32,
-          size: size,
-          active_variables: active_variables,
-        };
-
-        if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Buffer)) {
-          interfaces.push(Interface::ShaderStorageBlock(info));
-        } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
-          interfaces.push(Interface::UniformBlock(info));
-        } else { unimplemented!(); }
-      } else if let &ExternalDeclaration::Variable((ref quals, ref typespec), ref name, ref array_spec) = decl {
-        if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
-          let typ = match typespec.0 {
-            TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
-            TypeSpecifierNonArray::AtomicUint => gl::GL_UNSIGNED_INT_ATOMIC_COUNTER,
-            TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
-            TypeSpecifierNonArray::UVec2 => gl::GL_UNSIGNED_INT_VEC2,
-            TypeSpecifierNonArray::UVec3 => gl::GL_UNSIGNED_INT_VEC3,
-            ref x => unimplemented!("{:?}", x),
-          };
-
+      match decl {
+        &ExternalDeclaration::FunctionDefinition(ref proto, ref body) => {
+          functions.entry(proto.name.clone()).or_insert(vec![]).push(((*proto).clone(), (*body).clone()));
+        },
+        &ExternalDeclaration::Block(ref quals, ref name, ref members, ref var_name) => {
           let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
             lqs.iter().filter_map(|lq| if let &LayoutQualifierId::Int(ref name, val) = lq {
               if name == "binding" { Some(val) } else { None }
             } else { None }).next()
           } else { None }).next().unwrap_or(0);
 
-          if typ == gl::GL_UNSIGNED_INT_ATOMIC_COUNTER {
+          let mut size = 0;
+
+          let active_variables = members.iter().flat_map(|&(ref type_, ref names)| {
+            let type_ = &(type_.1).0;
+            let type_size = size_of(type_, Some(&types));
+
+            names.iter().map(|&(ref name, ref array)| {
+              let array_size: u32 = if array.is_empty() {
+                1
+              } else {
+                array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
+              };
+
+              let var = Variable{
+                name: name.clone(),
+                index: -1,
+                type_: type_.clone(),
+                array_size: array_size,
+                offset: size,
+              };
+
+              size += type_size as u32 * array_size;
+
+              var
+            }).collect::<Vec<_>>().into_iter()
+          }).collect();
+
+          let info = BlockInfo{
+            name: name.clone(),
+            var_name: var_name.clone(),
+            binding: binding as u32,
+            size: size,
+            active_variables: active_variables,
+          };
+
+          if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Buffer)) {
+            interfaces.push(Interface::ShaderStorageBlock(info));
+          } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
+            interfaces.push(Interface::UniformBlock(info));
+          } else { unimplemented!(); }
+        },
+        &ExternalDeclaration::Variable((ref quals, ref typespec), ref name, ref array_spec) => {
+          if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
+            let typ = match typespec.0 {
+              TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
+              TypeSpecifierNonArray::AtomicUint => gl::GL_UNSIGNED_INT_ATOMIC_COUNTER,
+              TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
+              TypeSpecifierNonArray::UVec2 => gl::GL_UNSIGNED_INT_VEC2,
+              TypeSpecifierNonArray::UVec3 => gl::GL_UNSIGNED_INT_VEC3,
+              ref x => unimplemented!("{:?}", x),
+            };
+
+            let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
+              lqs.iter().filter_map(|lq| if let &LayoutQualifierId::Int(ref name, val) = lq {
+                if name == "binding" { Some(val) } else { None }
+              } else { None }).next()
+            } else { None }).next().unwrap_or(0);
+
+            if typ == gl::GL_UNSIGNED_INT_ATOMIC_COUNTER {
+              let size: u32 = if array_spec.is_empty() {
+                1
+              } else {
+                array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
+              };
+
+              let atomic_info = AtomicCounterInfo{
+                name: name.clone(),
+                size: size as usize,
+                binding: binding as usize,
+              };
+              interfaces.push(Interface::AtomicCounter(atomic_info));
+            }
+
+            let info = UniformInfo{
+              name: name.clone(),
+              binding: binding as usize,
+              typ: typ,
+              index: -1,
+            };
+            interfaces.push(Interface::Uniform(info));
+          } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Shared)) {
+            let typ = typespec.0.clone();
+
             let size: u32 = if array_spec.is_empty() {
               1
             } else {
               array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
             };
 
-            let atomic_info = AtomicCounterInfo{
+            let info = SharedInfo{
               name: name.clone(),
+              typ: typ,
               size: size as usize,
-              binding: binding as usize,
             };
-            interfaces.push(Interface::AtomicCounter(atomic_info));
+            interfaces.push(Interface::Shared(info));
           }
+        },
+        &ExternalDeclaration::FunctionPrototype(_) => {},
+        &ExternalDeclaration::TypeQualifier(_) => {},
+        &ExternalDeclaration::TypeDeclaration(ref typ) => {
+          if let TypeSpecifierNonArray::Struct(ref name, ref members) = (typ.1).0 {
+            let name = name.as_ref().unwrap();
 
-          let info = UniformInfo{
-            name: name.clone(),
-            binding: binding as usize,
-            typ: typ,
-            index: -1,
-          };
-          interfaces.push(Interface::Uniform(info));
-        } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Shared)) {
-          let typ = match typespec.0 {
-            TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
-            TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
-            ref x => unimplemented!("{:?}", x),
-          };
+            let size = members.iter().map(|&(ref mtype, ref _names)| {
+              match &(mtype.1).0 {
+                &TypeSpecifierNonArray::Float => mem::size_of::<f32>(),
+                x => unimplemented!("{:?}", x),
+              }
+            }).sum();
 
-          let size: u32 = if array_spec.is_empty() {
-            1
-          } else {
-            array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
-          };
+            let custom_type = CustomType{
+              size: size,
+            };
 
-          let info = SharedInfo{
-            name: name.clone(),
-            typ: typ,
-            size: size as usize,
-          };
-          interfaces.push(Interface::Shared(info));
-        }
+            types.insert(name.clone(), custom_type);
+          } else { unimplemented!() }
+        },
       }
     }
 
@@ -241,6 +290,7 @@ impl Shader {
       functions,
       interfaces,
       work_group_size,
+      types,
     })
   }
 }

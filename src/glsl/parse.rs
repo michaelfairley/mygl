@@ -90,6 +90,8 @@ impl<'a> Parser<'a> {
   }
 
   fn parse_external_declaration(&mut self) -> Result<ExternalDeclaration> {
+    if self.consume(&Token::Precision)? { unimplemented!() }
+
     let type_qualifiers = self.parse_type_qualifiers()?;
 
     if self.consume(&Token::Semicolon)? {
@@ -117,6 +119,10 @@ impl<'a> Parser<'a> {
 
     let typ = self.parse_type()?;
     let fully_specified_type = (type_qualifiers, typ);
+
+    if self.consume(&Token::Semicolon)? {
+      return Ok(ExternalDeclaration::TypeDeclaration(fully_specified_type))
+    }
 
     let name = self.must_consume_ident()?;
 
@@ -197,10 +203,10 @@ impl<'a> Parser<'a> {
       let fully_specified_type = (type_qualifiers, typ);
 
       let name = self.must_consume_ident()?;
-      self.must_consume(&Token::Equal)?;
 
-      let initializer = self.parse_expression()?;
-
+      let initializer = if self.consume(&Token::Equal)? {
+        Some(self.parse_expression()?)
+      } else { None };
       self.must_consume(&Token::Semicolon)?;
 
       Ok(Statement::Declaration(fully_specified_type, name, initializer))
@@ -456,6 +462,13 @@ impl<'a> Parser<'a> {
       TypeSpecifierNonArray::Vec4
     } else if self.consume(&Token::UImage2D)? {
       TypeSpecifierNonArray::UImage2D
+    } else if self.consume(&Token::Struct)? {
+      let name = self.consume_ident()?;
+      self.must_consume(&Token::OpenBrace)?;
+      let members = self.parse_member_list()?;
+      TypeSpecifierNonArray::Struct(name, members)
+    } else if let Some(name) = self.consume_ident()? {
+      TypeSpecifierNonArray::Custom(name)
     } else { self.unexpected()? };
 
     Ok((typ, self.parse_array_specifier()?))
@@ -607,6 +620,7 @@ pub enum ExternalDeclaration {
   Block(Vec<TypeQualifier>, String, MemberList, Option<String>),
   TypeQualifier(Vec<TypeQualifier>),
   Variable(FullySpecifiedType, Identifier, ArraySpecifier),
+  TypeDeclaration(FullySpecifiedType),
 }
 
 pub type MemberList = Vec<(FullySpecifiedType, Vec<(Identifier, ArraySpecifier)>)>;
@@ -631,14 +645,12 @@ pub type ParameterDeclaration = (FullySpecifiedType,
                                  Option<(Identifier, ArraySpecifier)>);
 
 
-pub type FullySpecifiedType = (Vec<TypeQualifier>, TypeSpecifier);
-
 #[derive(Debug,PartialEq,Clone)]
 pub enum TypeQualifier {
   Layout(LayoutQualifier),
   Storage(StorageQualifier),
   Precision(PrecisionQualifier),
-  // TODO
+  // INCOMPLETE
 }
 
 #[derive(Debug,PartialEq,Clone)]
@@ -659,11 +671,16 @@ pub enum StorageQualifier {
   Shared,
   Readonly,
   Writeonly,
-  // TODO
+  // INCOMPLETE
 }
 
+// TODO: this needs to be a struct
+pub type FullySpecifiedType = (Vec<TypeQualifier>, TypeSpecifier);
+
+// TODO: either this (or the above) needs a #size method
 pub type TypeSpecifier = (TypeSpecifierNonArray, ArraySpecifier);
 
+// TODO: give this the more generic name
 #[derive(Debug,PartialEq,Clone)]
 pub enum TypeSpecifierNonArray {
   Void,
@@ -677,13 +694,15 @@ pub enum TypeSpecifierNonArray {
   Int,
   AtomicUint,
   UImage2D,
-  // TODO
+  Custom(String),
+  Struct(Option<String>, MemberList),
+  // INCOMPLETE
 }
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum Statement {
   Compound(Vec<Statement>),
-  Declaration(FullySpecifiedType, String, Expression),
+  Declaration(FullySpecifiedType, String, Option<Expression>),
   For(Box<Statement>, Expression, Expression, Box<Statement>),
   Expression(Expression),
   Builtin(super::interpret::BuiltinFunc),

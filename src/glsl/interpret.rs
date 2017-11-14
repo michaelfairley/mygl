@@ -2,7 +2,6 @@ use super::parse::{Statement,Expression,FunctionPrototype,TypeSpecifierNonArray,
 use super::Shader;
 
 use std::collections::HashMap;
-use std::mem;
 use std::sync::{Barrier,Arc};
 use std::ops::Deref;
 
@@ -26,7 +25,7 @@ pub enum Value {
   UImage2DUnit(usize),
   UImage2D(Arc<gl::Texture>),
 
-  Buffer(String, *mut u8, Option<u32>),
+  Buffer(TypeSpecifierNonArray, *mut u8, Option<u32>),
   Barrier(Arc<Barrier>),
 
   Ref(*mut Value),
@@ -40,9 +39,9 @@ impl Value {
         inner.set(val);
       },
       &mut Value::Buffer(ref typ, ptr, _) => {
-        match (typ.as_str(), val) {
-          ("uint", Value::Uint(u)) => unsafe{ *(ptr as *mut u32) = u },
-          ("uvec3", Value::UVec3(u)) => unsafe{ *(ptr as *mut [u32; 3]) = u },
+        match (typ, val) {
+          (&TypeSpecifierNonArray::Uint, Value::Uint(u)) => unsafe{ *(ptr as *mut u32) = u },
+          (&TypeSpecifierNonArray::UVec3, Value::UVec3(u)) => unsafe{ *(ptr as *mut [u32; 3]) = u },
           x => unimplemented!("{:?}", x),
         }
       },
@@ -57,9 +56,9 @@ impl Value {
         inner.get()
       },
       &Value::Buffer(ref typ, ptr, size) => {
-        match typ.as_str() {
-          "uint" => Value::Uint(unsafe{ *(ptr as *const u32) }),
-          "atomic_uint" => Value::Buffer(typ.clone(), ptr, size),
+        match typ {
+          &TypeSpecifierNonArray::Uint => Value::Uint(unsafe{ *(ptr as *const u32) }),
+          &TypeSpecifierNonArray::AtomicUint => Value::Buffer(typ.clone(), ptr, size),
           x => unimplemented!("{:?}", x),
         }
       },
@@ -184,7 +183,7 @@ impl BuiltinFunc {
         use std::sync::atomic::{AtomicU32,Ordering};
 
         match (vars.get(&"mem".to_string()), vars.get(&"data".to_string())) {
-          (&Value::Buffer(ref typ, p, _), &Value::Uint(v)) if typ == "uint" => {
+          (&Value::Buffer(TypeSpecifierNonArray::Uint, p, _), &Value::Uint(v)) => {
             let a = unsafe{ &*(p as *const AtomicU32) };
 
             let old = a.fetch_add(v, Ordering::AcqRel);
@@ -364,8 +363,15 @@ pub fn execute(statement: &Statement, vars: &mut Vars, shader: &Shader) -> Optio
         eval(iter, vars, shader);
       }
     },
-    &Statement::Declaration(_, ref name, ref init) => {
-      let value = eval(init, vars, shader);
+    &Statement::Declaration(ref typ, ref name, ref init) => {
+      let value = if let &Some(ref init) = init {
+        eval(init, vars, shader)
+      } else {
+        match &((typ.1).0) {
+          &TypeSpecifierNonArray::Float => Value::Float(0.0),
+          x => unimplemented!("{:?}", x),
+        }
+      };
 
       vars.insert(name.clone(), value);
     },
@@ -435,7 +441,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             (Value::UVec4(_), &TypeSpecifierNonArray::UVec4) => true,
             (Value::IVec2(_), &TypeSpecifierNonArray::IVec2) => true,
             (Value::UImage2D(_), &TypeSpecifierNonArray::UImage2D) => true,
-            (Value::Buffer(ref t, _, _), &TypeSpecifierNonArray::AtomicUint) if t == "atomic_uint" => true,
+            (Value::Buffer(ref t, _, _), t2) if t == t2 => true,
             _ => false,
           }
         })
@@ -560,11 +566,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
 
       match container {
         Value::Buffer(ref s, p, _len) => {
-          let size = match s.as_str() {
-            "uint" => mem::size_of::<u32>(),
-            "uvec3" => mem::size_of::<u32>() * 3,
-            x => unimplemented!("{:?}", x),
-          };
+          let size = super::size_of(s, Some(&shader.types));
 
           Value::Buffer(s.clone(),
                         unsafe{ p.offset(index as isize * size as isize) },
@@ -590,23 +592,16 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
           let info = shader.interfaces.iter().filter_map(|iface| match iface {
             &super::Interface::ShaderStorageBlock(ref info)
               | &super::Interface::UniformBlock(ref info)
-              => if info.name == typ { Some(info) } else { None },
+              => if TypeSpecifierNonArray::Custom(info.name.clone()) == typ { Some(info) } else { None },
             &super::Interface::Uniform(_) => None,
             x => unimplemented!("{:?}", x),
           }).next().unwrap();
 
           let field = info.active_variables.iter().find(|v| &v.name == field).expect("2");
-          let new_type = match field.type_ {
-            ::gl::GL_UNSIGNED_INT => "uint".to_string(),
-            ::gl::GL_UNSIGNED_INT_VEC2 => "uvec2".to_string(),
-            ::gl::GL_UNSIGNED_INT_VEC3 => "uvec3".to_string(),
-            ::gl::GL_UNSIGNED_INT_VEC4 => "uvec4".to_string(),
-            x => unimplemented!("{:x}", x),
-          };
 
           let length = Some(if field.array_size > 0 { field.array_size } else { len.unwrap() });
 
-          Value::Buffer(new_type, unsafe{ p.offset(field.offset as isize) }, length)
+          Value::Buffer(field.type_.clone(), unsafe{ p.offset(field.offset as isize) }, length)
         },
         Value::UVec3(v) => {
           match field.as_ref() {
