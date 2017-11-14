@@ -306,185 +306,176 @@ pub(super) fn tokenize(source: &str, version: Version) -> Result<Vec<FullToken>>
 
   while let Some(next) = l.peek() {
     let (line, col) = l.loc();
-    let typ = match next {
-      n if n.is_alphabetic() => {
-        let string = l.take(|c| c.is_alphanumeric() || c == '_');
-        match string.as_ref() {
-          "void" => Some(Token::Void),
-          "bool" => Some(Token::Bool),
-          "float" => Some(Token::Float),
-          "int" => Some(Token::Int),
-          "uint" => Some(Token::Uint),
-          "bvec2" => Some(Token::BVec2),
-          "bvec3" => Some(Token::BVec3),
-          "bvec4" => Some(Token::BVec4),
-          "ivec2" => Some(Token::IVec2),
-          "ivec3" => Some(Token::IVec3),
-          "ivec4" => Some(Token::IVec4),
-          "uvec2" => Some(Token::UVec2),
-          "uvec3" => Some(Token::UVec3),
-          "uvec4" => Some(Token::UVec4),
-          "vec2" => Some(Token::Vec2),
-          "vec3" => Some(Token::Vec3),
-          "vec4" => Some(Token::Vec4),
-          "mat2" => Some(Token::Mat2),
-          "mat3" => Some(Token::Mat3),
-          "mat4" => Some(Token::Mat4),
-          "mat2x2" => Some(Token::Mat2x2),
-          "mat2x3" => Some(Token::Mat2x3),
-          "mat2x4" => Some(Token::Mat2x4),
-          "mat3x2" => Some(Token::Mat3x2),
-          "mat3x3" => Some(Token::Mat3x3),
-          "mat3x4" => Some(Token::Mat3x4),
-          "mat4x2" => Some(Token::Mat4x2),
-          "mat4x3" => Some(Token::Mat4x3),
-          "mat4x4" => Some(Token::Mat4x4),
-          "struct" => Some(Token::Struct),
-          "atomic_uint" => Some(Token::AtomicUint),
-          "sampler2D" => Some(Token::Sampler2D),
-          "sampler3D" => Some(Token::Sampler3d),
-          "samplerCube" => Some(Token::SamplerCube),
-          "sampler2DArray" => Some(Token::Sampler2DArray),
-          "sampler2DShadow" => Some(Token::Sampler2DShadow),
-          "samplerCubeShadow" => Some(Token::SamplerCubeShadow),
-          "sampler2DArrayShadow" => Some(Token::Sampler2DArrayShadow),
-          "isampler2D" => Some(Token::ISampler2D),
-          "isampler3D" => Some(Token::ISampler3d),
-          "isamplerCube" => Some(Token::ISamplerCube),
-          "isampler2DArray" => Some(Token::ISampler2DArray),
-          "usampler2D" => Some(Token::USampler2D),
-          "usampler3D" => Some(Token::USampler3d),
-          "usamplerCube" => Some(Token::USamplerCube),
-          "usampler2DArray" => Some(Token::USampler2DArray),
-          "sampler2DMS" => Some(Token::Sampler2DMS),
-          "isampler2DMS" => Some(Token::ISampler2DMS),
-          "usampler2DMS" => Some(Token::USampler2DMS),
-          "sampler2DMSArray" => Some(Token::Sampler2DMSArray),
-          "isampler2DMSArray" => Some(Token::ISampler2DMSArray),
-          "usampler2DMSArray" => Some(Token::USampler2DMSArray),
-          "samplerBuffer" => Some(Token::SamplerBuffer),
-          "isamplerBuffer" => Some(Token::ISamplerBuffer),
-          "usamplerBuffer" => Some(Token::USamplerBuffer),
-          "samplerCubeArray" => Some(Token::SamplerCubeArray),
-          "isamplerCubeArray" => Some(Token::ISamplerCubeArray),
-          "usamplerCubeArray" => Some(Token::USamplerCubeArray),
-          "samplerCubeArrayShadow" => Some(Token::SamplerCubeArrayShadow),
-          "image2D" => Some(Token::Image2D),
-          "iimage2D" => Some(Token::IImage2D),
-          "uimage2D" => Some(Token::UImage2D),
-          "image3D" => Some(Token::Image3d),
-          "iimage3D" => Some(Token::IImage3d),
-          "uimage3D" => Some(Token::UImage3d),
-          "imageCube" => Some(Token::ImageCube),
-          "iimageCube" => Some(Token::IImageCube),
-          "uimageCube" => Some(Token::UImageCube),
-          "image2DArray" => Some(Token::Image2DArray),
-          "iimage2DArray" => Some(Token::IImage2DArray),
-          "uimage2DArray" => Some(Token::UImage2DArray),
-          "imageBuffer" => Some(Token::ImageBuffer),
-          "iimageBuffer" => Some(Token::IImageBuffer),
-          "uimageBuffer" => Some(Token::UImageBuffer),
-          "uimageCubeArray" => Some(Token::UImageCubeArray),
-          "imageCubeArray" => Some(Token::ImageCubeArray),
-          "iimageCubeArray" => Some(Token::IImageCubeArray),
-          "invariant" => Some(Token::Invariant),
-          "highp" => Some(Token::HighPrecision),
-          "mediump" => Some(Token::MediumPrecision),
-          "lowp" => Some(Token::LowPrecision),
-          "precision" => Some(Token::Precision),
-          "in" => Some(Token::In),
-          "out" => Some(Token::Out),
-          "inout" => Some(Token::Inout),
-          "const" => Some(Token::Const),
-          "uniform" => Some(Token::Uniform),
-          "buffer" => Some(Token::Buffer),
-          "shared" => Some(Token::Shared),
-          "coherent" => Some(Token::Coherent),
-          "volatile" => Some(Token::Volatile),
-          "restrict" => Some(Token::Restrict),
-          "readonly" => Some(Token::Readonly),
-          "writeonly" => Some(Token::Writeonly),
-          "flat" => Some(Token::Flat),
-          "smooth" => Some(Token::Smooth),
-          "centroid" => Some(Token::Centroid),
-          "layout" => Some(Token::Layout),
-          "patch" => Some(Token::Patch),
-          "sample" => Some(Token::Sample),
-          "while" => Some(Token::While),
-          "break" => Some(Token::Break),
-          "continue" => Some(Token::Continue),
-          "do" => Some(Token::Do),
-          "else" => Some(Token::Else),
-          "for" => Some(Token::For),
-          "if" => Some(Token::If),
-          "discard" => Some(Token::Discard),
-          "return" => Some(Token::Return),
-          "switch" => Some(Token::Switch),
-          "case" => Some(Token::Case),
-          "default" => Some(Token::Default),
-          _ => None,
-        }.unwrap_or(Token::Ident(string)) // TODO: cleanup with NLL
-      },
-      n if n.is_digit(10) => {
-        let string = l.take(|c| c.is_digit(10) || c == '.');
+    let typ = if next.is_alphabetic() {
+      let string = l.take(|c| c.is_alphanumeric() || c == '_');
+      match string.as_ref() {
+        "void" => Some(Token::Void),
+        "bool" => Some(Token::Bool),
+        "float" => Some(Token::Float),
+        "int" => Some(Token::Int),
+        "uint" => Some(Token::Uint),
+        "bvec2" => Some(Token::BVec2),
+        "bvec3" => Some(Token::BVec3),
+        "bvec4" => Some(Token::BVec4),
+        "ivec2" => Some(Token::IVec2),
+        "ivec3" => Some(Token::IVec3),
+        "ivec4" => Some(Token::IVec4),
+        "uvec2" => Some(Token::UVec2),
+        "uvec3" => Some(Token::UVec3),
+        "uvec4" => Some(Token::UVec4),
+        "vec2" => Some(Token::Vec2),
+        "vec3" => Some(Token::Vec3),
+        "vec4" => Some(Token::Vec4),
+        "mat2" => Some(Token::Mat2),
+        "mat3" => Some(Token::Mat3),
+        "mat4" => Some(Token::Mat4),
+        "mat2x2" => Some(Token::Mat2x2),
+        "mat2x3" => Some(Token::Mat2x3),
+        "mat2x4" => Some(Token::Mat2x4),
+        "mat3x2" => Some(Token::Mat3x2),
+        "mat3x3" => Some(Token::Mat3x3),
+        "mat3x4" => Some(Token::Mat3x4),
+        "mat4x2" => Some(Token::Mat4x2),
+        "mat4x3" => Some(Token::Mat4x3),
+        "mat4x4" => Some(Token::Mat4x4),
+        "struct" => Some(Token::Struct),
+        "atomic_uint" => Some(Token::AtomicUint),
+        "sampler2D" => Some(Token::Sampler2D),
+        "sampler3D" => Some(Token::Sampler3d),
+        "samplerCube" => Some(Token::SamplerCube),
+        "sampler2DArray" => Some(Token::Sampler2DArray),
+        "sampler2DShadow" => Some(Token::Sampler2DShadow),
+        "samplerCubeShadow" => Some(Token::SamplerCubeShadow),
+        "sampler2DArrayShadow" => Some(Token::Sampler2DArrayShadow),
+        "isampler2D" => Some(Token::ISampler2D),
+        "isampler3D" => Some(Token::ISampler3d),
+        "isamplerCube" => Some(Token::ISamplerCube),
+        "isampler2DArray" => Some(Token::ISampler2DArray),
+        "usampler2D" => Some(Token::USampler2D),
+        "usampler3D" => Some(Token::USampler3d),
+        "usamplerCube" => Some(Token::USamplerCube),
+        "usampler2DArray" => Some(Token::USampler2DArray),
+        "sampler2DMS" => Some(Token::Sampler2DMS),
+        "isampler2DMS" => Some(Token::ISampler2DMS),
+        "usampler2DMS" => Some(Token::USampler2DMS),
+        "sampler2DMSArray" => Some(Token::Sampler2DMSArray),
+        "isampler2DMSArray" => Some(Token::ISampler2DMSArray),
+        "usampler2DMSArray" => Some(Token::USampler2DMSArray),
+        "samplerBuffer" => Some(Token::SamplerBuffer),
+        "isamplerBuffer" => Some(Token::ISamplerBuffer),
+        "usamplerBuffer" => Some(Token::USamplerBuffer),
+        "samplerCubeArray" => Some(Token::SamplerCubeArray),
+        "isamplerCubeArray" => Some(Token::ISamplerCubeArray),
+        "usamplerCubeArray" => Some(Token::USamplerCubeArray),
+        "samplerCubeArrayShadow" => Some(Token::SamplerCubeArrayShadow),
+        "image2D" => Some(Token::Image2D),
+        "iimage2D" => Some(Token::IImage2D),
+        "uimage2D" => Some(Token::UImage2D),
+        "image3D" => Some(Token::Image3d),
+        "iimage3D" => Some(Token::IImage3d),
+        "uimage3D" => Some(Token::UImage3d),
+        "imageCube" => Some(Token::ImageCube),
+        "iimageCube" => Some(Token::IImageCube),
+        "uimageCube" => Some(Token::UImageCube),
+        "image2DArray" => Some(Token::Image2DArray),
+        "iimage2DArray" => Some(Token::IImage2DArray),
+        "uimage2DArray" => Some(Token::UImage2DArray),
+        "imageBuffer" => Some(Token::ImageBuffer),
+        "iimageBuffer" => Some(Token::IImageBuffer),
+        "uimageBuffer" => Some(Token::UImageBuffer),
+        "uimageCubeArray" => Some(Token::UImageCubeArray),
+        "imageCubeArray" => Some(Token::ImageCubeArray),
+        "iimageCubeArray" => Some(Token::IImageCubeArray),
+        "invariant" => Some(Token::Invariant),
+        "highp" => Some(Token::HighPrecision),
+        "mediump" => Some(Token::MediumPrecision),
+        "lowp" => Some(Token::LowPrecision),
+        "precision" => Some(Token::Precision),
+        "in" => Some(Token::In),
+        "out" => Some(Token::Out),
+        "inout" => Some(Token::Inout),
+        "const" => Some(Token::Const),
+        "uniform" => Some(Token::Uniform),
+        "buffer" => Some(Token::Buffer),
+        "shared" => Some(Token::Shared),
+        "coherent" => Some(Token::Coherent),
+        "volatile" => Some(Token::Volatile),
+        "restrict" => Some(Token::Restrict),
+        "readonly" => Some(Token::Readonly),
+        "writeonly" => Some(Token::Writeonly),
+        "flat" => Some(Token::Flat),
+        "smooth" => Some(Token::Smooth),
+        "centroid" => Some(Token::Centroid),
+        "layout" => Some(Token::Layout),
+        "patch" => Some(Token::Patch),
+        "sample" => Some(Token::Sample),
+        "while" => Some(Token::While),
+        "break" => Some(Token::Break),
+        "continue" => Some(Token::Continue),
+        "do" => Some(Token::Do),
+        "else" => Some(Token::Else),
+        "for" => Some(Token::For),
+        "if" => Some(Token::If),
+        "discard" => Some(Token::Discard),
+        "return" => Some(Token::Return),
+        "switch" => Some(Token::Switch),
+        "case" => Some(Token::Case),
+        "default" => Some(Token::Default),
+        _ => None,
+      }.unwrap_or(Token::Ident(string)) // TODO: cleanup with NLL
+    } else if next.is_digit(10) {
+      let string = l.take(|c| c.is_digit(10) || c == '.');
 
-        if string.contains('.') {
-          let n = string.parse::<f32>().map_err(|_| format!("Failed to parse {} as a float", string))?;
-          Token::FloatConstant(n)
-        } else if l.peek() == Some('u') {
-          l.advance();
-          let n = string.parse::<u32>().map_err(|_| format!("Failed to parse {} as a uint", string))?;
-          Token::UintConstant(n)
-        } else {
-          let n = string.parse::<i32>().map_err(|_| format!("Failed to parse {} as an int", string))?;
-          Token::IntConstant(n)
-        }
-      },
-      '(' => { l.advance(); Token::OpenParen },
-      ')' => { l.advance(); Token::CloseParen },
-      '{' => { l.advance(); Token::OpenBrace },
-      '}' => { l.advance(); Token::CloseBrace },
-      '=' => {
+      if string.contains('.') {
+        let n = string.parse::<f32>().map_err(|_| format!("Failed to parse {} as a float", string))?;
+        Token::FloatConstant(n)
+      } else if l.peek() == Some('u') {
         l.advance();
-        if l.peek() == Some('=') {
-          l.advance();
-          Token::EqOp
-        } else {
-          Token::Equal
-        }
-      },
-      ';' => { l.advance(); Token::Semicolon },
-      ',' => { l.advance(); Token::Comma },
-      '[' => { l.advance(); Token::OpenBracket },
-      ']' => { l.advance(); Token::CloseBracket },
-      '*' => { l.advance(); Token::Star },
-      '.' => { l.advance(); Token::Dot },
-      ':' => { l.advance(); Token::Colon },
-      '!' => { l.advance(); Token::Bang },
-      '-' => { l.advance(); Token::Dash },
-      '~' => { l.advance(); Token::Tilde },
-      '+' => {
-        l.advance();
-        if l.peek() == Some('+') {
-          l.advance();
-          Token::IncOp
-        } else if l.peek() == Some('=') {
-          l.advance();
-          Token::AddAssign
-        } else {
-          Token::Plus
-        }
-      },
-      '/' => { l.advance(); Token::Slash },
-      '%' => { l.advance(); Token::Percent },
-      '<' => { l.advance(); Token::OpenAngle },
-      '>' => { l.advance(); Token::CloseAngle },
-      '|' => { l.advance(); Token::VerticalBar },
-      '^' => { l.advance(); Token::Caret },
-      '&' => { l.advance(); Token::Ampersand },
-      '?' => { l.advance(); Token::Question },
-
-      x => return Err(format!("Don't know how to tokenize {} at {}:{}", x, line, col)),
+        let n = string.parse::<u32>().map_err(|_| format!("Failed to parse {} as a uint", string))?;
+        Token::UintConstant(n)
+      } else {
+        let n = string.parse::<i32>().map_err(|_| format!("Failed to parse {} as an int", string))?;
+        Token::IntConstant(n)
+      }
+    } else if l.consume('(') { Token::OpenParen
+    } else if l.consume('(') { Token::OpenParen
+    } else if l.consume(')') { Token::CloseParen
+    } else if l.consume('{') { Token::OpenBrace
+    } else if l.consume('}') { Token::CloseBrace
+    } else if l.consume('=') {
+      if l.consume('=') {
+        Token::EqOp
+      } else {
+        Token::Equal
+      }
+    } else if l.consume(';') { Token::Semicolon
+    } else if l.consume(',') { Token::Comma
+    } else if l.consume('[') { Token::OpenBracket
+    } else if l.consume(']') { Token::CloseBracket
+    } else if l.consume('*') { Token::Star
+    } else if l.consume('.') { Token::Dot
+    } else if l.consume(':') { Token::Colon
+    } else if l.consume('!') { Token::Bang
+    } else if l.consume('-') { Token::Dash
+    } else if l.consume('~') { Token::Tilde
+    } else if l.consume('+') {
+      if l.consume('+') {
+        Token::IncOp
+      } else if l.consume('=') {
+        Token::AddAssign
+      } else {
+        Token::Plus
+      }
+    } else if l.consume('/') { Token::Slash
+    } else if l.consume('%') { Token::Percent
+    } else if l.consume('<') { Token::OpenAngle
+    } else if l.consume('>') { Token::CloseAngle
+    } else if l.consume('|') { Token::VerticalBar
+    } else if l.consume('^') { Token::Caret
+    } else if l.consume('&') { Token::Ampersand
+    } else if l.consume('?') { Token::Question
+    } else {
+      return Err(format!("Don't know how to tokenize {} at {}:{}", next, line, col))
     };
 
     let token = FullToken{
@@ -560,7 +551,15 @@ impl<'a> LexHelper<'a> {
     } else { None }
   }
 
-  // TODO: a `consume` (like the parser) would be nice
+  fn consume(&mut self, c: char) -> bool {
+    if self.peek() == Some(c) {
+      self.advance();
+      true
+    } else {
+      false
+    }
+  }
+
   fn advance(&mut self) {
     if let Some(next) = self.buf.pop_front() {
       if next == '\n' {
