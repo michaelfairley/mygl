@@ -711,8 +711,7 @@ pub enum Statement {
   Declaration(FullySpecifiedType, String, Option<Expression>),
   For(Box<Statement>, Expression, Expression, Box<Statement>),
   Expression(Expression),
-  Builtin(super::interpret::BuiltinFunc),
-  Builtin2(super::interpret::BuiltinFunc2),
+  Builtin(super::builtin::Func),
   If(Expression, Box<Statement>, Box<Option<Statement>>),
 }
 

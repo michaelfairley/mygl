@@ -5,6 +5,7 @@ use std::mem;
 mod lex;
 mod parse;
 pub mod interpret;
+mod builtin;
 
 use self::parse::{FunctionPrototype,Statement};
 
@@ -143,7 +144,7 @@ impl Shader {
   pub fn new(translation_unit: parse::TranslationUnit, version: Version) -> Result<Self> {
     use self::parse::*;
 
-    let mut functions = interpret::BuiltinFunc::all();
+    let mut functions = builtin::all();
     let mut interfaces = vec![];
 
     let mut types: HashMap<String, CustomType> = HashMap::new();
