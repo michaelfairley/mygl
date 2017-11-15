@@ -12,13 +12,17 @@ const DEBUG: bool = false;
 #[derive(Debug,Clone)]
 pub enum Value {
   Int(i32),
-  Uint(u32),
-  Vec4([f32; 4]),
-  UVec4([u32; 4]),
-  UVec3([u32; 3]),
-  UVec2([u32; 2]),
   IVec2([i32; 2]),
+  IVec3([i32; 3]),
+  IVec4([i32; 4]),
+  Uint(u32),
+  UVec2([u32; 2]),
+  UVec3([u32; 3]),
+  UVec4([u32; 4]),
   Float(f32),
+  Vec2([f32; 2]),
+  Vec3([f32; 3]),
+  Vec4([f32; 4]),
   Bool(bool),
   Void,
 
@@ -40,9 +44,18 @@ impl Value {
       },
       &mut Value::Buffer(ref typ, ptr, _) => {
         match (typ, val) {
-          (&TypeSpecifierNonArray::Uint, Value::Uint(u)) => unsafe{ *(ptr as *mut u32) = u },
-          (&TypeSpecifierNonArray::Float, Value::Float(f)) => unsafe{ *(ptr as *mut f32) = f },
-          (&TypeSpecifierNonArray::UVec3, Value::UVec3(u)) => unsafe{ *(ptr as *mut [u32; 3]) = u },
+          (&TypeSpecifierNonArray::Uint, Value::Uint(u)) => unsafe{ *(ptr as *mut _) = u },
+          (&TypeSpecifierNonArray::UVec2, Value::UVec2(u)) => unsafe{ *(ptr as *mut _) = u },
+          (&TypeSpecifierNonArray::UVec3, Value::UVec3(u)) => unsafe{ *(ptr as *mut _) = u },
+          (&TypeSpecifierNonArray::UVec4, Value::UVec4(u)) => unsafe{ *(ptr as *mut _) = u },
+          (&TypeSpecifierNonArray::Int, Value::Int(i)) => unsafe{ *(ptr as *mut _) = i },
+          (&TypeSpecifierNonArray::IVec2, Value::IVec2(i)) => unsafe{ *(ptr as *mut _) = i },
+          (&TypeSpecifierNonArray::IVec3, Value::IVec3(i)) => unsafe{ *(ptr as *mut _) = i },
+          (&TypeSpecifierNonArray::IVec4, Value::IVec4(i)) => unsafe{ *(ptr as *mut _) = i },
+          (&TypeSpecifierNonArray::Float, Value::Float(f)) => unsafe{ *(ptr as *mut _) = f },
+          (&TypeSpecifierNonArray::Vec2, Value::Vec2(f)) => unsafe{ *(ptr as *mut _) = f },
+          (&TypeSpecifierNonArray::Vec3, Value::Vec3(f)) => unsafe{ *(ptr as *mut _) = f },
+          (&TypeSpecifierNonArray::Vec4, Value::Vec4(f)) => unsafe{ *(ptr as *mut _) = f },
           x => unimplemented!("{:?}", x),
         }
       },
@@ -58,8 +71,18 @@ impl Value {
       },
       &Value::Buffer(ref typ, ptr, size) => {
         match typ {
-          &TypeSpecifierNonArray::Uint => Value::Uint(unsafe{ *(ptr as *const u32) }),
-          &TypeSpecifierNonArray::Float => Value::Float(unsafe{ *(ptr as *const f32) }),
+          &TypeSpecifierNonArray::Uint => Value::Uint(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::UVec2 => Value::UVec2(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::UVec3 => Value::UVec3(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::UVec4 => Value::UVec4(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::Int => Value::Int(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::IVec2 => Value::IVec2(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::IVec3 => Value::IVec3(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::IVec4 => Value::IVec4(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::Float => Value::Float(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::Vec2 => Value::Vec2(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::Vec3 => Value::Vec3(unsafe{ *(ptr as *const _) }),
+          &TypeSpecifierNonArray::Vec4 => Value::Vec4(unsafe{ *(ptr as *const _) }),
           &TypeSpecifierNonArray::AtomicUint => Value::Buffer(typ.clone(), ptr, size),
           x => unimplemented!("{:?}", x),
         }
@@ -105,6 +128,93 @@ impl PartialOrd for Value {
 
 unsafe impl Send for Value {}
 
+#[derive(Clone)]
+pub struct BuiltinFunc2(Box<fn(&mut Vars) -> Value>);
+
+impl ::std::fmt::Debug for BuiltinFunc2 {
+  fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    write!(f, "BuiltinFunc2")
+  }
+}
+
+impl ::std::cmp::PartialEq for BuiltinFunc2 {
+  fn eq(&self, _other: &Self) -> bool {
+    false
+  }
+}
+
+macro_rules! builtin_type {
+  (float) => {(vec![], (TypeSpecifierNonArray::Float, vec![]))};
+  (vec2) => {(vec![], (TypeSpecifierNonArray::Vec2, vec![]))};
+  (vec3) => {(vec![], (TypeSpecifierNonArray::Vec3, vec![]))};
+  (vec4) => {(vec![], (TypeSpecifierNonArray::Vec4, vec![]))};
+  (int) => {(vec![], (TypeSpecifierNonArray::Int, vec![]))};
+  (ivec2) => {(vec![], (TypeSpecifierNonArray::IVec2, vec![]))};
+  (ivec3) => {(vec![], (TypeSpecifierNonArray::IVec3, vec![]))};
+  (ivec4) => {(vec![], (TypeSpecifierNonArray::IVec4, vec![]))};
+  (uint) => {(vec![], (TypeSpecifierNonArray::UInt, vec![]))};
+  (uvec2) => {(vec![], (TypeSpecifierNonArray::UVec2, vec![]))};
+  (uvec3) => {(vec![], (TypeSpecifierNonArray::UVec3, vec![]))};
+  (uvec4) => {(vec![], (TypeSpecifierNonArray::UVec4, vec![]))};
+}
+macro_rules! builtin_value_ref {
+  (float, $aname:ident) => {Value::Float(ref $aname)};
+  (vec2, $aname:ident) => {Value::Vec2(ref $aname)};
+  (vec3, $aname:ident) => {Value::Vec3(ref $aname)};
+  (vec4, $aname:ident) => {Value::Vec4(ref $aname)};
+  (int, $aname:ident) => {Value::Int(ref $aname)};
+  (ivec2, $aname:ident) => {Value::IVec2(ref $aname)};
+  (ivec3, $aname:ident) => {Value::IVec3(ref $aname)};
+  (ivec4, $aname:ident) => {Value::IVec4(ref $aname)};
+  (uint, $aname:ident) => {Value::UInt(ref $aname)};
+  (uvec2, $aname:ident) => {Value::UVec2(ref $aname)};
+  (uvec3, $aname:ident) => {Value::UVec3(ref $aname)};
+  (uvec4, $aname:ident) => {Value::UVec4(ref $aname)};
+}
+macro_rules! builtin_value {
+  (float) => {Value::Float};
+  (vec2) => {Value::Vec2};
+  (vec3) => {Value::Vec3};
+  (vec4) => {Value::Vec4};
+  (int) => {Value::Int};
+  (ivec2) => {Value::IVec2};
+  (ivec3) => {Value::IVec3};
+  (ivec4) => {Value::IVec4};
+  (uint) => {Value::UInt};
+  (uvec2) => {Value::UVec2};
+  (uvec3) => {Value::UVec3};
+  (uvec4) => {Value::UVec4};
+}
+
+macro_rules! builtin {
+  ($funcs:ident, $fname:ident, $($aname:ident : $atype:ident),* => $rtype:ident $body:expr) => {{
+    let func_name = stringify!($fname).to_string();
+
+    let prototype = FunctionPrototype{
+      typ: builtin_type!($rtype),
+      name: func_name.clone(),
+      params: vec![
+        $(
+          (builtin_type!($atype), Some((stringify!($aname).to_string(), vec![]))),
+        ),*
+      ],
+    };
+
+    let func = |vars: &mut Vars| -> Value {
+      if let (
+        $( &builtin_value_ref!($atype, $aname), )*
+      ) = (
+        $( vars.get(&stringify!($aname).to_string()), )*
+      ) {
+        builtin_value!($rtype)($body)
+      } else { unreachable!() }
+    };
+
+    $funcs.entry(func_name).or_insert_with(Vec::new)
+      .push((prototype, Statement::Builtin2(BuiltinFunc2(Box::new(func)))));
+  }}
+}
+
 #[derive(Debug,PartialEq,Clone,Copy)]
 pub enum BuiltinFunc {
   MemoryBarrierBuffer,
@@ -114,7 +224,6 @@ pub enum BuiltinFunc {
   ImageStoreU2D,
   ImageAtomicAddU2D,
   AtomicCounterIncrement,
-  AbsFloat,
 }
 
 impl BuiltinFunc {
@@ -205,11 +314,6 @@ impl BuiltinFunc {
           Value::Uint(old)
         } else { unreachable!() }
       },
-      BuiltinFunc::AbsFloat => {
-        if let &Float(f) = vars.get(&"a".to_string()) {
-          Value::Float(f.abs())
-        } else { unreachable!() }
-      },
     }
   }
 
@@ -217,14 +321,23 @@ impl BuiltinFunc {
   pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
     let mut funcs = HashMap::new();
 
-    let uvec4 = (vec![], (TypeSpecifierNonArray::UVec4, vec![]));
-    let ivec2 = (vec![], (TypeSpecifierNonArray::IVec2, vec![]));
     let uint = (vec![], (TypeSpecifierNonArray::Uint, vec![]));
+    // let uvec2 = (vec![], (TypeSpecifierNonArray::UVec2, vec![]));
+    // let uvec3 = (vec![], (TypeSpecifierNonArray::UVec3, vec![]));
+    let uvec4 = (vec![], (TypeSpecifierNonArray::UVec4, vec![]));
+    // let int = (vec![], (TypeSpecifierNonArray::Int, vec![]));
+    let ivec2 = (vec![], (TypeSpecifierNonArray::IVec2, vec![]));
+    // let ivec3 = (vec![], (TypeSpecifierNonArray::IVec3, vec![]));
+    // let ivec4 = (vec![], (TypeSpecifierNonArray::IVec4, vec![]));
+    // let float = (vec![], (TypeSpecifierNonArray::Float, vec![]));
+    // let vec2 = (vec![], (TypeSpecifierNonArray::Vec2, vec![]));
+    // let vec3 = (vec![], (TypeSpecifierNonArray::Vec3, vec![]));
+    // let vec4 = (vec![], (TypeSpecifierNonArray::Vec4, vec![]));
+
     let atomic_uint = (vec![], (TypeSpecifierNonArray::AtomicUint, vec![]));
     let uint_inout = (vec![TypeQualifier::Storage(StorageQualifier::Inout)], (TypeSpecifierNonArray::Uint, vec![]));
     let uimage2d = (vec![], (TypeSpecifierNonArray::UImage2D, vec![]));
     let void = (vec![], (TypeSpecifierNonArray::Void, vec![]));
-    let float = (vec![], (TypeSpecifierNonArray::Float, vec![]));
 
     let memory_barrier_buffer = FunctionPrototype{
       typ: void.clone(),
@@ -292,14 +405,31 @@ impl BuiltinFunc {
     };
     funcs.insert("atomicCounterIncrement".to_string(), vec![(atomic_counter_increment, Statement::Builtin(BuiltinFunc::AtomicCounterIncrement))]);
 
-    let abs_float = FunctionPrototype{
-      typ: float.clone(),
-      name: "absB".to_string(),
-      params: vec![
-        (float.clone(), Some(("a".to_string(), vec![]))),
-      ],
-    };
-    funcs.insert("abs".to_string(), vec![(abs_float, Statement::Builtin(BuiltinFunc::AbsFloat))]);
+
+    builtin!(funcs, abs, f: float => float {
+      f.abs()
+    });
+    builtin!(funcs, abs, v: vec2 => vec2 {
+      [v[0].abs(), v[1].abs()]
+    });
+    builtin!(funcs, abs, v: vec3 => vec3 {
+      [v[0].abs(), v[1].abs(), v[2].abs()]
+    });
+    builtin!(funcs, abs, v: vec4 => vec4 {
+      [v[0].abs(), v[1].abs(), v[2].abs(), v[3].abs()]
+    });
+    builtin!(funcs, abs, f: int => int {
+      f.abs()
+    });
+    builtin!(funcs, abs, v: ivec2 => ivec2 {
+      [v[0].abs(), v[1].abs()]
+    });
+    builtin!(funcs, abs, v: ivec3 => ivec3 {
+      [v[0].abs(), v[1].abs(), v[2].abs()]
+    });
+    builtin!(funcs, abs, v: ivec4 => ivec4 {
+      [v[0].abs(), v[1].abs(), v[2].abs(), v[3].abs()]
+    });
 
     funcs
   }
@@ -366,6 +496,9 @@ pub fn execute(statement: &Statement, vars: &mut Vars, shader: &Shader) -> Optio
     &Statement::Builtin(ref func) => {
       return Some(func.eval(vars))
     },
+    &Statement::Builtin2(ref func) => {
+      return Some(func.0(vars))
+    },
     &Statement::For(ref init, ref condition, ref iter, ref body) => {
       vars.push();
       execute(init, vars, shader);
@@ -387,6 +520,17 @@ pub fn execute(statement: &Statement, vars: &mut Vars, shader: &Shader) -> Optio
       } else {
         match &((typ.1).0) {
           &TypeSpecifierNonArray::Float => Value::Float(0.0),
+          &TypeSpecifierNonArray::Vec2 => Value::Vec2([0.0, 0.0]),
+          &TypeSpecifierNonArray::Vec3 => Value::Vec3([0.0, 0.0, 0.0]),
+          &TypeSpecifierNonArray::Vec4 => Value::Vec4([0.0, 0.0, 0.0, 0.0]),
+          &TypeSpecifierNonArray::Int => Value::Int(0),
+          &TypeSpecifierNonArray::IVec2 => Value::IVec2([0, 0]),
+          &TypeSpecifierNonArray::IVec3 => Value::IVec3([0, 0, 0]),
+          &TypeSpecifierNonArray::IVec4 => Value::IVec4([0, 0, 0, 0]),
+          &TypeSpecifierNonArray::Uint => Value::Uint(0),
+          &TypeSpecifierNonArray::UVec2 => Value::UVec2([0, 0]),
+          &TypeSpecifierNonArray::UVec3 => Value::UVec3([0, 0, 0]),
+          &TypeSpecifierNonArray::UVec4 => Value::UVec4([0, 0, 0, 0]),
           x => unimplemented!("{:?}", x),
         }
       };
@@ -453,11 +597,18 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       let &(ref func, ref body) = fs.iter().find(|&&(ref f,_)| {
         args.len() == f.params.len() && args.iter().zip(f.params.iter()).all(|(a,p)| {
           match (a.get(), &((p.0).1).0) {
-            (Value::Float(_), &TypeSpecifierNonArray::Float) => true,
             (Value::Uint(_), &TypeSpecifierNonArray::Uint) => true,
             (Value::UVec2(_), &TypeSpecifierNonArray::UVec2) => true,
+            (Value::UVec3(_), &TypeSpecifierNonArray::UVec3) => true,
             (Value::UVec4(_), &TypeSpecifierNonArray::UVec4) => true,
+            (Value::Int(_), &TypeSpecifierNonArray::Int) => true,
             (Value::IVec2(_), &TypeSpecifierNonArray::IVec2) => true,
+            (Value::IVec3(_), &TypeSpecifierNonArray::IVec3) => true,
+            (Value::IVec4(_), &TypeSpecifierNonArray::IVec4) => true,
+            (Value::Float(_), &TypeSpecifierNonArray::Float) => true,
+            (Value::Vec2(_), &TypeSpecifierNonArray::Vec2) => true,
+            (Value::Vec3(_), &TypeSpecifierNonArray::Vec3) => true,
+            (Value::Vec4(_), &TypeSpecifierNonArray::Vec4) => true,
             (Value::UImage2D(_), &TypeSpecifierNonArray::UImage2D) => true,
             (Value::Buffer(ref t, _, _), t2) if t == t2 => true,
             _ => false,
@@ -716,14 +867,14 @@ fn convert(name: &str, args: &[Value]) -> Value {
 
       let a = vals.next().unwrap_or(0);
       let b = vals.next().unwrap_or(0);
-      let _c = vals.next().unwrap_or(0);
-      let _d = vals.next().unwrap_or(1);
+      let c = vals.next().unwrap_or(0);
+      let d = vals.next().unwrap_or(1);
 
       match num {
         1 => Value::Int(a),
         2 => Value::IVec2([a, b]),
-        // 3 => Value::IVec3([a, b, c]),
-        // 4 => Value::IVec4([a, b, c, d]),
+        3 => Value::IVec3([a, b, c]),
+        4 => Value::IVec4([a, b, c, d]),
         x => unimplemented!("{}", x),
       }
     },
@@ -737,8 +888,8 @@ fn convert(name: &str, args: &[Value]) -> Value {
 
       match num {
         1 => Value::Float(a),
-        // 2 => Value::Vec2([a, b]),
-        // 3 => Value::Vec3([a, b, c]),
+        2 => Value::Vec2([a, b]),
+        3 => Value::Vec3([a, b, c]),
         4 => Value::Vec4([a, b, c, d]),
         x => unimplemented!("{}", x),
       }

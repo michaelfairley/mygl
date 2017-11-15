@@ -95,9 +95,16 @@ pub fn size_of(
   match type_ {
     &TypeSpecifierNonArray::Uint => mem::size_of::<u32>(),
     &TypeSpecifierNonArray::UVec2 => mem::size_of::<u32>() * 2,
-    &TypeSpecifierNonArray::UVec3 => mem::size_of::<u32>() * 3,
+    &TypeSpecifierNonArray::UVec3 => mem::size_of::<u32>() * 4,
     &TypeSpecifierNonArray::UVec4 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::Int => mem::size_of::<i32>(),
+    &TypeSpecifierNonArray::IVec2 => mem::size_of::<i32>() * 2,
+    &TypeSpecifierNonArray::IVec3 => mem::size_of::<i32>() * 4,
+    &TypeSpecifierNonArray::IVec4 => mem::size_of::<i32>() * 4,
     &TypeSpecifierNonArray::Float => mem::size_of::<f32>(),
+    &TypeSpecifierNonArray::Vec2 => mem::size_of::<f32>() * 2,
+    &TypeSpecifierNonArray::Vec3 => mem::size_of::<f32>() * 4,
+    &TypeSpecifierNonArray::Vec4 => mem::size_of::<f32>() * 4,
     &TypeSpecifierNonArray::Custom(ref n) => types.unwrap().get(n).unwrap().size,
     ref x => unimplemented!("{:?}", x),
   }
@@ -110,7 +117,14 @@ pub fn gl_type(
     &TypeSpecifierNonArray::UVec2 => ::gl::GL_UNSIGNED_INT_VEC2,
     &TypeSpecifierNonArray::UVec3 => ::gl::GL_UNSIGNED_INT_VEC3,
     &TypeSpecifierNonArray::UVec4 => ::gl::GL_UNSIGNED_INT_VEC4,
+    &TypeSpecifierNonArray::Int => ::gl::GL_INT,
+    &TypeSpecifierNonArray::IVec2 => ::gl::GL_INT_VEC2,
+    &TypeSpecifierNonArray::IVec3 => ::gl::GL_INT_VEC3,
+    &TypeSpecifierNonArray::IVec4 => ::gl::GL_INT_VEC4,
     &TypeSpecifierNonArray::Float => ::gl::GL_FLOAT,
+    &TypeSpecifierNonArray::Vec2 => ::gl::GL_FLOAT_VEC2,
+    &TypeSpecifierNonArray::Vec3 => ::gl::GL_FLOAT_VEC3,
+    &TypeSpecifierNonArray::Vec4 => ::gl::GL_FLOAT_VEC4,
     // INCOMPLETE
     x => unimplemented!("{:?}", x),
   }

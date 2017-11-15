@@ -345,12 +345,17 @@ impl<'a> Parser<'a> {
     let possible_function_name = match *self.peek()? {
       Token::Ident(ref name) => Some(name.clone()),
       Token::Uint => Some("uint".to_string()),
-      Token::Int => Some("int".to_string()),
-      Token::Float => Some("float".to_string()),
-      Token::Vec4 => Some("vec4".to_string()),
-      Token::IVec2 => Some("ivec2".to_string()),
-      Token::UVec4 => Some("uvec4".to_string()),
       Token::UVec2 => Some("uvec2".to_string()),
+      Token::UVec3 => Some("uvec3".to_string()),
+      Token::UVec4 => Some("uvec4".to_string()),
+      Token::Int => Some("int".to_string()),
+      Token::IVec2 => Some("ivec2".to_string()),
+      Token::IVec3 => Some("ivec3".to_string()),
+      Token::IVec4 => Some("ivec4".to_string()),
+      Token::Float => Some("float".to_string()),
+      Token::Vec2 => Some("vec2".to_string()),
+      Token::Vec3 => Some("vec3".to_string()),
+      Token::Vec4 => Some("vec4".to_string()),
       _ => None,
     };
 
@@ -444,24 +449,21 @@ impl<'a> Parser<'a> {
 
   fn parse_type(&mut self) -> Result<TypeSpecifier> {
     // TODO: cleanup
-    let typ = if self.consume(Token::Void)? {
-      TypeSpecifierNonArray::Void
-    } else if self.consume(Token::Uint)? {
-      TypeSpecifierNonArray::Uint
-    } else if self.consume(Token::AtomicUint)? {
-      TypeSpecifierNonArray::AtomicUint
-    } else if self.consume(Token::Int)? {
-      TypeSpecifierNonArray::Int
-    } else if self.consume(Token::UVec3)? {
-      TypeSpecifierNonArray::UVec3
-    } else if self.consume(Token::UVec2)? {
-      TypeSpecifierNonArray::UVec2
-    } else if self.consume(Token::Float)? {
-      TypeSpecifierNonArray::Float
-    } else if self.consume(Token::Vec4)? {
-      TypeSpecifierNonArray::Vec4
-    } else if self.consume(Token::UImage2D)? {
-      TypeSpecifierNonArray::UImage2D
+    let typ = if self.consume(Token::Void)? {TypeSpecifierNonArray::Void
+    } else if self.consume(Token::Uint)? { TypeSpecifierNonArray::Uint
+    } else if self.consume(Token::UVec2)? { TypeSpecifierNonArray::UVec2
+    } else if self.consume(Token::UVec3)? { TypeSpecifierNonArray::UVec3
+    } else if self.consume(Token::UVec4)? { TypeSpecifierNonArray::UVec4
+    } else if self.consume(Token::Int)? { TypeSpecifierNonArray::Int
+    } else if self.consume(Token::IVec2)? { TypeSpecifierNonArray::IVec2
+    } else if self.consume(Token::IVec3)? { TypeSpecifierNonArray::IVec3
+    } else if self.consume(Token::IVec4)? { TypeSpecifierNonArray::IVec4
+    } else if self.consume(Token::Float)? { TypeSpecifierNonArray::Float
+    } else if self.consume(Token::Vec2)? { TypeSpecifierNonArray::Vec2
+    } else if self.consume(Token::Vec3)? { TypeSpecifierNonArray::Vec3
+    } else if self.consume(Token::Vec4)? { TypeSpecifierNonArray::Vec4
+    } else if self.consume(Token::AtomicUint)? { TypeSpecifierNonArray::AtomicUint
+    } else if self.consume(Token::UImage2D)? { TypeSpecifierNonArray::UImage2D
     } else if self.consume(Token::Struct)? {
       let name = self.consume_ident()?;
       self.must_consume(Token::OpenBrace)?;
@@ -683,19 +685,23 @@ pub type TypeSpecifier = (TypeSpecifierNonArray, ArraySpecifier);
 // TODO: give this the more generic name
 #[derive(Debug,PartialEq,Clone)]
 pub enum TypeSpecifierNonArray {
-  Void,
-  Uint,
-  UVec4,
-  UVec3,
-  UVec2,
-  IVec2,
   Float,
+  Vec2,
+  Vec3,
   Vec4,
+  Uint,
+  UVec2,
+  UVec3,
+  UVec4,
   Int,
+  IVec2,
+  IVec3,
+  IVec4,
   AtomicUint,
   UImage2D,
   Custom(String),
   Struct(Option<String>, MemberList),
+  Void,
   // INCOMPLETE
 }
 
@@ -706,6 +712,7 @@ pub enum Statement {
   For(Box<Statement>, Expression, Expression, Box<Statement>),
   Expression(Expression),
   Builtin(super::interpret::BuiltinFunc),
+  Builtin2(super::interpret::BuiltinFunc2),
   If(Expression, Box<Statement>, Box<Option<Statement>>),
 }
 
