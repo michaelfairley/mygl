@@ -59,9 +59,9 @@ pub struct Context {
   draw_indirect_buffer: GLuint,
   atomic_counter_buffer: GLuint,
   shader_storage_buffer: GLuint,
-  indexed_shader_storage_buffer: [GLuint; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
-  indexed_uniform_buffer: Vec<GLuint>,
-  indexed_atomic_counter_buffer: [GLuint; MAX_ATOMIC_COUNTER_BUFFER_BINDINGS],
+  indexed_shader_storage_buffer: [BufferBinding; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
+  indexed_uniform_buffer: Vec<BufferBinding>,
+  indexed_atomic_counter_buffer: [BufferBinding; MAX_ATOMIC_COUNTER_BUFFER_BINDINGS],
 
   vertex_array: GLuint,
 
@@ -139,9 +139,9 @@ impl Context {
       draw_indirect_buffer: 0,
       atomic_counter_buffer: 0,
       shader_storage_buffer: 0,
-      indexed_shader_storage_buffer: [0; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
-      indexed_uniform_buffer: vec![0; MAX_UNIFORM_BUFFER_BINDINGS],
-      indexed_atomic_counter_buffer: [0; MAX_ATOMIC_COUNTER_BUFFER_BINDINGS],
+      indexed_shader_storage_buffer: [BufferBinding::zero(); MAX_SHADER_STORAGE_BUFFER_BINDINGS],
+      indexed_uniform_buffer: vec![BufferBinding::zero(); MAX_UNIFORM_BUFFER_BINDINGS],
+      indexed_atomic_counter_buffer: [BufferBinding::zero(); MAX_ATOMIC_COUNTER_BUFFER_BINDINGS],
 
       vertex_array: 0,
 
@@ -217,7 +217,7 @@ impl Context {
     }
   }
 
-  fn indexed_buffer_target_mut(&mut self, target: GLenum, i: usize) -> &mut GLuint {
+  fn indexed_buffer_target_mut(&mut self, target: GLenum, i: usize) -> &mut BufferBinding {
     match target {
       GL_SHADER_STORAGE_BUFFER => &mut self.indexed_shader_storage_buffer[i],
       GL_UNIFORM_BUFFER => &mut self.indexed_uniform_buffer[i],
@@ -379,6 +379,23 @@ pub struct Texture {
 #[derive(Debug)]
 pub struct Framebuffer {
   color0: Option<Arc<Texture>>,
+}
+
+#[derive(Debug,Copy,Clone)]
+pub struct BufferBinding {
+  buffer: GLuint,
+  offset: isize,
+  size: usize,
+}
+
+impl BufferBinding{
+  fn zero() -> Self {
+    Self{
+      buffer: 0,
+      offset: 0,
+      size: 0,
+    }
+  }
 }
 
 // Common types from OpenGL 1.1
@@ -1506,8 +1523,15 @@ pub extern "C" fn glBindBufferBase(
 ) -> () {
   let current = current();
 
+  let size = current.buffers[&buffer].as_ref().unwrap().len();
+  let binding = BufferBinding{
+    buffer: buffer,
+    offset: 0,
+    size: size,
+  };
+
   *current.buffer_target_mut(target) = buffer;
-  *current.indexed_buffer_target_mut(target, index as usize) = buffer;
+  *current.indexed_buffer_target_mut(target, index as usize) = binding;
 }
 
 #[no_mangle]
@@ -1520,11 +1544,14 @@ pub extern "C" fn glBindBufferRange(
 ) -> () {
   let current = current();
 
-  let buf = current.buffers[&buffer].as_ref().unwrap();
-  assert_eq!(offset, 0);
-  assert_eq!(size, buf.len() as isize);
+  let binding = BufferBinding{
+    buffer: buffer,
+    offset: offset,
+    size: size as usize,
+  };
 
-  glBindBufferBase(target, index, buffer);
+  *current.buffer_target_mut(target) = buffer;
+  *current.indexed_buffer_target_mut(target, index as usize) = binding;
 }
 
 #[no_mangle]
@@ -1683,7 +1710,12 @@ pub extern "C" fn glBlitFramebuffer(srcX0: GLint, srcY0: GLint, srcX1: GLint, sr
 }
 
 #[no_mangle]
-pub extern "C" fn glBufferData(target: GLenum, size: GLsizeiptr, data: *const c_void, _usage: GLenum) -> () {
+pub extern "C" fn glBufferData(
+  target: GLenum,
+  size: GLsizeiptr,
+  data: *const c_void,
+  _usage: GLenum,
+) -> () {
   let current = current();
 
   let vec = if data.is_null() {
@@ -2066,28 +2098,29 @@ pub extern "C" fn glDispatchCompute(
       &Interface::ShaderStorageBlock(ref info)
         | &Interface::UniformBlock(ref info)
         => {
-          let buffer = match iface {
+          let binding = match iface {
             &Interface::ShaderStorageBlock(_) => current.indexed_shader_storage_buffer[info.binding as usize],
             &Interface::UniformBlock(_) => current.indexed_uniform_buffer[info.binding as usize],
             _ => unreachable!(),
           };
 
-          let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
+          let buffer = current.buffers.get_mut(&binding.buffer).unwrap().as_mut().unwrap();
+          let buf_ptr = unsafe{ buffer.as_mut_ptr().offset(binding.offset) };
 
           let size = info.active_variables.last().and_then(|v| {
             if v.array_size == 0 {
-              Some(((buffer.len() - v.offset as usize) / glsl::size_of(&v.type_, Some(&compiled.types))) as u32)
+              Some(((binding.size - v.offset as usize) / glsl::size_of(&v.type_, Some(&compiled.types))) as u32)
             } else { None }
           });
 
           if let Some(ref var_name) = info.var_name {
-            init_vars.insert(var_name.clone(), Value::Buffer(glsl::TypeSpecifierNonArray::Custom(info.name.clone()), buffer.as_mut_ptr(), size));
+            init_vars.insert(var_name.clone(), Value::Buffer(glsl::TypeSpecifierNonArray::Custom(info.name.clone()), buf_ptr, size));
           } else {
             // TODO: unify with Expression::FieldSelection
             for field in &info.active_variables {
               let length = Some(if field.array_size > 0 { field.array_size } else { size.unwrap() });
 
-              let val = Value::Buffer(field.type_.clone(), unsafe{ buffer.as_mut_ptr().offset(field.offset as isize) }, length);
+              let val = Value::Buffer(field.type_.clone(), unsafe{ buf_ptr.offset(field.offset as isize) }, length);
               init_vars.insert(field.name.clone(), val);
             }
           }
@@ -2112,9 +2145,11 @@ pub extern "C" fn glDispatchCompute(
         shared.push(info.clone());
       },
       &Interface::AtomicCounter(ref info) => {
-        let buffer = current.indexed_atomic_counter_buffer[info.binding as usize];
-        let buffer = current.buffers.get_mut(&buffer).unwrap().as_mut().unwrap();
-        init_vars.insert(info.name.clone(), Value::Buffer(glsl::TypeSpecifierNonArray::AtomicUint, buffer.as_mut_ptr(), Some(info.size as u32)));
+        let binding = current.indexed_atomic_counter_buffer[info.binding as usize];
+        let buffer = current.buffers.get_mut(&binding.buffer).unwrap().as_mut().unwrap();
+        let buf_ptr = unsafe{ buffer.as_mut_ptr().offset(binding.offset) };
+
+        init_vars.insert(info.name.clone(), Value::Buffer(glsl::TypeSpecifierNonArray::AtomicUint, buf_ptr, Some(info.size as u32)));
       },
     }
   }
