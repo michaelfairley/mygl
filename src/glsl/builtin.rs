@@ -307,6 +307,90 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
     f.is_nan() as u32
   });
 
+  builtin_gentype!(funcs, "isinf", (f: genftype) => genbtype {
+    f.is_infinite() as u32
+  });
+
+  builtin_gentype!(funcs, "floatBitsToInt", (f: genftype) => genitype {
+    f.to_bits() as i32
+  });
+  builtin_gentype!(funcs, "floatBitsToUint", (f: genftype) => genutype {
+    f.to_bits()
+  });
+
+  fn frexp(x: f32) -> (f32, i32) {
+    if x == 0.0 { return (0.0, 0); }
+
+    let bits = x.to_bits();
+
+    let exp = ((bits >> 23) & 0xff) as i32 - 126;
+    let s = (bits | 0x3f000000) & !0x40800000;
+    (f32::from_bits(s), exp)
+  }
+  builtin_raw!(funcs, "frexp", (x: float, exp: !out int) => float - |vars: &mut Vars| {
+    if let &Value::Float(x) = vars.get(&"x".to_string()) {
+      let(s, e) = frexp(x);
+
+      vars.get_mut(&"exp".to_string()).set(Value::Int(e));
+      Value::Float(s)
+    } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "frexp", (x: vec2, exp: !out ivec2) => vec2 - |vars: &mut Vars| {
+    if let &Value::Vec2(x) = vars.get(&"x".to_string()) {
+      let(s0, e0) = frexp(x[0]);
+      let(s1, e1) = frexp(x[1]);
+
+      vars.get_mut(&"exp".to_string()).set(Value::IVec2([e0, e1]));
+      Value::Vec2([s0, s1])
+    } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "frexp", (x: vec3, exp: !out ivec3) => vec3 - |vars: &mut Vars| {
+    if let &Value::Vec3(x) = vars.get(&"x".to_string()) {
+      let(s0, e0) = frexp(x[0]);
+      let(s1, e1) = frexp(x[1]);
+      let(s2, e2) = frexp(x[2]);
+
+      vars.get_mut(&"exp".to_string()).set(Value::IVec3([e0, e1, e2]));
+      Value::Vec3([s0, s1, s2])
+    } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "frexp", (x: vec4, exp: !out ivec4) => vec4 - |vars: &mut Vars| {
+    if let &Value::Vec4(x) = vars.get(&"x".to_string()) {
+      let(s0, e0) = frexp(x[0]);
+      let(s1, e1) = frexp(x[1]);
+      let(s2, e2) = frexp(x[2]);
+      let(s3, e3) = frexp(x[3]);
+
+      vars.get_mut(&"exp".to_string()).set(Value::IVec4([e0, e1, e2, e3]));
+      Value::Vec4([s0, s1, s2, s3])
+    } else { unreachable!() }
+  });
+
+  builtin_gentype!(funcs, "ldexp", (x: genftype, exp: genitype) => genftype {
+    if x == 0.0 {
+      0.0
+    } else {
+      let bits = x.to_bits();
+      let x_exp = ((bits >> 23) & 0xff) as i32 - 126;
+      let bits = (bits & !0x7f800000) | ((exp + 126 + x_exp) as u32 & 0xff) << 23;
+
+      f32::from_bits(bits)
+    }
+  });
+
+  builtin_gentype!(funcs, "fma", (a: genftype, b: genftype, c: genftype) => genftype {
+    a.mul_add(b, c)
+  });
+
+  builtin_gentype!(funcs, "intBitsToFloat", (i: genitype) => genftype {
+    f32::from_bits(i as u32)
+  });
+  builtin_gentype!(funcs, "uintBitsToFloat", (u: genutype) => genftype {
+    f32::from_bits(u)
+  });
+
+
+
 
 
   builtin_gentype!(funcs, "min", (a: genftype, b: genftype) => genftype {

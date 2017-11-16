@@ -26,3 +26,4 @@ good: build
 	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.functional.compute.basic.*
 	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.info.*
 	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.functional.shaders.builtin_var.*
+	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.functional.shaders.builtin_functions.common.*.*_compute
