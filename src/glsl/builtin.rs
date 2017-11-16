@@ -24,7 +24,7 @@ macro_rules! builtin_flag {
 macro_rules! builtin_flags {
   ($($flags:ident)*) => { vec![$(builtin_flag!($flags))*] };
 }
-macro_rules! builtin_type_specifier {
+macro_rules! builtin_type_specifier_nongen {
   (float) => {TypeSpecifierNonArray::Float};
   (vec2) => {TypeSpecifierNonArray::Vec2};
   (vec3) => {TypeSpecifierNonArray::Vec3};
@@ -42,19 +42,30 @@ macro_rules! builtin_type_specifier {
   (void) => {TypeSpecifierNonArray::Void};
   (atomic_uint) => {TypeSpecifierNonArray::AtomicUint};
 }
-macro_rules! builtin_type {
-  ($(!$flag:ident)* $type:ident) => {(builtin_flags!($($flag)*), (builtin_type_specifier!($type), vec![]))};
+macro_rules! builtin_type_specifier {
+  (genftype #one) => {TypeSpecifierNonArray::Float};
+  (genftype #two) => {TypeSpecifierNonArray::Vec2};
+  (genftype #three) => {TypeSpecifierNonArray::Vec3};
+  (genftype #four) => {TypeSpecifierNonArray::Vec4};
+  (genitype #one) => {TypeSpecifierNonArray::Int};
+  (genitype #two) => {TypeSpecifierNonArray::IVec2};
+  (genitype #three) => {TypeSpecifierNonArray::IVec3};
+  (genitype #four) => {TypeSpecifierNonArray::IVec4};
+  ($type:ident $(#$num:ident)*) => {builtin_type_specifier_nongen!($type)};
 }
-macro_rules! builtin_value_ref {
-  (float, $aname:ident) => {Value::Float(ref $aname)};
+macro_rules! builtin_type {
+  ($(!$flag:ident)* $type:ident $(#$num:ident)*) => {(builtin_flags!($($flag)*), (builtin_type_specifier!($type $(#$num)*), vec![]))};
+}
+macro_rules! builtin_value_ref_nongen {
+  (float, $aname:ident) => {Value::Float($aname)};
   (vec2, $aname:ident) => {Value::Vec2(ref $aname)};
   (vec3, $aname:ident) => {Value::Vec3(ref $aname)};
   (vec4, $aname:ident) => {Value::Vec4(ref $aname)};
-  (int, $aname:ident) => {Value::Int(ref $aname)};
+  (int, $aname:ident) => {Value::Int($aname)};
   (ivec2, $aname:ident) => {Value::IVec2(ref $aname)};
   (ivec3, $aname:ident) => {Value::IVec3(ref $aname)};
   (ivec4, $aname:ident) => {Value::IVec4(ref $aname)};
-  (uint, $aname:ident) => {Value::Uint(ref $aname)};
+  (uint, $aname:ident) => {Value::Uint($aname)};
   (uint_buffer, $aname:ident) => {Value::Buffer(TypeSpecifierNonArray::Uint, ref $aname, _)};
   (uvec2, $aname:ident) => {Value::UVec2(ref $aname)};
   (uvec3, $aname:ident) => {Value::UVec3(ref $aname)};
@@ -62,7 +73,18 @@ macro_rules! builtin_value_ref {
   (uimage2d, $aname:ident) => {Value::UImage2D(ref $aname)};
   (atomic_uint, $aname:ident) => {Value::Buffer(_, ref $aname, _)};
 }
-macro_rules! builtin_value {
+macro_rules! builtin_value_ref {
+  (genftype #one, $aname:ident) => {Value::Float($aname)};
+  (genftype #two, $aname:ident) => {Value::Vec2(ref $aname)};
+  (genftype #three, $aname:ident) => {Value::Vec3(ref $aname)};
+  (genftype #four, $aname:ident) => {Value::Vec4(ref $aname)};
+  (genitype #one, $aname:ident) => {Value::Int($aname)};
+  (genitype #two, $aname:ident) => {Value::IVec2(ref $aname)};
+  (genitype #three, $aname:ident) => {Value::IVec3(ref $aname)};
+  (genitype #four, $aname:ident) => {Value::IVec4(ref $aname)};
+  ($type:ident $(#$num:ident)*, $aname:ident) => {builtin_value_ref_nongen!($type, $aname)};
+}
+macro_rules! builtin_value_nongen {
   (float) => {Value::Float};
   (vec2) => {Value::Vec2};
   (vec3) => {Value::Vec3};
@@ -78,36 +100,47 @@ macro_rules! builtin_value {
   (uimage2d) => {Value::UImage2D};
   (void) => {Value::Void};
 }
+macro_rules! builtin_value {
+  (genftype #one) => {Value::Float};
+  (genftype #two) => {Value::Vec2};
+  (genftype #three) => {Value::Vec3};
+  (genftype #four) => {Value::Vec4};
+  (genitype #one) => {Value::Int};
+  (genitype #two) => {Value::IVec2};
+  (genitype #three) => {Value::IVec3};
+  (genitype #four) => {Value::IVec4};
+  ($type:ident $(#$num:ident)*) => {builtin_value_nongen!($type)};
+}
 macro_rules! builtin_body {
-  (void, $body:block) => {{ $body; Value::Void }};
-  ($rtype:ident, $body:block) => { builtin_value!($rtype)($body) };
+  (void $(#$rnum:ident)*, $body:block) => {{ $body; Value::Void }};
+  ($rtype:ident $(#$rnum:ident)*, $body:block) => { builtin_value!($rtype $(#$rnum)*)($body) };
 }
 macro_rules! builtin_body_bindings {
-  ($vars:ident, () => $rtype:ident $body:block) => {{
+  ($vars:ident, () => $rtype:ident $(#$rnum:ident)* $body:block) => {{
     let _ = $vars; // Prevents unused_variables warning
     builtin_body!($rtype, $body)
   }};
-  ($vars:ident, ($($aname:ident : $atype:ident),+) => $rtype:ident $body:block) => {
+  ($vars:ident, ($($aname:ident : $atype:ident $(#$anum:ident)*),+) => $rtype:ident $(#$rnum:ident)* $body:block) => {
     if let (
-      $( &builtin_value_ref!($atype, $aname), )*
+      $( &builtin_value_ref!($atype $(#$anum)*, $aname), )*
     ) = (
       $( $vars.get(&stringify!($aname).to_string()), )*
     ) {
-      builtin_body!($rtype, $body)
+      builtin_body!($rtype $(#$rnum)*, $body)
     } else { unreachable!() }
   };
 }
 
 macro_rules! builtin_raw {
-  ($funcs:ident, $fname:expr, ($($aname:ident : $(!$flag:ident)* $atype:ident),*) => $rtype:ident $func:expr) => {{
+  ($funcs:ident, $fname:expr, ($($aname:ident : $(!$flag:ident)* $atype:ident $(#$anum:ident)*),*) => $rtype:ident $(#$rnum:ident)* - $func:expr) => {{
     let func_name = $fname.to_string();
 
     let prototype = FunctionPrototype{
-      typ: builtin_type!($rtype),
+      typ: builtin_type!($rtype $(#$rnum)*),
       name: func_name.clone(),
       params: vec![
         $(
-          (builtin_type!($(!$flag)* $atype), Some((stringify!($aname).to_string(), vec![]))),
+          (builtin_type!($(!$flag)* $atype $(#$anum)*), Some((stringify!($aname).to_string(), vec![]))),
         )*
       ],
     };
@@ -120,44 +153,69 @@ macro_rules! builtin_raw {
 }
 
 macro_rules! builtin {
-  ($funcs:ident, $fname:expr, ($($aname:ident : $(!$flag:ident)* $atype:ident),*) => $rtype:ident $body:block) => {{
+  ($funcs:ident, $fname:expr, ($($aname:ident : $(!$flag:ident)* $atype:ident $(#$anum:ident)*),*) => $rtype:ident $(#$rnum:ident)* $body:block) => {{
     let func = |vars: &mut Vars| -> Value {
-      builtin_body_bindings!(vars, ($($aname : $atype),*) => $rtype $body)
+      builtin_body_bindings!(vars, ($($aname : $atype $(#$anum)*),*) => $rtype $(#$rnum)* $body)
     };
 
-    builtin_raw!($funcs, $fname, ($($aname : $(!$flag)* $atype),*) => $rtype func)
+    builtin_raw!($funcs, $fname, ($($aname : $(!$flag)* $atype $(#$anum)*),*) => $rtype $(#$rnum)* - func)
   }}
 }
 
-// Do a lazy static thing
+macro_rules! builtin_gentype {
+  ($funcs:ident, $fname:expr, ($($aname:ident : $(!$flag:ident)* $atype:ident),*) => $rtype:ident $body:block) => {{
+    builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #one),*) => $rtype #one $body);
+
+    builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #two),*) => $rtype #two {
+      [
+        { $(let $aname = $aname[0])*; $body },
+        { $(let $aname = $aname[1])*; $body },
+      ]
+    });
+
+    builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #three),*) => $rtype #three {
+      [
+        { $(let $aname = $aname[0])*; $body },
+        { $(let $aname = $aname[1])*; $body },
+        { $(let $aname = $aname[2])*; $body },
+      ]
+    });
+
+    builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #four),*) => $rtype #four {
+      [
+        { $(let $aname = $aname[0])*; $body },
+        { $(let $aname = $aname[1])*; $body },
+        { $(let $aname = $aname[2])*; $body },
+        { $(let $aname = $aname[3])*; $body },
+      ]
+    });
+  }}
+}
+
+// TODO: Do a lazy static thing
 pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   use std::sync::atomic::{AtomicU32,Ordering};
 
   let mut funcs = HashMap::new();
 
-  builtin!(funcs, "abs", (f: float) => float {
+  builtin_gentype!(funcs, "abs", (f: genftype) => genftype {
     f.abs()
   });
-  builtin!(funcs, "abs", (v: vec2) => vec2 {
-    [v[0].abs(), v[1].abs()]
+  builtin_gentype!(funcs, "abs", (i: genitype) => genitype {
+    i.abs()
   });
-  builtin!(funcs, "abs", (v: vec3) => vec3 {
-    [v[0].abs(), v[1].abs(), v[2].abs()]
+
+  builtin_gentype!(funcs, "sign", (f: genftype) => genftype {
+    if f > 0.0 {
+      1.0
+    } else if f < 0.0 {
+      -1.0
+    } else {
+      0.0
+    }
   });
-  builtin!(funcs, "abs", (v: vec4) => vec4 {
-    [v[0].abs(), v[1].abs(), v[2].abs(), v[3].abs()]
-  });
-  builtin!(funcs, "abs", (f: int) => int {
-    f.abs()
-  });
-  builtin!(funcs, "abs", (v: ivec2) => ivec2 {
-    [v[0].abs(), v[1].abs()]
-  });
-  builtin!(funcs, "abs", (v: ivec3) => ivec3 {
-    [v[0].abs(), v[1].abs(), v[2].abs()]
-  });
-  builtin!(funcs, "abs", (v: ivec4) => ivec4 {
-    [v[0].abs(), v[1].abs(), v[2].abs(), v[3].abs()]
+  builtin_gentype!(funcs, "sign", (i: genitype) => genitype {
+    i.signum()
   });
 
   builtin!(funcs, "imageLoad", (i: uimage2d, t: ivec2) => uvec4 {
@@ -186,12 +244,12 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
     let p = i.buffer.as_ptr() as *const AtomicU32;
     let p = unsafe{ &*p.offset(texel as isize) };
 
-    p.fetch_add(*d, Ordering::AcqRel)
+    p.fetch_add(d, Ordering::AcqRel)
   });
 
   builtin!(funcs, "memoryBarrierBuffer", () => void {});
 
-  builtin_raw!(funcs, "barrier", () => void |vars: &mut Vars| {
+  builtin_raw!(funcs, "barrier", () => void - |vars: &mut Vars| {
     if let &Value::Barrier(ref barrier) = vars.get(&"__barrier".to_string()) {
       barrier.wait();
       Value::Void
@@ -201,7 +259,7 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   builtin!(funcs, "atomicAdd", (p: !inout uint_buffer, v: uint) => uint {
     let a = unsafe{ &*(*p as *const AtomicU32) };
 
-    a.fetch_add(*v, Ordering::AcqRel)
+    a.fetch_add(v, Ordering::AcqRel)
   });
 
   builtin!(funcs, "atomicCounterIncrement", (p: atomic_uint) => uint {
