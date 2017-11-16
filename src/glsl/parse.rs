@@ -90,7 +90,22 @@ impl<'a> Parser<'a> {
   }
 
   fn parse_external_declaration(&mut self) -> Result<ExternalDeclaration> {
-    if self.consume(Token::Precision)? { unimplemented!() }
+    if self.consume(Token::Precision)? {
+      let precision = if self.consume(Token::HighPrecision)? {
+        PrecisionQualifier::High
+      } else if self.consume(Token::MediumPrecision)? {
+        PrecisionQualifier::Medium
+      } else if self.consume(Token::LowPrecision)? {
+        PrecisionQualifier::Low
+      } else {
+        self.unexpected()?
+      };
+
+      let typ = self.parse_type()?;
+      self.must_consume(Token::Semicolon)?;
+
+      return Ok(ExternalDeclaration::Precision(precision, typ));
+    }
 
     let type_qualifiers = self.parse_type_qualifiers()?;
 
@@ -623,6 +638,7 @@ pub enum ExternalDeclaration {
   TypeQualifier(Vec<TypeQualifier>),
   Variable(FullySpecifiedType, Identifier, ArraySpecifier),
   TypeDeclaration(FullySpecifiedType),
+  Precision(PrecisionQualifier, TypeSpecifier),
 }
 
 pub type MemberList = Vec<(FullySpecifiedType, Vec<(Identifier, ArraySpecifier)>)>;

@@ -260,6 +260,7 @@ impl Shader {
         },
         &ExternalDeclaration::FunctionPrototype(_) => {},
         &ExternalDeclaration::TypeQualifier(_) => {},
+        &ExternalDeclaration::Precision(_, _) => {},
         &ExternalDeclaration::TypeDeclaration(ref typ) => {
           if let TypeSpecifierNonArray::Struct(ref name, ref members) = (typ.1).0 {
             let name = name.as_ref().unwrap();
