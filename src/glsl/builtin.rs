@@ -168,25 +168,25 @@ macro_rules! builtin_gentype {
 
     builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #two),*) => $rtype #two {
       [
-        { $(let $aname = $aname[0])*; $body },
-        { $(let $aname = $aname[1])*; $body },
+        { $(let $aname = $aname[0];)* $body },
+        { $(let $aname = $aname[1];)* $body },
       ]
     });
 
     builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #three),*) => $rtype #three {
       [
-        { $(let $aname = $aname[0])*; $body },
-        { $(let $aname = $aname[1])*; $body },
-        { $(let $aname = $aname[2])*; $body },
+        { $(let $aname = $aname[0];)* $body },
+        { $(let $aname = $aname[1];)* $body },
+        { $(let $aname = $aname[2];)* $body },
       ]
     });
 
     builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #four),*) => $rtype #four {
       [
-        { $(let $aname = $aname[0])*; $body },
-        { $(let $aname = $aname[1])*; $body },
-        { $(let $aname = $aname[2])*; $body },
-        { $(let $aname = $aname[3])*; $body },
+        { $(let $aname = $aname[0];)* $body },
+        { $(let $aname = $aname[1];)* $body },
+        { $(let $aname = $aname[2];)* $body },
+        { $(let $aname = $aname[3];)* $body },
       ]
     });
   }}
