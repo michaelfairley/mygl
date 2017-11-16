@@ -23,7 +23,10 @@ pub enum Value {
   Vec2([f32; 2]),
   Vec3([f32; 3]),
   Vec4([f32; 4]),
-  Bool(bool),
+  Bool(u32),
+  BVec2([u32; 2]),
+  BVec3([u32; 3]),
+  BVec4([u32; 4]),
   Void,
 
   UImage2DUnit(usize),
@@ -36,7 +39,7 @@ pub enum Value {
 }
 
 impl Value {
-  fn set(&mut self, val: Value) {
+  pub fn set(&mut self, val: Value) {
     match self {
       &mut Value::Ref(inner) => {
         let inner = unsafe{ &mut *inner };
@@ -56,6 +59,10 @@ impl Value {
           (&TypeSpecifierNonArray::Vec2, Value::Vec2(f)) => unsafe{ *(ptr as *mut _) = f },
           (&TypeSpecifierNonArray::Vec3, Value::Vec3(f)) => unsafe{ *(ptr as *mut _) = f },
           (&TypeSpecifierNonArray::Vec4, Value::Vec4(f)) => unsafe{ *(ptr as *mut _) = f },
+          (&TypeSpecifierNonArray::Bool, Value::Bool(b)) => unsafe{ *(ptr as *mut _) = b },
+          (&TypeSpecifierNonArray::BVec2, Value::BVec2(b)) => unsafe{ *(ptr as *mut _) = b },
+          (&TypeSpecifierNonArray::BVec3, Value::BVec3(b)) => unsafe{ *(ptr as *mut _) = b },
+          (&TypeSpecifierNonArray::BVec4, Value::BVec4(b)) => unsafe{ *(ptr as *mut _) = b },
           x => unimplemented!("{:?}", x),
         }
       },
@@ -162,7 +169,7 @@ impl Vars {
     panic!("Didn't find {} in the vars", ident);
   }
 
-  fn get_mut<'a>(&'a mut self, ident: &String) -> &mut Value {
+  pub fn get_mut<'a>(&'a mut self, ident: &String) -> &mut Value {
     for scope in self.scopes.iter_mut().rev() {
       if let Some(val) = scope.get_mut(ident) {
         return val;
@@ -196,7 +203,7 @@ pub fn execute(statement: &Statement, vars: &mut Vars, shader: &Shader) -> Optio
       loop {
         let cond = if let Value::Bool(cond) = eval(condition, vars, shader) { cond } else { unreachable!() };
 
-        if !cond { break };
+        if cond == 0 { break };
 
         let res = execute(body, vars, shader);
         if res.is_some() { return res; }
@@ -221,6 +228,10 @@ pub fn execute(statement: &Statement, vars: &mut Vars, shader: &Shader) -> Optio
           &TypeSpecifierNonArray::UVec2 => Value::UVec2([0, 0]),
           &TypeSpecifierNonArray::UVec3 => Value::UVec3([0, 0, 0]),
           &TypeSpecifierNonArray::UVec4 => Value::UVec4([0, 0, 0, 0]),
+          &TypeSpecifierNonArray::Bool => Value::Bool(0),
+          &TypeSpecifierNonArray::BVec2 => Value::BVec2([0, 0]),
+          &TypeSpecifierNonArray::BVec3 => Value::BVec3([0, 0, 0]),
+          &TypeSpecifierNonArray::BVec4 => Value::BVec4([0, 0, 0, 0]),
           x => unimplemented!("{:?}", x),
         }
       };
@@ -231,7 +242,7 @@ pub fn execute(statement: &Statement, vars: &mut Vars, shader: &Shader) -> Optio
       let cond_res = eval(cond, vars, shader).get();
       let cond_res = if let Value::Bool(cond_res) = cond_res { cond_res } else { unreachable!() };
 
-      if cond_res {
+      if cond_res > 0 {
         return execute(body, vars, shader);
       } else if let &Some(ref else_body) = else_body.deref() {
         return execute(else_body, vars, shader);
@@ -347,7 +358,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         Comparison::LessEqual => left <= right,
         Comparison::GreaterEqual => left >= right,
       };
-      Value::Bool(result)
+      Value::Bool(result as u32)
     },
     // TODO: omg unify these maths
     Expression::Add(ref left, ref right) => {

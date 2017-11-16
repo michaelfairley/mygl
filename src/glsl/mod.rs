@@ -106,6 +106,10 @@ pub fn size_of(
     &TypeSpecifierNonArray::Vec2 => mem::size_of::<f32>() * 2,
     &TypeSpecifierNonArray::Vec3 => mem::size_of::<f32>() * 4,
     &TypeSpecifierNonArray::Vec4 => mem::size_of::<f32>() * 4,
+    &TypeSpecifierNonArray::Bool => mem::size_of::<u32>(),
+    &TypeSpecifierNonArray::BVec2 => mem::size_of::<u32>() * 2,
+    &TypeSpecifierNonArray::BVec3 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::BVec4 => mem::size_of::<u32>() * 4,
     &TypeSpecifierNonArray::Custom(ref n) => types.unwrap().get(n).unwrap().size,
     ref x => unimplemented!("{:?}", x),
   }
@@ -126,6 +130,10 @@ pub fn gl_type(
     &TypeSpecifierNonArray::Vec2 => ::gl::GL_FLOAT_VEC2,
     &TypeSpecifierNonArray::Vec3 => ::gl::GL_FLOAT_VEC3,
     &TypeSpecifierNonArray::Vec4 => ::gl::GL_FLOAT_VEC4,
+    &TypeSpecifierNonArray::Bool => ::gl::GL_BOOL,
+    &TypeSpecifierNonArray::BVec2 => ::gl::GL_BOOL_VEC2,
+    &TypeSpecifierNonArray::BVec3 => ::gl::GL_BOOL_VEC3,
+    &TypeSpecifierNonArray::BVec4 => ::gl::GL_BOOL_VEC4,
     // INCOMPLETE
     x => unimplemented!("{:?}", x),
   }

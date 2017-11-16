@@ -371,6 +371,10 @@ impl<'a> Parser<'a> {
       Token::Vec2 => Some("vec2".to_string()),
       Token::Vec3 => Some("vec3".to_string()),
       Token::Vec4 => Some("vec4".to_string()),
+      Token::Bool => Some("bool".to_string()),
+      Token::BVec2 => Some("bvec2".to_string()),
+      Token::BVec3 => Some("bvec3".to_string()),
+      Token::BVec4 => Some("bvec4".to_string()),
       _ => None,
     };
 
@@ -477,6 +481,10 @@ impl<'a> Parser<'a> {
     } else if self.consume(Token::Vec2)? { TypeSpecifierNonArray::Vec2
     } else if self.consume(Token::Vec3)? { TypeSpecifierNonArray::Vec3
     } else if self.consume(Token::Vec4)? { TypeSpecifierNonArray::Vec4
+    } else if self.consume(Token::Bool)? { TypeSpecifierNonArray::Bool
+    } else if self.consume(Token::BVec2)? { TypeSpecifierNonArray::BVec2
+    } else if self.consume(Token::BVec3)? { TypeSpecifierNonArray::BVec3
+    } else if self.consume(Token::BVec4)? { TypeSpecifierNonArray::BVec4
     } else if self.consume(Token::AtomicUint)? { TypeSpecifierNonArray::AtomicUint
     } else if self.consume(Token::UImage2D)? { TypeSpecifierNonArray::UImage2D
     } else if self.consume(Token::Struct)? {
@@ -713,6 +721,10 @@ pub enum TypeSpecifierNonArray {
   IVec2,
   IVec3,
   IVec4,
+  Bool,
+  BVec2,
+  BVec3,
+  BVec4,
   AtomicUint,
   UImage2D,
   Custom(String),

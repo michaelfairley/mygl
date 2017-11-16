@@ -20,6 +20,7 @@ impl ::std::cmp::PartialEq for Func {
 // TODO: this could maybe just be folded into uint_buffer
 macro_rules! builtin_flag {
   (inout) => {TypeQualifier::Storage(StorageQualifier::Inout)};
+  (out) => {TypeQualifier::Storage(StorageQualifier::Out)};
 }
 macro_rules! builtin_flags {
   ($($flags:ident)*) => { vec![$(builtin_flag!($flags))*] };
@@ -51,6 +52,14 @@ macro_rules! builtin_type_specifier {
   (genitype #two) => {TypeSpecifierNonArray::IVec2};
   (genitype #three) => {TypeSpecifierNonArray::IVec3};
   (genitype #four) => {TypeSpecifierNonArray::IVec4};
+  (genutype #one) => {TypeSpecifierNonArray::Uint};
+  (genutype #two) => {TypeSpecifierNonArray::UVec2};
+  (genutype #three) => {TypeSpecifierNonArray::UVec3};
+  (genutype #four) => {TypeSpecifierNonArray::Vec4};
+  (genbtype #one) => {TypeSpecifierNonArray::Bool};
+  (genbtype #two) => {TypeSpecifierNonArray::BVec2};
+  (genbtype #three) => {TypeSpecifierNonArray::BVec3};
+  (genbtype #four) => {TypeSpecifierNonArray::BVec4};
   ($type:ident $(#$num:ident)*) => {builtin_type_specifier_nongen!($type)};
 }
 macro_rules! builtin_type {
@@ -82,6 +91,14 @@ macro_rules! builtin_value_ref {
   (genitype #two, $aname:ident) => {Value::IVec2(ref $aname)};
   (genitype #three, $aname:ident) => {Value::IVec3(ref $aname)};
   (genitype #four, $aname:ident) => {Value::IVec4(ref $aname)};
+  (genutype #one, $aname:ident) => {Value::Uint($aname)};
+  (genutype #two, $aname:ident) => {Value::UVec2(ref $aname)};
+  (genutype #three, $aname:ident) => {Value::UVec3(ref $aname)};
+  (genutype #four, $aname:ident) => {Value::UVec4(ref $aname)};
+  (genbtype #one, $aname:ident) => {Value::Bool($aname)};
+  (genbtype #two, $aname:ident) => {Value::BVec2(ref $aname)};
+  (genbtype #three, $aname:ident) => {Value::BVec3(ref $aname)};
+  (genbtype #four, $aname:ident) => {Value::BVec4(ref $aname)};
   ($type:ident $(#$num:ident)*, $aname:ident) => {builtin_value_ref_nongen!($type, $aname)};
 }
 macro_rules! builtin_value_nongen {
@@ -109,6 +126,14 @@ macro_rules! builtin_value {
   (genitype #two) => {Value::IVec2};
   (genitype #three) => {Value::IVec3};
   (genitype #four) => {Value::IVec4};
+  (genutype #one) => {Value::Uint};
+  (genutype #two) => {Value::UVec2};
+  (genutype #three) => {Value::UVec3};
+  (genutype #four) => {Value::UVec4};
+  (genbtype #one) => {Value::Bool};
+  (genbtype #two) => {Value::BVec2};
+  (genbtype #three) => {Value::BVec3};
+  (genbtype #four) => {Value::BVec4};
   ($type:ident $(#$num:ident)*) => {builtin_value_nongen!($type)};
 }
 macro_rules! builtin_body {
@@ -217,6 +242,77 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   builtin_gentype!(funcs, "sign", (i: genitype) => genitype {
     i.signum()
   });
+
+  builtin_gentype!(funcs, "floor", (f: genftype) => genftype {
+    f.floor()
+  });
+
+  builtin_gentype!(funcs, "trunc", (f: genftype) => genftype {
+    f.trunc()
+  });
+
+  builtin_gentype!(funcs, "round", (f: genftype) => genftype {
+    f.round()
+  });
+
+  builtin_gentype!(funcs, "roundEven", (f: genftype) => genftype {
+    if f.fract().abs() == 0.5 {
+      let trunc = f.trunc();
+      if trunc % 2.0 == 0.0 {
+        trunc
+      } else if f > 0.0 {
+        trunc + 1.0
+      } else {
+        trunc - 1.0
+      }
+    } else {
+      f.round()
+    }
+  });
+
+  builtin_gentype!(funcs, "ceil", (f: genftype) => genftype {
+    f.ceil()
+  });
+
+  builtin_gentype!(funcs, "fract", (f: genftype) => genftype {
+    (f.fract() + 1.0) % 1.0
+  });
+
+  builtin_raw!(funcs, "modf", (x: float, i: !out float) => float - |vars: &mut Vars| {
+    if let &Value::Float(x) = vars.get(&"x".to_string()) {
+      vars.get_mut(&"i".to_string()).set(Value::Float(x.trunc()));
+      Value::Float(x.fract())
+    } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "modf", (x: vec2, i: !out vec2) => vec2 - |vars: &mut Vars| {
+    if let &Value::Vec2(x) = vars.get(&"x".to_string()) {
+      vars.get_mut(&"i".to_string()).set(Value::Vec2([x[0].trunc(), x[1].trunc()]));
+      Value::Vec2([x[0].fract(), x[1].fract()])
+    } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "modf", (x: vec3, i: !out vec3) => vec3 - |vars: &mut Vars| {
+    if let &Value::Vec3(x) = vars.get(&"x".to_string()) {
+      vars.get_mut(&"i".to_string()).set(Value::Vec3([x[0].trunc(), x[1].trunc(), x[2].trunc()]));
+      Value::Vec3([x[0].fract(), x[1].fract(), x[2].fract()])
+    } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "modf", (x: vec4, i: !out vec4) => vec4 - |vars: &mut Vars| {
+    if let &Value::Vec4(x) = vars.get(&"x".to_string()) {
+      vars.get_mut(&"i".to_string()).set(Value::Vec4([x[0].trunc(), x[1].trunc(), x[2].trunc(), x[3].trunc()]));
+      Value::Vec4([x[0].fract(), x[1].fract(), x[2].fract(), x[3].fract()])
+    } else { unreachable!() }
+  });
+
+  builtin_gentype!(funcs, "isnan", (f: genftype) => genbtype {
+    f.is_nan() as u32
+  });
+
+
+
+  builtin_gentype!(funcs, "min", (a: genftype, b: genftype) => genftype {
+    a.min(b)
+  });
+
 
   builtin!(funcs, "imageLoad", (i: uimage2d, t: ivec2) => uvec4 {
     let (x, y) = (t[0] as usize, t[1] as usize);
