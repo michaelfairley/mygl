@@ -731,6 +731,14 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
     31 - value.leading_zeros() as i32
   });
 
+  builtin!(funcs, "cross", (x: vec3, y: vec3) => vec3 {
+    [
+      x[1]*y[2] - y[1]*x[2],
+      x[2]*y[0] - y[2]*x[0],
+      x[0]*y[1] - y[0]*x[1],
+    ]
+  });
+
 
   builtin_gentype!(funcs, "min", (a: genftype, b: genftype) => genftype {
     a.min(b)

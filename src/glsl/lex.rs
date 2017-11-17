@@ -289,6 +289,7 @@ pub(super) fn version(source: &str) -> Result<Version> {
   if !junk.chars().all(char::is_whitespace) { return Err(format!("There's junk on the version line: {}", junk)) }
 
   match (number.as_str(), es.as_str()) {
+    ("300", "es") => Ok(Version::ES300),
     ("310", "es") => Ok(Version::ES310),
     ("320", "es") => Ok(Version::ES320),
     (n, e) => Err(format!("Unknown version: {} {}", n, e)),

@@ -16,6 +16,7 @@ pub type Result<T> = ::std::result::Result<T, String>;
 #[derive(Debug,Clone,Copy,PartialEq)]
 pub enum Version {
   ES100,
+  ES300,
   ES310,
   ES320,
 }
@@ -147,22 +148,25 @@ pub fn gl_type(
   type_: &TypeSpecifierNonArray,
 ) -> GLenum {
   match type_ {
-    &TypeSpecifierNonArray::Uint => ::gl::GL_UNSIGNED_INT,
-    &TypeSpecifierNonArray::UVec2 => ::gl::GL_UNSIGNED_INT_VEC2,
-    &TypeSpecifierNonArray::UVec3 => ::gl::GL_UNSIGNED_INT_VEC3,
-    &TypeSpecifierNonArray::UVec4 => ::gl::GL_UNSIGNED_INT_VEC4,
-    &TypeSpecifierNonArray::Int => ::gl::GL_INT,
-    &TypeSpecifierNonArray::IVec2 => ::gl::GL_INT_VEC2,
-    &TypeSpecifierNonArray::IVec3 => ::gl::GL_INT_VEC3,
-    &TypeSpecifierNonArray::IVec4 => ::gl::GL_INT_VEC4,
-    &TypeSpecifierNonArray::Float => ::gl::GL_FLOAT,
-    &TypeSpecifierNonArray::Vec2 => ::gl::GL_FLOAT_VEC2,
-    &TypeSpecifierNonArray::Vec3 => ::gl::GL_FLOAT_VEC3,
-    &TypeSpecifierNonArray::Vec4 => ::gl::GL_FLOAT_VEC4,
-    &TypeSpecifierNonArray::Bool => ::gl::GL_BOOL,
-    &TypeSpecifierNonArray::BVec2 => ::gl::GL_BOOL_VEC2,
-    &TypeSpecifierNonArray::BVec3 => ::gl::GL_BOOL_VEC3,
-    &TypeSpecifierNonArray::BVec4 => ::gl::GL_BOOL_VEC4,
+    &TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
+    &TypeSpecifierNonArray::UVec2 => gl::GL_UNSIGNED_INT_VEC2,
+    &TypeSpecifierNonArray::UVec3 => gl::GL_UNSIGNED_INT_VEC3,
+    &TypeSpecifierNonArray::UVec4 => gl::GL_UNSIGNED_INT_VEC4,
+    &TypeSpecifierNonArray::Int => gl::GL_INT,
+    &TypeSpecifierNonArray::IVec2 => gl::GL_INT_VEC2,
+    &TypeSpecifierNonArray::IVec3 => gl::GL_INT_VEC3,
+    &TypeSpecifierNonArray::IVec4 => gl::GL_INT_VEC4,
+    &TypeSpecifierNonArray::Float => gl::GL_FLOAT,
+    &TypeSpecifierNonArray::Vec2 => gl::GL_FLOAT_VEC2,
+    &TypeSpecifierNonArray::Vec3 => gl::GL_FLOAT_VEC3,
+    &TypeSpecifierNonArray::Vec4 => gl::GL_FLOAT_VEC4,
+    &TypeSpecifierNonArray::Bool => gl::GL_BOOL,
+    &TypeSpecifierNonArray::BVec2 => gl::GL_BOOL_VEC2,
+    &TypeSpecifierNonArray::BVec3 => gl::GL_BOOL_VEC3,
+    &TypeSpecifierNonArray::BVec4 => gl::GL_BOOL_VEC4,
+    &TypeSpecifierNonArray::AtomicUint => gl::GL_UNSIGNED_INT_ATOMIC_COUNTER,
+    &TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
+
     // INCOMPLETE
     x => unimplemented!("{:?}", x),
   }
@@ -247,14 +251,7 @@ impl Shader {
         },
         &ExternalDeclaration::Variable((ref quals, ref typespec), ref name, ref array_spec) => {
           if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
-            let typ = match typespec.0 {
-              TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
-              TypeSpecifierNonArray::AtomicUint => gl::GL_UNSIGNED_INT_ATOMIC_COUNTER,
-              TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
-              TypeSpecifierNonArray::UVec2 => gl::GL_UNSIGNED_INT_VEC2,
-              TypeSpecifierNonArray::UVec3 => gl::GL_UNSIGNED_INT_VEC3,
-              ref x => unimplemented!("{:?}", x),
-            };
+            let typ = gl_type(&typespec.0);
 
             let binding = quals.iter().filter_map(|q| if let &TypeQualifier::Layout(ref lqs) = q {
               lqs.iter().filter_map(|lq| if let &LayoutQualifierId::Int(ref name, val) = lq {
