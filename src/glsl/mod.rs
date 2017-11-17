@@ -96,22 +96,51 @@ pub fn size_of(
   match type_ {
     &TypeSpecifierNonArray::Uint => mem::size_of::<u32>(),
     &TypeSpecifierNonArray::UVec2 => mem::size_of::<u32>() * 2,
-    &TypeSpecifierNonArray::UVec3 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::UVec3 => mem::size_of::<u32>() * 3,
     &TypeSpecifierNonArray::UVec4 => mem::size_of::<u32>() * 4,
     &TypeSpecifierNonArray::Int => mem::size_of::<i32>(),
     &TypeSpecifierNonArray::IVec2 => mem::size_of::<i32>() * 2,
-    &TypeSpecifierNonArray::IVec3 => mem::size_of::<i32>() * 4,
+    &TypeSpecifierNonArray::IVec3 => mem::size_of::<i32>() * 3,
     &TypeSpecifierNonArray::IVec4 => mem::size_of::<i32>() * 4,
     &TypeSpecifierNonArray::Float => mem::size_of::<f32>(),
     &TypeSpecifierNonArray::Vec2 => mem::size_of::<f32>() * 2,
-    &TypeSpecifierNonArray::Vec3 => mem::size_of::<f32>() * 4,
+    &TypeSpecifierNonArray::Vec3 => mem::size_of::<f32>() * 3,
     &TypeSpecifierNonArray::Vec4 => mem::size_of::<f32>() * 4,
     &TypeSpecifierNonArray::Bool => mem::size_of::<u32>(),
     &TypeSpecifierNonArray::BVec2 => mem::size_of::<u32>() * 2,
-    &TypeSpecifierNonArray::BVec3 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::BVec3 => mem::size_of::<u32>() * 3,
     &TypeSpecifierNonArray::BVec4 => mem::size_of::<u32>() * 4,
     &TypeSpecifierNonArray::Custom(ref n) => types.unwrap().get(n).unwrap().size,
     ref x => unimplemented!("{:?}", x),
+  }
+}
+pub fn alignment_of(
+  type_: &TypeSpecifierNonArray,
+  types: Option<&HashMap<String, CustomType>>,
+) -> usize {
+  match type_ {
+    &TypeSpecifierNonArray::UVec3 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::IVec3 => mem::size_of::<i32>() * 4,
+    &TypeSpecifierNonArray::Vec3 => mem::size_of::<f32>() * 4,
+    &TypeSpecifierNonArray::BVec3 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::Custom(ref n) => {
+      let type_ = types.unwrap().get(n).unwrap();
+      type_.fields.iter().map(|v| alignment_of(&v.type_, types)).max().unwrap()
+    }
+    x => size_of(x, types),
+  }
+}
+pub fn stride_of(
+  type_: &TypeSpecifierNonArray,
+  types: Option<&HashMap<String, CustomType>>,
+) -> usize {
+  let size = size_of(type_, types);
+  let alignment = alignment_of(type_, types);
+
+  if size % alignment == 0 {
+    size
+  } else {
+    size + alignment - size % alignment
   }
 }
 pub fn gl_type(
@@ -169,11 +198,17 @@ impl Shader {
             } else { None }).next()
           } else { None }).next().unwrap_or(0);
 
-          let mut size = 0;
+          let mut size: u32 = 0;
 
           let active_variables = members.iter().flat_map(|&(ref type_, ref names)| {
             let type_ = &(type_.1).0;
             let type_size = size_of(type_, Some(&types));
+
+            let type_alignment = alignment_of(type_, Some(&types)) as u32;
+            if size % type_alignment > 0 {
+              let padding = type_alignment - size % type_alignment;
+              size += padding;
+            }
 
             names.iter().map(|&(ref name, ref array)| {
               let array_size: u32 = if array.is_empty() {
@@ -278,6 +313,12 @@ impl Shader {
             let fields = members.iter().flat_map(|&(ref type_, ref names)| {
               let type_ = &(type_.1).0;
               let type_size = size_of(type_, Some(&types));
+
+              let type_alignment = alignment_of(type_, Some(&types)) as u32;
+              if size % type_alignment > 0 {
+                let padding = type_alignment - size % type_alignment;
+                size += padding;
+              }
 
               names.iter().map(|&(ref name, ref array)| {
                 let array_size: u32 = if array.is_empty() {

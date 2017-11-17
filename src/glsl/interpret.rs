@@ -436,10 +436,10 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
 
       match container {
         Value::Buffer(ref s, p, _len) => {
-          let size = super::size_of(s, Some(&shader.types));
+          let stride = super::stride_of(s, Some(&shader.types));
 
           Value::Buffer(s.clone(),
-                        unsafe{ p.offset(index as isize * size as isize) },
+                        unsafe{ p.offset(index as isize * stride as isize) },
                         None)
         },
         x => unimplemented!("{:?}", x),

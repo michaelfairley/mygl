@@ -2865,7 +2865,7 @@ pub extern "C" fn glGetProgramResourceiv(
             GL_TYPE => push(glsl::gl_type(&var.type_) as i32),
             GL_ARRAY_SIZE => push(var.array_size as i32),
             GL_OFFSET => push(var.offset as i32),
-            GL_ARRAY_STRIDE => push(glsl::size_of(&var.type_, None) as i32),
+            GL_ARRAY_STRIDE => push(glsl::stride_of(&var.type_, None) as i32),
             GL_MATRIX_STRIDE => push(0), // TODO
             GL_IS_ROW_MAJOR => push(0), // TODO
             GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO
@@ -2883,7 +2883,7 @@ pub extern "C" fn glGetProgramResourceiv(
               GL_TYPE => push(glsl::gl_type(&var.type_) as i32),
               GL_ARRAY_SIZE => push(var.array_size as i32),
               GL_OFFSET => push(var.offset as i32),
-              GL_ARRAY_STRIDE => push(glsl::size_of(&var.type_, None) as i32),
+              GL_ARRAY_STRIDE => push(glsl::stride_of(&var.type_, None) as i32),
               GL_MATRIX_STRIDE => push(0), // TODO
               GL_IS_ROW_MAJOR => push(0), // TODO
               GL_TOP_LEVEL_ARRAY_SIZE => push(1), // TODO

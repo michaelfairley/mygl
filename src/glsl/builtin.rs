@@ -626,6 +626,20 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
       } else { unreachable!() }
   });
 
+  builtin_gentype!(funcs, "bitfieldExtract", (value: genitype, offset: int, bits: int) => genitype {
+    if bits == 0 {
+      0
+    } else {
+      (value << (32 - offset - bits)) >> (32 - bits)
+    }
+  });
+  builtin_gentype!(funcs, "bitfieldExtract", (value: genutype, offset: int, bits: int) => genutype {
+    if bits == 0 {
+      0
+    } else {
+      (value << (32 - offset - bits)) >> (32 - bits)
+    }
+  });
 
 
   builtin_gentype!(funcs, "min", (a: genftype, b: genftype) => genftype {
