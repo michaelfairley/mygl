@@ -55,7 +55,7 @@ macro_rules! builtin_type_specifier {
   (genutype #one) => {TypeSpecifierNonArray::Uint};
   (genutype #two) => {TypeSpecifierNonArray::UVec2};
   (genutype #three) => {TypeSpecifierNonArray::UVec3};
-  (genutype #four) => {TypeSpecifierNonArray::Vec4};
+  (genutype #four) => {TypeSpecifierNonArray::UVec4};
   (genbtype #one) => {TypeSpecifierNonArray::Bool};
   (genbtype #two) => {TypeSpecifierNonArray::BVec2};
   (genbtype #three) => {TypeSpecifierNonArray::BVec3};
