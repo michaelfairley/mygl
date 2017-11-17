@@ -187,31 +187,39 @@ macro_rules! builtin {
   }}
 }
 
+macro_rules! index_gentype {
+  ($i:expr, $aname:ident : genftype) => { let $aname = $aname[$i]; };
+  ($i:expr, $aname:ident : genitype) => { let $aname = $aname[$i]; };
+  ($i:expr, $aname:ident : genutype) => { let $aname = $aname[$i]; };
+  ($i:expr, $aname:ident : genbtype) => { let $aname = $aname[$i]; };
+  ($i:expr, $aname:ident : $(!$flag:ident)* $atype:ident) => {};
+}
+
 macro_rules! builtin_gentype {
   ($funcs:ident, $fname:expr, ($($aname:ident : $(!$flag:ident)* $atype:ident),*) => $rtype:ident $body:block) => {{
     builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #one),*) => $rtype #one $body);
 
     builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #two),*) => $rtype #two {
       [
-        { $(let $aname = $aname[0];)* $body },
-        { $(let $aname = $aname[1];)* $body },
+        { $(index_gentype!(0, $aname : $(!$flag)* $atype);)* $body },
+        { $(index_gentype!(1, $aname : $(!$flag)* $atype);)* $body },
       ]
     });
 
     builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #three),*) => $rtype #three {
       [
-        { $(let $aname = $aname[0];)* $body },
-        { $(let $aname = $aname[1];)* $body },
-        { $(let $aname = $aname[2];)* $body },
+        { $(index_gentype!(0, $aname : $(!$flag)* $atype);)* $body },
+        { $(index_gentype!(1, $aname : $(!$flag)* $atype);)* $body },
+        { $(index_gentype!(2, $aname : $(!$flag)* $atype);)* $body },
       ]
     });
 
     builtin!($funcs, $fname, ($($aname : $(!$flag)* $atype #four),*) => $rtype #four {
       [
-        { $(let $aname = $aname[0];)* $body },
-        { $(let $aname = $aname[1];)* $body },
-        { $(let $aname = $aname[2];)* $body },
-        { $(let $aname = $aname[3];)* $body },
+        { $(index_gentype!(0, $aname : $(!$flag)* $atype);)* $body },
+        { $(index_gentype!(1, $aname : $(!$flag)* $atype);)* $body },
+        { $(index_gentype!(2, $aname : $(!$flag)* $atype);)* $body },
+        { $(index_gentype!(3, $aname : $(!$flag)* $atype);)* $body },
       ]
     });
   }}
@@ -389,7 +397,234 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
     f32::from_bits(u)
   });
 
+  // TODO: gentype macro functions with `out` params
+  builtin_raw!(funcs, "uaddCarry", (x: uint, y: uint, carry: !out uint) => uint - |vars: &mut Vars| {
+    if let (&Value::Uint(x),
+            &Value::Uint(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
 
+        let (sum, carry) = x.overflowing_add(y);
+
+        vars.get_mut(&"carry".to_string()).set(Value::Uint(carry as u32));
+        Value::Uint(sum)
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "uaddCarry", (x: uvec2, y: uvec2, carry: !out uvec2) => uvec2 - |vars: &mut Vars| {
+    if let (&Value::UVec2(x),
+            &Value::UVec2(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let (sum0, carry0) = x[0].overflowing_add(y[0]);
+        let (sum1, carry1) = x[1].overflowing_add(y[1]);
+
+        vars.get_mut(&"carry".to_string()).set(Value::UVec2([carry0 as u32, carry1 as u32]));
+        Value::UVec2([sum0, sum1])
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "uaddCarry", (x: uvec3, y: uvec3, carry: !out uvec3) => uvec3 - |vars: &mut Vars| {
+    if let (&Value::UVec3(x),
+            &Value::UVec3(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let (sum0, carry0) = x[0].overflowing_add(y[0]);
+        let (sum1, carry1) = x[1].overflowing_add(y[1]);
+        let (sum2, carry2) = x[2].overflowing_add(y[2]);
+
+        vars.get_mut(&"carry".to_string()).set(Value::UVec3([carry0 as u32, carry1 as u32, carry2 as u32]));
+        Value::UVec3([sum0, sum1, sum2])
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "uaddCarry", (x: uvec4, y: uvec4, carry: !out uvec4) => uvec4 - |vars: &mut Vars| {
+    if let (&Value::UVec4(x),
+            &Value::UVec4(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let (sum0, carry0) = x[0].overflowing_add(y[0]);
+        let (sum1, carry1) = x[1].overflowing_add(y[1]);
+        let (sum2, carry2) = x[2].overflowing_add(y[2]);
+        let (sum3, carry3) = x[3].overflowing_add(y[3]);
+
+        vars.get_mut(&"carry".to_string()).set(Value::UVec4([carry0 as u32, carry1 as u32, carry2 as u32, carry3 as u32]));
+        Value::UVec4([sum0, sum1, sum2, sum3])
+      } else { unreachable!() }
+  });
+
+  builtin_raw!(funcs, "usubBorrow", (x: uint, y: uint, borrow: !out uint) => uint - |vars: &mut Vars| {
+    if let (&Value::Uint(x),
+            &Value::Uint(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let (diff, borrow) = x.overflowing_sub(y);
+
+        vars.get_mut(&"borrow".to_string()).set(Value::Uint(borrow as u32));
+        Value::Uint(diff)
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "usubBorrow", (x: uvec2, y: uvec2, borrow: !out uvec2) => uvec2 - |vars: &mut Vars| {
+    if let (&Value::UVec2(x),
+            &Value::UVec2(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let (diff0, borrow0) = x[0].overflowing_sub(y[0]);
+        let (diff1, borrow1) = x[1].overflowing_sub(y[1]);
+
+        vars.get_mut(&"borrow".to_string()).set(Value::UVec2([borrow0 as u32, borrow1 as u32]));
+        Value::UVec2([diff0, diff1])
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "usubBorrow", (x: uvec3, y: uvec3, borrow: !out uvec3) => uvec3 - |vars: &mut Vars| {
+    if let (&Value::UVec3(x),
+            &Value::UVec3(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let (diff0, borrow0) = x[0].overflowing_sub(y[0]);
+        let (diff1, borrow1) = x[1].overflowing_sub(y[1]);
+        let (diff2, borrow2) = x[2].overflowing_sub(y[2]);
+
+        vars.get_mut(&"borrow".to_string()).set(Value::UVec3([borrow0 as u32, borrow1 as u32, borrow2 as u32]));
+        Value::UVec3([diff0, diff1, diff2])
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "usubBorrow", (x: uvec4, y: uvec4, borrow: !out uvec4) => uvec4 - |vars: &mut Vars| {
+    if let (&Value::UVec4(x),
+            &Value::UVec4(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let (diff0, borrow0) = x[0].overflowing_sub(y[0]);
+        let (diff1, borrow1) = x[1].overflowing_sub(y[1]);
+        let (diff2, borrow2) = x[2].overflowing_sub(y[2]);
+        let (diff3, borrow3) = x[3].overflowing_sub(y[3]);
+
+        vars.get_mut(&"borrow".to_string()).set(Value::UVec4([borrow0 as u32, borrow1 as u32, borrow2 as u32, borrow3 as u32]));
+        Value::UVec4([diff0, diff1, diff2, diff3])
+      } else { unreachable!() }
+  });
+
+  builtin_raw!(funcs, "umulExtended", (x: uint, y: uint, msb: !out uint, lsb: !out uint) => void - |vars: &mut Vars| {
+    if let (&Value::Uint(x),
+            &Value::Uint(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let product: [u32; 2] = unsafe{ ::std::mem::transmute(x as u64 * y as u64) };
+
+        vars.get_mut(&"msb".to_string()).set(Value::Uint(product[1] as u32));
+        vars.get_mut(&"lsb".to_string()).set(Value::Uint(product[0] as u32));
+        Value::Void
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "umulExtended", (x: uvec2, y: uvec2, msb: !out uvec2, lsb: !out uvec2) => void - |vars: &mut Vars| {
+    if let (&Value::UVec2(x),
+            &Value::UVec2(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let product0: [u32; 2] = unsafe{ ::std::mem::transmute(x[0] as u64 * y[0] as u64) };
+        let product1: [u32; 2] = unsafe{ ::std::mem::transmute(x[1] as u64 * y[1] as u64) };
+
+        vars.get_mut(&"msb".to_string()).set(Value::UVec2([product0[1] as u32, product1[1] as u32]));
+        vars.get_mut(&"lsb".to_string()).set(Value::UVec2([product0[0] as u32, product1[0] as u32]));
+        Value::Void
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "umulExtended", (x: uvec3, y: uvec3, msb: !out uvec3, lsb: !out uvec3) => void - |vars: &mut Vars| {
+    if let (&Value::UVec3(x),
+            &Value::UVec3(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let product0: [u32; 2] = unsafe{ ::std::mem::transmute(x[0] as u64 * y[0] as u64) };
+        let product1: [u32; 2] = unsafe{ ::std::mem::transmute(x[1] as u64 * y[1] as u64) };
+        let product2: [u32; 2] = unsafe{ ::std::mem::transmute(x[2] as u64 * y[2] as u64) };
+
+        vars.get_mut(&"msb".to_string()).set(Value::UVec3([product0[1] as u32, product1[1] as u32, product2[1] as u32]));
+        vars.get_mut(&"lsb".to_string()).set(Value::UVec3([product0[0] as u32, product1[0] as u32, product2[0] as u32]));
+        Value::Void
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "umulExtended", (x: uvec4, y: uvec4, msb: !out uvec4, lsb: !out uvec4) => void - |vars: &mut Vars| {
+    if let (&Value::UVec4(x),
+            &Value::UVec4(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let product0: [u32; 2] = unsafe{ ::std::mem::transmute(x[0] as u64 * y[0] as u64) };
+        let product1: [u32; 2] = unsafe{ ::std::mem::transmute(x[1] as u64 * y[1] as u64) };
+        let product2: [u32; 2] = unsafe{ ::std::mem::transmute(x[2] as u64 * y[2] as u64) };
+        let product3: [u32; 2] = unsafe{ ::std::mem::transmute(x[3] as u64 * y[3] as u64) };
+
+        vars.get_mut(&"msb".to_string()).set(Value::UVec4([product0[1] as u32, product1[1] as u32, product2[1] as u32, product3[1] as u32]));
+        vars.get_mut(&"lsb".to_string()).set(Value::UVec4([product0[0] as u32, product1[0] as u32, product2[0] as u32, product3[0] as u32]));
+        Value::Void
+      } else { unreachable!() }
+  });
+
+  builtin_raw!(funcs, "imulExtended", (x: int, y: int, msb: !out int, lsb: !out int) => void - |vars: &mut Vars| {
+    if let (&Value::Int(x),
+            &Value::Int(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let product: [i32; 2] = unsafe{ ::std::mem::transmute(x as i64 * y as i64) };
+
+        vars.get_mut(&"msb".to_string()).set(Value::Int(product[1] as i32));
+        vars.get_mut(&"lsb".to_string()).set(Value::Int(product[0] as i32));
+        Value::Void
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "imulExtended", (x: ivec2, y: ivec2, msb: !out ivec2, lsb: !out ivec2) => void - |vars: &mut Vars| {
+    if let (&Value::IVec2(x),
+            &Value::IVec2(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let product0: [i32; 2] = unsafe{ ::std::mem::transmute(x[0] as i64 * y[0] as i64) };
+        let product1: [i32; 2] = unsafe{ ::std::mem::transmute(x[1] as i64 * y[1] as i64) };
+
+        vars.get_mut(&"msb".to_string()).set(Value::IVec2([product0[1] as i32, product1[1] as i32]));
+        vars.get_mut(&"lsb".to_string()).set(Value::IVec2([product0[0] as i32, product1[0] as i32]));
+        Value::Void
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "imulExtended", (x: ivec3, y: ivec3, msb: !out ivec3, lsb: !out ivec3) => void - |vars: &mut Vars| {
+    if let (&Value::IVec3(x),
+            &Value::IVec3(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let product0: [i32; 2] = unsafe{ ::std::mem::transmute(x[0] as i64 * y[0] as i64) };
+        let product1: [i32; 2] = unsafe{ ::std::mem::transmute(x[1] as i64 * y[1] as i64) };
+        let product2: [i32; 2] = unsafe{ ::std::mem::transmute(x[2] as i64 * y[2] as i64) };
+
+        vars.get_mut(&"msb".to_string()).set(Value::IVec3([product0[1] as i32, product1[1] as i32, product2[1] as i32]));
+        vars.get_mut(&"lsb".to_string()).set(Value::IVec3([product0[0] as i32, product1[0] as i32, product2[0] as i32]));
+        Value::Void
+      } else { unreachable!() }
+  });
+  builtin_raw!(funcs, "imulExtended", (x: ivec4, y: ivec4, msb: !out ivec4, lsb: !out ivec4) => void - |vars: &mut Vars| {
+    if let (&Value::IVec4(x),
+            &Value::IVec4(y))
+      = (vars.get(&"x".to_string()),
+         vars.get(&"y".to_string())) {
+
+        let product0: [i32; 2] = unsafe{ ::std::mem::transmute(x[0] as i64 * y[0] as i64) };
+        let product1: [i32; 2] = unsafe{ ::std::mem::transmute(x[1] as i64 * y[1] as i64) };
+        let product2: [i32; 2] = unsafe{ ::std::mem::transmute(x[2] as i64 * y[2] as i64) };
+        let product3: [i32; 2] = unsafe{ ::std::mem::transmute(x[3] as i64 * y[3] as i64) };
+
+        vars.get_mut(&"msb".to_string()).set(Value::IVec4([product0[1] as i32, product1[1] as i32, product2[1] as i32, product3[1] as i32]));
+        vars.get_mut(&"lsb".to_string()).set(Value::IVec4([product0[0] as i32, product1[0] as i32, product2[0] as i32, product3[0] as i32]));
+        Value::Void
+      } else { unreachable!() }
+  });
 
 
 
