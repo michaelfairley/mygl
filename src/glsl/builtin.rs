@@ -642,6 +642,96 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   });
 
 
+  builtin_gentype!(funcs, "bitfieldInsert", (value: genitype,
+                                             insert: genitype,
+                                             offset: int,
+                                             bits: int) => genitype {
+    if bits == 0 {
+      value
+    } else {
+      let mask = (u32::max_value() >> (32 - bits) << offset) as i32;
+      let insert_shifted = insert << offset;
+
+      (value & !mask) | (insert_shifted & mask)
+    }
+  });
+  builtin_gentype!(funcs, "bitfieldInsert", (value: genutype,
+                                             insert: genutype,
+                                             offset: int,
+                                             bits: int) => genutype {
+    if bits == 0 {
+      value
+    } else {
+      let mask = u32::max_value() >> (32 - bits) << offset;
+      let insert_shifted = insert << offset;
+
+      (value & !mask) | (insert_shifted & mask)
+    }
+  });
+
+
+  builtin_gentype!(funcs, "bitfieldReverse", (value: genitype) => genitype {
+    let mut value = value;
+    let mut res = 0;
+
+    for _ in 0..32 {
+      res <<= 1;
+      if (value & 1) == 1 {
+        res |= 1;
+      }
+      value >>= 1;
+    }
+    res
+  });
+  builtin_gentype!(funcs, "bitfieldReverse", (value: genutype) => genutype {
+    let mut value = value;
+    let mut res = 0;
+
+    for _ in 0..32 {
+      res <<= 1;
+      if (value & 1) == 1 {
+        res |= 1;
+      }
+      value >>= 1;
+    }
+    res
+  });
+
+
+  builtin_gentype!(funcs, "bitCount", (value: genitype) => genitype {
+    value.count_ones() as i32
+  });
+  builtin_gentype!(funcs, "bitCount", (value: genutype) => genitype {
+    value.count_ones() as i32
+  });
+
+  builtin_gentype!(funcs, "findLSB", (value: genitype) => genitype {
+    if value == 0 {
+      -1
+    } else {
+      value.trailing_zeros() as i32
+    }
+  });
+  builtin_gentype!(funcs, "findLSB", (value: genutype) => genitype {
+    if value == 0 {
+      -1
+    } else {
+      value.trailing_zeros() as i32
+    }
+  });
+
+  builtin_gentype!(funcs, "findMSB", (value: genitype) => genitype {
+    if value < 0 {
+      31 - (!value).leading_zeros() as i32
+    } else {
+      31 - value.leading_zeros() as i32
+    }
+  });
+  builtin_gentype!(funcs, "findMSB", (value: genutype) => genitype {
+    31 - value.leading_zeros() as i32
+  });
+
+
   builtin_gentype!(funcs, "min", (a: genftype, b: genftype) => genftype {
     a.min(b)
   });
