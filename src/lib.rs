@@ -10,3 +10,4 @@ extern crate pretty_assertions;
 pub mod egl;
 pub mod gl;
 pub mod glsl;
+pub mod draw;

@@ -436,7 +436,7 @@ impl BufferBinding{
 
 #[derive(Debug)]
 pub struct TransformFeedback {
-  offset: isize,
+  offsets: [isize; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS],
 }
 
 #[derive(Debug)]
@@ -1596,7 +1596,7 @@ pub extern "C" fn glBeginTransformFeedback(
   let current = current();
 
   current.transform_feedback_capture = Some(primitiveMode);
-  current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap().offset = 0;
+  current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap().offsets = [0; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS];
 }
 
 #[allow(unused_variables)]
@@ -1737,7 +1737,7 @@ pub extern "C" fn glBindTransformFeedback(
   if id > 0 {
     if current.transform_feedbacks[&id].is_none() {
       current.transform_feedbacks.insert(id, Some(TransformFeedback{
-        offset: 0,
+        offsets: [0; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS],
       }));
     }
   }
@@ -2287,6 +2287,7 @@ pub extern "C" fn glDispatchCompute(
         init_vars.insert(info.name.clone(), Value::Buffer(glsl::TypeSpecifierNonArray::AtomicUint, buf_ptr, Some(info.size as u32)));
       },
       &Interface::Input(_) => {}
+      &Interface::Output(_) => {}
     }
   }
 
@@ -2385,6 +2386,8 @@ pub extern "C" fn glDrawArrays(
   first: GLint,
   count: GLsizei,
 ) -> () {
+  use draw::*;
+
   use std::ops::Deref;
 
   use glsl::interpret::{self,Vars,Value};
@@ -2405,21 +2408,15 @@ pub extern "C" fn glDrawArrays(
   let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
   let vert_compiled = Arc::clone(Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
 
+  let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.name.clone()) } else { None }).collect::<Vec<_>>();
+
+
   assert_eq!(current.vertex_array, 0);
 
   let vertex_array = current.vertex_arrays.get(&current.vertex_array).unwrap().as_ref().unwrap();
 
-  let mut tf = if Some(primitive) == current.transform_feedback_capture && !current.transform_feedback_paused {
-    let binding = current.indexed_transform_feedback_buffer[0];
-    let p = unsafe{ current.buffers.get_mut(&binding.buffer).unwrap().as_mut().unwrap().as_mut_ptr().offset(binding.offset) };
-
-    let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
-
-    Some((p, tf))
-  } else { None };
-
   // TODO: thread
-  for i in first..(first+count) {
+  let vertex_results = (first..(first+count)).map(|i| {
     let mut vars = Vars::new();
     vars.push();
 
@@ -2429,47 +2426,99 @@ pub extern "C" fn glDrawArrays(
       let p = unsafe{ attrib.pointer.offset((attrib.stride * i) as isize) };
 
       let v = match (attrib.type_, attrib.size) {
+        (GL_FLOAT, 1) => Value::Float(unsafe{ *(p as *const _) }),
+        (GL_FLOAT, 2) => Value::Vec2(unsafe{ *(p as *const _) }),
+        (GL_FLOAT, 3) => Value::Vec3(unsafe{ *(p as *const _) }),
         (GL_FLOAT, 4) => Value::Vec4(unsafe{ *(p as *const _) }),
+        (GL_INT, 1) => Value::Int(unsafe{ *(p as *const _) }),
+        (GL_INT, 2) => Value::IVec2(unsafe{ *(p as *const _) }),
+        (GL_INT, 3) => Value::IVec3(unsafe{ *(p as *const _) }),
+        (GL_INT, 4) => Value::IVec4(unsafe{ *(p as *const _) }),
         (t, s) => unimplemented!("{:x} {}", t, s),
       };
 
       vars.insert(name.clone(), v);
     }
 
-    vars.insert("gl_Position".to_string(), Value::Void);
-    vars.insert("gl_PointSize".to_string(), Value::Void);
+    for v in &vert_out_vars {
+      vars.insert(v.clone(), Value::Void);
+    }
 
     let main = &vert_compiled.functions[&"main".to_string()][0];
 
     vars.push();
     interpret::execute(&main.1, &mut vars, &vert_compiled);
 
+    vars
+  });
 
-    if let Some((p, ref mut tf)) = tf {
-      let tfs = &program.transform_feedback.as_ref().unwrap().0;
+  // TODO: tesselation
+  // TODO: geometry
 
-      for var in tfs {
-        let value = vars.get(var);
-        match value {
-          &Value::Vec4(ref v) => unsafe {
-            // TODO: extract this into a Pusher
-            *(p.offset(tf.offset) as *mut [f32; 4]) = *v;
-            tf.offset += mem::size_of_val(v) as isize;
-          },
-          x => unimplemented!("{:?}", x),
-        }
+  let mut tf = if Some(primitive) == current.transform_feedback_capture && !current.transform_feedback_paused {
+    let tfv = &program.transform_feedback.as_ref().unwrap();
+
+    let separate = tfv.1;
+
+    let ps = if separate {
+      let mut ps = vec![];
+
+      for i in 0..tfv.0.len() {
+        let binding = &current.indexed_transform_feedback_buffer[i];
+        ps.push(unsafe{ current.buffers.get_mut(&binding.buffer).unwrap().as_mut().unwrap().as_mut_ptr().offset(binding.offset) });
       }
 
+        ps
+    } else {
+      let binding = &current.indexed_transform_feedback_buffer[0];
+      vec![unsafe{ current.buffers.get_mut(&binding.buffer).unwrap().as_mut().unwrap().as_mut_ptr().offset(binding.offset) }]
+    };
+
+    let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
+
+    Some((ps, tf))
+  } else { None };
+
+  let mut pump = PrimitivePump::new(vertex_results, mode);
+
+  while let Some(prim) = pump.next() {
+    if let Some((ref ps, ref mut tf)) = tf {
       if let Some((id, target)) = current.query {
         if target == GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN {
           current.queries.get_mut(&id).unwrap().as_mut().unwrap().value += 1;
         }
       }
+      let tfv = &program.transform_feedback.as_ref().unwrap();
+
+      let tf_vars = &tfv.0;
+      let separate = tfv.1;
+
+      for vert in prim.iter() {
+        for (i, var) in tf_vars.iter().enumerate() {
+          let index = if separate { i } else { 0 };
+
+          let p = ps[index];
+          let offset = &mut tf.offsets[index];
+
+          fn push<T: Copy>(v: &T, p: *mut u8, offset: &mut isize) {
+            unsafe {
+              *(p.offset(*offset) as *mut T) = *v;
+            }
+            *offset += mem::size_of::<T>() as isize;
+          }
+
+          let value = vert.get(var);
+          match value {
+            &Value::Float(ref f) => push(f, p, offset),
+            &Value::Vec2(ref v) => push(v, p, offset),
+            &Value::Vec3(ref v) => push(v, p, offset),
+            &Value::Vec4(ref v) => push(v, p, offset),
+            x => unimplemented!("{:?}", x),
+          }
+        }
+      }
     }
   }
-
-  // TODO: tesselation
-  // TODO: geometry
 
 
   // TODO: clipping, rasterization and beyond
@@ -3376,13 +3425,18 @@ pub extern "C" fn glGetTransformFeedbackVarying(
 
   unsafe{ write_string(&n, name, bufSize, length) };
 
-  if n == "gl_Position" {
-    unsafe{
-      *type_ = GL_FLOAT_VEC4;
-      *size = size_of(*type_) as GLint;
-    }
-  } else {
-    unimplemented!();
+  let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
+  let vert_compiled = Arc::clone(&*Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()));
+
+  let out_var = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i {
+    if n == &v.name {
+      Some(v)
+    } else { None }
+  } else { None }).next().unwrap();
+
+  unsafe{
+    *type_ = glsl::gl_type(&out_var.type_);
+    *size = glsl::size_of(&out_var.type_, None) as GLint;
   }
 }
 
@@ -3661,6 +3715,7 @@ pub extern "C" fn glLinkProgram(
           atomic_counters.insert(i as GLuint, info);
         },
         &glsl::Interface::Input(_) => {},
+        &glsl::Interface::Output(_) => {},
       }
     }
   }
@@ -4786,10 +4841,23 @@ pub extern "C" fn glVertexAttribIFormat(attribindex: GLuint, size: GLint, type_:
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glVertexAttribIPointer(index: GLuint, size: GLint, type_: GLenum, stride: GLsizei, pointer: *const c_void) -> () {
-  unimplemented!()
+pub extern "C" fn glVertexAttribIPointer(
+  index: GLuint,
+  size: GLint,
+  type_: GLenum,
+  stride: GLsizei,
+  pointer: *const c_void,
+) -> () {
+  let current = current();
+
+  let attrib = &mut current.vertex_arrays.get_mut(&current.vertex_array).unwrap().as_mut().unwrap().attribs[index as usize];
+
+  attrib.size = size;
+  attrib.type_ = type_;
+  attrib.normalized = false;
+  attrib.stride = stride;
+  attrib.pointer = pointer;
 }
 
 #[no_mangle]

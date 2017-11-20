@@ -33,7 +33,7 @@ pub fn compile(source: &[u8], type_: GLenum) -> Result<Shader> {
   let version = lex::version(&source)?;
   let tokens = lex::tokenize(&source, version)?;
   let parse = parse::parse(&tokens, version)?;
-  Shader::new(parse, version)
+  Shader::new(type_, parse, version)
 }
 
 #[derive(Debug,Clone,PartialEq)]
@@ -84,6 +84,7 @@ pub enum Interface {
   Shared(SharedInfo),
   AtomicCounter(AtomicCounterInfo),
   Input(Variable),
+  Output(Variable),
 }
 
 #[derive(Debug,Clone)]
@@ -183,7 +184,7 @@ pub struct Shader {
 }
 
 impl Shader {
-  pub fn new(translation_unit: parse::TranslationUnit, version: Version) -> Result<Self> {
+  pub fn new(type_: GLenum, translation_unit: parse::TranslationUnit, version: Version) -> Result<Self> {
     use self::parse::*;
 
     let mut functions = builtin::all();
@@ -310,6 +311,18 @@ impl Shader {
               };
 
               interfaces.push(Interface::Input(v));
+            } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Out)) {
+              let type_ = typespec.0.clone();
+
+              let v = Variable{
+                name: name.clone(),
+                index: 0,
+                type_: type_,
+                array_size: 0,
+                offset: 0,
+              };
+
+              interfaces.push(Interface::Output(v));
             }
           }
         },
@@ -363,6 +376,24 @@ impl Shader {
           } else { unimplemented!() }
         },
       }
+    }
+
+    if type_ == gl::GL_VERTEX_SHADER {
+      interfaces.push(Interface::Output(Variable{
+        name: "gl_Position".to_string(),
+        index: 0,
+        type_: TypeSpecifierNonArray::Vec4,
+        array_size: 0,
+        offset: 0,
+      }));
+
+      interfaces.push(Interface::Output(Variable{
+        name: "gl_PointSize".to_string(),
+        index: 0,
+        type_: TypeSpecifierNonArray::Float,
+        array_size: 0,
+        offset: 0,
+      }));
     }
 
     let work_group_size = translation_unit.iter().filter_map(|decl| {

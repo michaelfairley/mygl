@@ -552,6 +552,10 @@ impl<'a> Parser<'a> {
         result.push(TypeQualifier::Precision(PrecisionQualifier::Medium));
       } else if self.consume(Token::LowPrecision)? {
         result.push(TypeQualifier::Precision(PrecisionQualifier::Low));
+      } else if self.consume(Token::Smooth)? {
+        result.push(TypeQualifier::Interpolation(InterpolationQualifier::Smooth));
+      } else if self.consume(Token::Flat)? {
+        result.push(TypeQualifier::Interpolation(InterpolationQualifier::Flat));
       } else {
         return Ok(result)
       }
@@ -676,6 +680,7 @@ pub enum TypeQualifier {
   Layout(LayoutQualifier),
   Storage(StorageQualifier),
   Precision(PrecisionQualifier),
+  Interpolation(InterpolationQualifier),
   // INCOMPLETE
 }
 
@@ -684,6 +689,12 @@ pub enum PrecisionQualifier {
   High,
   Medium,
   Low,
+}
+
+#[derive(Debug,PartialEq,Clone)]
+pub enum InterpolationQualifier {
+  Smooth,
+  Flat,
 }
 
 #[derive(Debug,PartialEq,Clone)]
