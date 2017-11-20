@@ -83,6 +83,7 @@ pub enum Interface {
   Uniform(UniformInfo),
   Shared(SharedInfo),
   AtomicCounter(AtomicCounterInfo),
+  Input(Variable),
 }
 
 #[derive(Debug,Clone)]
@@ -296,6 +297,20 @@ impl Shader {
               size: size as usize,
             };
             interfaces.push(Interface::Shared(info));
+          } else {
+            if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::In)) {
+              let type_ = typespec.0.clone();
+
+              let v = Variable{
+                name: name.clone(),
+                index: 0,
+                type_: type_,
+                array_size: 0,
+                offset: 0,
+              };
+
+              interfaces.push(Interface::Input(v));
+            }
           }
         },
         &ExternalDeclaration::FunctionPrototype(_) => {},

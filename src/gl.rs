@@ -12,13 +12,19 @@ use std::mem;
 use egl::{self,Config,Surface};
 use glsl;
 
+// TODO: threadpool
+// TODO: split stuff off onto server
+// TODO: figure out when to use GL* types and when to use rust types
+
 type Rect = (GLint, GLint, GLsizei, GLsizei);
 pub type ColorMask = (bool, bool, bool, bool);
 
 const MAX_SHADER_STORAGE_BUFFER_BINDINGS: usize = 4;
 const MAX_UNIFORM_BUFFER_BINDINGS: usize = 72;
 const MAX_ATOMIC_COUNTER_BUFFER_BINDINGS: usize = 1;
+const MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: usize = 4;
 const MAX_IMAGE_UNITS: usize = 8;
+const MAX_VERTEX_ATTRIBS: usize = 16;
 
 
 #[derive(Debug)]
@@ -62,8 +68,10 @@ pub struct Context {
   indexed_shader_storage_buffer: [BufferBinding; MAX_SHADER_STORAGE_BUFFER_BINDINGS],
   indexed_uniform_buffer: Vec<BufferBinding>,
   indexed_atomic_counter_buffer: [BufferBinding; MAX_ATOMIC_COUNTER_BUFFER_BINDINGS],
+  indexed_transform_feedback_buffer: [BufferBinding; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS],
 
   vertex_array: GLuint,
+  vertex_arrays: HashMap<GLuint, Option<VertexArray>>,
 
   culling: bool,
   cull_face: GLenum,
@@ -81,6 +89,13 @@ pub struct Context {
   draw_framebuffer: GLuint,
   read_framebuffer: GLuint,
 
+  transform_feedbacks: HashMap<GLuint, Option<TransformFeedback>>,
+  transform_feedback: GLuint,
+  transform_feedback_capture: Option<GLenum>,
+  transform_feedback_paused: bool,
+
+  queries: HashMap<GLuint, Option<Query>>,
+  query: Option<(GLuint, GLenum)>,
 
   depth_range: (GLfloat, GLfloat),
   line_width: GLfloat,
@@ -104,7 +119,7 @@ impl Context {
       server.run();
     });
 
-    Self{
+    let mut context = Self{
       config,
       tx,
 
@@ -142,8 +157,10 @@ impl Context {
       indexed_shader_storage_buffer: [BufferBinding::zero(); MAX_SHADER_STORAGE_BUFFER_BINDINGS],
       indexed_uniform_buffer: vec![BufferBinding::zero(); MAX_UNIFORM_BUFFER_BINDINGS],
       indexed_atomic_counter_buffer: [BufferBinding::zero(); MAX_ATOMIC_COUNTER_BUFFER_BINDINGS],
+      indexed_transform_feedback_buffer: [BufferBinding::zero(); MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS],
 
       vertex_array: 0,
+      vertex_arrays: HashMap::new(),
 
       culling: false,
       cull_face: GL_BACK,
@@ -161,6 +178,14 @@ impl Context {
       draw_framebuffer: 0,
       read_framebuffer: 0,
 
+      transform_feedbacks: HashMap::new(),
+      transform_feedback: 0,
+      transform_feedback_capture: None,
+      transform_feedback_paused: false,
+
+      queries: HashMap::new(),
+      query: None,
+
       depth_range: (0.0, 1.0),
       line_width: 1.0,
       primitive_restart_fixed_index: false,
@@ -172,7 +197,11 @@ impl Context {
       sample_coverage: (1.0, false),
       sample_mask: false,
       dither: true,
-    }
+    };
+
+    context.vertex_arrays.insert(0, Some(VertexArray::new()));
+
+    context
   }
 
   pub fn set_surfaces(&mut self, draw: *mut Surface, read: *mut Surface) {
@@ -222,6 +251,7 @@ impl Context {
       GL_SHADER_STORAGE_BUFFER => &mut self.indexed_shader_storage_buffer[i],
       GL_UNIFORM_BUFFER => &mut self.indexed_uniform_buffer[i],
       GL_ATOMIC_COUNTER_BUFFER => &mut self.indexed_atomic_counter_buffer[i],
+      GL_TRANSFORM_FEEDBACK_BUFFER => &mut self.indexed_transform_feedback_buffer[i],
       x => unimplemented!("{:x}", x),
     }
   }
@@ -331,6 +361,9 @@ pub struct Program{
   uniforms: Vec<glsl::UniformInfo>,
   uniform_values: Vec<glsl::interpret::Value>,
   atomic_counters: HashMap<GLuint, glsl::AtomicCounterInfo>,
+  pending_transform_feedback: Option<(Vec<String>, bool)>,
+  transform_feedback: Option<(Vec<String>, bool)>,
+  attrib_locations: [Option<String>; MAX_VERTEX_ATTRIBS],
 }
 
 impl Program {
@@ -343,6 +376,9 @@ impl Program {
       uniforms: vec![],
       uniform_values: vec![],
       atomic_counters: HashMap::new(),
+      pending_transform_feedback: None,
+      transform_feedback: None,
+      attrib_locations: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
     }
   }
 }
@@ -394,6 +430,53 @@ impl BufferBinding{
       buffer: 0,
       offset: 0,
       size: 0,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct TransformFeedback {
+  offset: isize,
+}
+
+#[derive(Debug)]
+pub struct Query {
+  value: u32,
+}
+
+#[derive(Debug)]
+pub struct VertexArray {
+  attribs: [VertexAttrib; MAX_VERTEX_ATTRIBS],
+
+}
+
+impl VertexArray {
+  fn new() -> Self {
+    Self{
+      attribs: [VertexAttrib::new(); MAX_VERTEX_ATTRIBS],
+    }
+  }
+}
+
+#[derive(Debug,Copy,Clone)]
+struct VertexAttrib {
+  enabled: bool,
+  size: GLint,
+  type_: GLenum,
+  normalized: bool,
+  stride: GLsizei,
+  pointer: *const c_void,
+}
+
+impl VertexAttrib {
+  fn new() -> Self {
+    Self{
+      enabled: false,
+      size: 4,
+      type_: GL_FLOAT,
+      normalized: false,
+      stride: 0,
+      pointer: ptr::null(),
     }
   }
 }
@@ -1490,16 +1573,30 @@ pub extern "C" fn glAttachShader(program: GLuint, shader: GLuint) -> () {
   program.shaders.push(Arc::clone(shader));
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBeginQuery(target: GLenum, id: GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glBeginQuery(
+  target: GLenum,
+  id: GLuint,
+) -> () {
+  let current = current();
+
+  if current.queries.get(&id).unwrap().is_none() {
+    current.queries.insert(id, Some(Query{
+      value: 0,
+    }));
+  }
+
+  current.query = Some((id, target));
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBeginTransformFeedback(primitiveMode: GLenum) -> () {
-  unimplemented!()
+pub extern "C" fn glBeginTransformFeedback(
+  primitiveMode: GLenum,
+) -> () {
+  let current = current();
+
+  current.transform_feedback_capture = Some(primitiveMode);
+  current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap().offset = 0;
 }
 
 #[allow(unused_variables)]
@@ -1523,7 +1620,12 @@ pub extern "C" fn glBindBufferBase(
 ) -> () {
   let current = current();
 
-  let size = current.buffers[&buffer].as_ref().unwrap().len();
+  let size = if buffer == 0 {
+    0
+  } else {
+    current.buffers[&buffer].as_ref().unwrap().len()
+  };
+
   let binding = BufferBinding{
     buffer: buffer,
     offset: 0,
@@ -1623,15 +1725,30 @@ pub extern "C" fn glBindTexture(
   *current.texture_target_mut(target) = texture;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBindTransformFeedback(target: GLenum, id: GLuint) -> () {
-  assert_eq!(id, 0);
+pub extern "C" fn glBindTransformFeedback(
+  target: GLenum,
+  id: GLuint,
+) -> () {
+  let current = current();
+
+  assert_eq!(target, GL_TRANSFORM_FEEDBACK);
+
+  if id > 0 {
+    if current.transform_feedbacks[&id].is_none() {
+      current.transform_feedbacks.insert(id, Some(TransformFeedback{
+        offset: 0,
+      }));
+    }
+  }
+
+  current.transform_feedback = id;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBindVertexArray(array: GLuint) -> () {
+pub extern "C" fn glBindVertexArray(
+  array: GLuint,
+) -> () {
   current().vertex_array = array;
 }
 
@@ -1979,10 +2096,17 @@ pub extern "C" fn glDeleteProgramPipelines(n: GLsizei, pipelines: *const GLuint)
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glDeleteQueries(n: GLsizei, ids: *const GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glDeleteQueries(
+  n: GLsizei,
+  ids: *const GLuint,
+) -> () {
+  let current = current();
+
+  let queries = unsafe{ ::std::slice::from_raw_parts(ids, n as usize) };
+  for name in queries {
+    current.queries.remove(&name);
+  }
 }
 
 #[allow(unused_variables)]
@@ -2010,9 +2134,11 @@ pub extern "C" fn glDeleteSync(sync: GLsync) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glDeleteTextures(n: GLsizei, textures: *const GLuint) -> () {
+pub extern "C" fn glDeleteTextures(
+  n: GLsizei,
+  textures: *const GLuint,
+) -> () {
   let current = current();
 
   let textures = unsafe{ ::std::slice::from_raw_parts(textures, n as usize) };
@@ -2021,10 +2147,17 @@ pub extern "C" fn glDeleteTextures(n: GLsizei, textures: *const GLuint) -> () {
   }
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glDeleteTransformFeedbacks(n: GLsizei, ids: *const GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glDeleteTransformFeedbacks(
+  n: GLsizei,
+  ids: *const GLuint,
+) -> () {
+  let current = current();
+
+  let ids = unsafe{ ::std::slice::from_raw_parts(ids, n as usize) };
+  for id in ids {
+    current.transform_feedbacks.remove(&id);
+  }
 }
 
 #[allow(unused_variables)]
@@ -2062,7 +2195,9 @@ pub extern "C" fn glDisable(cap: GLenum) -> () {
 #[allow(unused_variables)]
 #[no_mangle]
 pub extern "C" fn glDisableVertexAttribArray(index: GLuint) -> () {
-  // unimplemented!()
+  let current = current();
+
+  current.vertex_arrays.get_mut(&current.vertex_array).unwrap().as_mut().unwrap().attribs[index as usize].enabled = false;
 }
 
 #[allow(unused_variables)]
@@ -2151,6 +2286,7 @@ pub extern "C" fn glDispatchCompute(
 
         init_vars.insert(info.name.clone(), Value::Buffer(glsl::TypeSpecifierNonArray::AtomicUint, buf_ptr, Some(info.size as u32)));
       },
+      &Interface::Input(_) => {}
     }
   }
 
@@ -2243,10 +2379,100 @@ pub extern "C" fn glDispatchComputeIndirect(indirect: GLintptr) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei) -> () {
-  unimplemented!()
+pub extern "C" fn glDrawArrays(
+  mode: GLenum,
+  first: GLint,
+  count: GLsizei,
+) -> () {
+  use std::ops::Deref;
+
+  use glsl::interpret::{self,Vars,Value};
+  // use glsl::{Interface};
+
+
+  let current = current();
+
+  let primitive = match mode {
+    GL_POINTS => GL_POINTS,
+    GL_LINE_STRIP | GL_LINE_LOOP | GL_LINES => GL_LINES,
+    GL_TRIANGLE_STRIP | GL_TRIANGLE_FAN | GL_TRIANGLES => GL_TRIANGLES,
+    x => unimplemented!("{:x}", x),
+  };
+
+  let program = current.programs.get(&current.program).unwrap();
+
+  let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
+  let vert_compiled = Arc::clone(Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
+
+  assert_eq!(current.vertex_array, 0);
+
+  let vertex_array = current.vertex_arrays.get(&current.vertex_array).unwrap().as_ref().unwrap();
+
+  let mut tf = if Some(primitive) == current.transform_feedback_capture && !current.transform_feedback_paused {
+    let binding = current.indexed_transform_feedback_buffer[0];
+    let p = unsafe{ current.buffers.get_mut(&binding.buffer).unwrap().as_mut().unwrap().as_mut_ptr().offset(binding.offset) };
+
+    let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
+
+    Some((p, tf))
+  } else { None };
+
+  // TODO: thread
+  for i in first..(first+count) {
+    let mut vars = Vars::new();
+    vars.push();
+
+    for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
+      let attrib = &vertex_array.attribs[loc as usize];
+
+      let p = unsafe{ attrib.pointer.offset((attrib.stride * i) as isize) };
+
+      let v = match (attrib.type_, attrib.size) {
+        (GL_FLOAT, 4) => Value::Vec4(unsafe{ *(p as *const _) }),
+        (t, s) => unimplemented!("{:x} {}", t, s),
+      };
+
+      vars.insert(name.clone(), v);
+    }
+
+    vars.insert("gl_Position".to_string(), Value::Void);
+    vars.insert("gl_PointSize".to_string(), Value::Void);
+
+    let main = &vert_compiled.functions[&"main".to_string()][0];
+
+    vars.push();
+    interpret::execute(&main.1, &mut vars, &vert_compiled);
+
+
+    if let Some((p, ref mut tf)) = tf {
+      let tfs = &program.transform_feedback.as_ref().unwrap().0;
+
+      for var in tfs {
+        let value = vars.get(var);
+        match value {
+          &Value::Vec4(ref v) => unsafe {
+            // TODO: extract this into a Pusher
+            *(p.offset(tf.offset) as *mut [f32; 4]) = *v;
+            tf.offset += mem::size_of_val(v) as isize;
+          },
+          x => unimplemented!("{:?}", x),
+        }
+      }
+
+      if let Some((id, target)) = current.query {
+        if target == GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN {
+          current.queries.get_mut(&id).unwrap().as_mut().unwrap().value += 1;
+        }
+      }
+    }
+  }
+
+  // TODO: tesselation
+  // TODO: geometry
+
+
+  // TODO: clipping, rasterization and beyond
 }
 
 #[allow(unused_variables)]
@@ -2314,10 +2540,13 @@ pub extern "C" fn glEnable(cap: GLenum) -> () {
   *current().cap_mut(cap) = true;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glEnableVertexAttribArray(index: GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glEnableVertexAttribArray(
+  index: GLuint,
+) -> () {
+  let current = current();
+
+  current.vertex_arrays.get_mut(&current.vertex_array).unwrap().as_mut().unwrap().attribs[index as usize].enabled = true;
 }
 
 #[allow(unused_variables)]
@@ -2326,16 +2555,21 @@ pub extern "C" fn glEnablei(target: GLenum, index: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glEndQuery(target: GLenum) -> () {
-  unimplemented!()
+pub extern "C" fn glEndQuery(
+  _target: GLenum,
+) -> () {
+  let current = current();
+
+  current.query = None;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glEndTransformFeedback() -> () {
-  unimplemented!()
+pub extern "C" fn glEndTransformFeedback(
+) -> () {
+  let current = current();
+
+  current.transform_feedback_capture = None;
 }
 
 #[allow(unused_variables)]
@@ -2456,10 +2690,19 @@ pub extern "C" fn glGenProgramPipelines(n: GLsizei, pipelines: *mut GLuint) -> (
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGenQueries(n: GLsizei, ids: *mut GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glGenQueries(
+  n: GLsizei,
+  ids: *mut GLuint,
+) -> () {
+  let current = current();
+
+  let mut search = 1;
+  for i in 0..n {
+    while current.queries.contains_key(&search) { search += 1 };
+    current.queries.insert(search, None);
+    unsafe{ ptr::write(ids.offset(i as isize), search); }
+  }
 }
 
 #[allow(unused_variables)]
@@ -2489,10 +2732,20 @@ pub extern "C" fn glGenTextures(
   }
 }
 
-#[allow(unused_variables)]
+// TODO: extract this code since most Gens are using it
 #[no_mangle]
-pub extern "C" fn glGenTransformFeedbacks(n: GLsizei, ids: *mut GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glGenTransformFeedbacks(
+  n: GLsizei,
+  ids: *mut GLuint,
+) -> () {
+  let current = current();
+
+  let mut search = 1;
+  for i in 0..n {
+    while current.transform_feedbacks.contains_key(&search) { search += 1 };
+    current.transform_feedbacks.insert(search, None );
+    unsafe{ ptr::write(ids.offset(i as isize), search); }
+  }
 }
 
 #[allow(unused_variables)]
@@ -2543,10 +2796,18 @@ pub extern "C" fn glGetAttachedShaders(program: GLuint, maxCount: GLsizei, count
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetAttribLocation(program: GLuint, name: *const GLchar) -> GLint {
-  unimplemented!()
+pub extern "C" fn glGetAttribLocation(
+  program: GLuint,
+  name: *const GLchar,
+) -> GLint {
+  let current = current();
+  let program = current.programs.get(&program).unwrap();
+
+  let name = unsafe{ CStr::from_ptr(name) };
+  let name = name.to_str().unwrap();
+
+  program.attrib_locations.iter().position(|a| a.as_ref().map_or(false, |a| a == name)).unwrap() as GLint
 }
 
 #[allow(unused_variables)]
@@ -2924,20 +3185,41 @@ pub extern "C" fn glGetProgramResourceiv(
 }
 
 #[no_mangle]
-pub extern "C" fn glGetProgramiv(_program: GLuint, pname: GLenum, params: *mut GLint) -> () {
+pub extern "C" fn glGetProgramiv(
+  program: GLuint,
+  pname: GLenum,
+  params: *mut GLint,
+) -> () {
+  let current = current();
+  let program = current.programs.get(&program).unwrap();
+
   let value = match pname {
     GL_LINK_STATUS => GL_TRUE as GLint, // TODO
     GL_INFO_LOG_LENGTH => 0, // TODO
+    GL_TRANSFORM_FEEDBACK_VARYINGS => program.transform_feedback.as_ref().map_or(0, |t| t.0.len()) as GLint,
+    GL_TRANSFORM_FEEDBACK_VARYING_MAX_LENGTH => program.transform_feedback.as_ref().and_then(|t| t.0.iter().map(|n| n.len() + 1).min()).unwrap_or(0) as GLint,
     x => unimplemented!("{:x}", x),
   };
 
   unsafe{ ptr::write(params, value) };
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetQueryObjectuiv(id: GLuint, pname: GLenum, params: *mut GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glGetQueryObjectuiv(
+  id: GLuint,
+  pname: GLenum,
+  params: *mut GLuint,
+) -> () {
+  let current = current();
+  let query = current.queries.get(&id).unwrap().as_ref().unwrap();
+
+  let value = match pname {
+    GL_QUERY_RESULT_AVAILABLE => GL_TRUE as GLuint, // TODO
+    GL_QUERY_RESULT => query.value,
+    x => unimplemented!("{:x}", x),
+  };
+
+  unsafe{ *params = value; }
 }
 
 #[no_mangle]
@@ -3077,10 +3359,31 @@ pub extern "C" fn glGetTexParameteriv(target: GLenum, pname: GLenum, params: *mu
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glGetTransformFeedbackVarying(program: GLuint, index: GLuint, bufSize: GLsizei, length: *mut GLsizei, size: *mut GLsizei, type_: *mut GLenum, name: *mut GLchar) -> () {
-  unimplemented!()
+pub extern "C" fn glGetTransformFeedbackVarying(
+  program: GLuint,
+  index: GLuint,
+  bufSize: GLsizei,
+  length: *mut GLsizei,
+  size: *mut GLsizei,
+  type_: *mut GLenum,
+  name: *mut GLchar,
+) -> () {
+  let current = current();
+  let program = current.programs.get(&program).unwrap();
+
+  let n = &program.transform_feedback.as_ref().unwrap().0[index as usize];
+
+  unsafe{ write_string(&n, name, bufSize, length) };
+
+  if n == "gl_Position" {
+    unsafe{
+      *type_ = GL_FLOAT_VEC4;
+      *size = size_of(*type_) as GLint;
+    }
+  } else {
+    unimplemented!();
+  }
 }
 
 #[allow(unused_variables)]
@@ -3284,9 +3587,10 @@ pub extern "C" fn glLineWidth(width: GLfloat) -> () {
   current().line_width = width;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glLinkProgram(program: GLuint) -> () {
+pub extern "C" fn glLinkProgram(
+  program: GLuint,
+) -> () {
   let current = current();
 
   let program = current.programs.get_mut(&program).unwrap();
@@ -3332,6 +3636,18 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
             GL_UNSIGNED_INT_VEC2 => glsl::interpret::Value::UVec2([0, 0]),
             GL_UNSIGNED_INT_VEC3 => glsl::interpret::Value::UVec3([0, 0, 0]),
             GL_UNSIGNED_INT_VEC4 => glsl::interpret::Value::UVec4([0, 0, 0, 0]),
+            GL_INT => glsl::interpret::Value::Int(0),
+            GL_INT_VEC2 => glsl::interpret::Value::IVec2([0, 0]),
+            GL_INT_VEC3 => glsl::interpret::Value::IVec3([0, 0, 0]),
+            GL_INT_VEC4 => glsl::interpret::Value::IVec4([0, 0, 0, 0]),
+            GL_FLOAT => glsl::interpret::Value::Float(0.0),
+            GL_FLOAT_VEC2 => glsl::interpret::Value::Vec2([0.0, 0.0]),
+            GL_FLOAT_VEC3 => glsl::interpret::Value::Vec3([0.0, 0.0, 0.0]),
+            GL_FLOAT_VEC4 => glsl::interpret::Value::Vec4([0.0, 0.0, 0.0, 0.0]),
+            GL_BOOL => glsl::interpret::Value::Bool(0),
+            GL_BOOL_VEC2 => glsl::interpret::Value::BVec2([0, 0]),
+            GL_BOOL_VEC3 => glsl::interpret::Value::BVec3([0, 0, 0]),
+            GL_BOOL_VEC4 => glsl::interpret::Value::BVec4([0, 0, 0, 0]),
             GL_UNSIGNED_INT_IMAGE_2D => glsl::interpret::Value::UImage2DUnit(info.binding),
             GL_UNSIGNED_INT_ATOMIC_COUNTER => glsl::interpret::Value::Void,
             x => unimplemented!("{:x}", x),
@@ -3344,6 +3660,18 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
           let mut info = info.clone();
           atomic_counters.insert(i as GLuint, info);
         },
+        &glsl::Interface::Input(_) => {},
+      }
+    }
+  }
+
+  let mut attrib_locations = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None];
+  if let Some(vert) = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER) {
+    // TODO: assign the ones with explicit locations first
+    for iface in &vert.compiled.borrow().as_ref().unwrap().interfaces {
+      if let &glsl::Interface::Input(ref var) = iface {
+        let next_unused = attrib_locations.iter().position(|a| a.is_none()).unwrap();
+        attrib_locations[next_unused] = Some(var.name.clone());
       }
     }
   }
@@ -3354,6 +3682,8 @@ pub extern "C" fn glLinkProgram(program: GLuint) -> () {
   program.uniforms = uniforms;
   program.uniform_values = uniform_values;
   program.atomic_counters = atomic_counters;
+  program.transform_feedback = program.pending_transform_feedback.clone();
+  program.attrib_locations = attrib_locations;
 }
 
 #[no_mangle]
@@ -3404,10 +3734,11 @@ pub extern "C" fn glPatchParameteri(pname: GLenum, value: GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glPauseTransformFeedback() -> () {
-  unimplemented!()
+pub extern "C" fn glPauseTransformFeedback(
+) -> () {
+  let current = current();
+  current.transform_feedback_paused = true;
 }
 
 #[allow(unused_variables)]
@@ -3760,10 +4091,11 @@ pub extern "C" fn glRenderbufferStorageMultisample(target: GLenum, samples: GLsi
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glResumeTransformFeedback() -> () {
-  unimplemented!()
+pub extern "C" fn glResumeTransformFeedback(
+) -> () {
+  let current = current();
+  current.transform_feedback_paused = false;
 }
 
 #[no_mangle]
@@ -4066,10 +4398,30 @@ pub extern "C" fn glTexSubImage3D(target: GLenum, level: GLint, xoffset: GLint, 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glTransformFeedbackVaryings(program: GLuint, count: GLsizei, varyings: *const *const GLchar, bufferMode: GLenum) -> () {
-  unimplemented!()
+pub extern "C" fn glTransformFeedbackVaryings(
+  program: GLuint,
+  count: GLsizei,
+  varyings: *const *const GLchar,
+  bufferMode: GLenum,
+) -> () {
+  let current = current();
+  let program = current.programs.get_mut(&program).unwrap();
+
+  let names = unsafe {
+    ::std::slice::from_raw_parts(varyings, count as usize).iter()
+      .map(|&v| CStr::from_ptr(v))
+      .map(|c| c.to_str().unwrap().to_string())
+      .collect::<Vec<_>>()
+  };
+
+  let seperate = match bufferMode {
+    GL_INTERLEAVED_ATTRIBS => false,
+    GL_SEPARATE_ATTRIBS => true,
+    x => unimplemented!("{:x}", x),
+  };
+
+  program.pending_transform_feedback = Some((names, seperate));
 }
 
 #[allow(unused_variables)]
@@ -4202,10 +4554,21 @@ pub extern "C" fn glUniform4f(location: GLint, v0: GLfloat, v1: GLfloat, v2: GLf
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glUniform4fv(location: GLint, count: GLsizei, value: *const GLfloat) -> () {
-  unimplemented!()
+pub extern "C" fn glUniform4fv(
+  location: GLint,
+  count: GLsizei,
+  value: *const GLfloat,
+) -> () {
+  assert_eq!(count, 1);
+
+  let current = current();
+  let program = current.programs.get_mut(&current.program).unwrap();
+
+  let value = value as *const [GLfloat; 4];
+  let value = unsafe{ *value };
+
+  program.uniform_values[location as usize] = glsl::interpret::Value::Vec4(value);
 }
 
 #[allow(unused_variables)]
@@ -4430,12 +4793,23 @@ pub extern "C" fn glVertexAttribIPointer(index: GLuint, size: GLint, type_: GLen
 }
 
 #[no_mangle]
-pub extern "C" fn glVertexAttribPointer(_index: GLuint, size: GLint, type_: GLenum, normalized: GLboolean, stride: GLsizei, pointer: *const c_void) -> () {
-  assert_eq!(size, 4);
-  assert_eq!(type_, GL_FLOAT);
-  assert_eq!(normalized, GL_FALSE);
-  assert_eq!(stride, 0);
-  assert!(pointer.is_null());
+pub extern "C" fn glVertexAttribPointer(
+  index: GLuint,
+  size: GLint,
+  type_: GLenum,
+  normalized: GLboolean,
+  stride: GLsizei,
+  pointer: *const c_void,
+) -> () {
+  let current = current();
+
+  let attrib = &mut current.vertex_arrays.get_mut(&current.vertex_array).unwrap().as_mut().unwrap().attribs[index as usize];
+
+  attrib.size = size;
+  attrib.type_ = type_;
+  attrib.normalized = normalized == GL_TRUE;
+  attrib.stride = stride;
+  attrib.pointer = pointer;
 }
 
 #[allow(unused_variables)]
@@ -4481,6 +4855,9 @@ pub fn size_of(typ: GLenum) -> usize {
     GL_UNSIGNED_INT_VEC3 => mem::size_of::<GLuint>() * 3,
     GL_UNSIGNED_INT_VEC4 => mem::size_of::<GLuint>() * 4,
     GL_FLOAT => mem::size_of::<GLfloat>(),
+    GL_FLOAT_VEC2 => mem::size_of::<GLfloat>() * 2,
+    GL_FLOAT_VEC3 => mem::size_of::<GLfloat>() * 3,
+    GL_FLOAT_VEC4 => mem::size_of::<GLfloat>() * 4,
     x => unimplemented!("{:x}", x),
   }
 }
