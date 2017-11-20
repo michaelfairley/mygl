@@ -1,1 +1,3 @@
 opengl is a profoundly unsafe API, which grated against rust a decent bit
+
+x => unimplemented!("{:x}", x),
