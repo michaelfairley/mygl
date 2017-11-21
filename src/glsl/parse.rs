@@ -485,6 +485,18 @@ impl<'a> Parser<'a> {
     } else if self.consume(Token::BVec2)? { TypeSpecifierNonArray::BVec2
     } else if self.consume(Token::BVec3)? { TypeSpecifierNonArray::BVec3
     } else if self.consume(Token::BVec4)? { TypeSpecifierNonArray::BVec4
+    } else if self.consume(Token::Mat2)? { TypeSpecifierNonArray::Mat2
+    } else if self.consume(Token::Mat2x2)? { TypeSpecifierNonArray::Mat2
+    } else if self.consume(Token::Mat2x3)? { TypeSpecifierNonArray::Mat2x3
+    } else if self.consume(Token::Mat2x4)? { TypeSpecifierNonArray::Mat2x4
+    } else if self.consume(Token::Mat3)? { TypeSpecifierNonArray::Mat3
+    } else if self.consume(Token::Mat3x2)? { TypeSpecifierNonArray::Mat3x2
+    } else if self.consume(Token::Mat3x3)? { TypeSpecifierNonArray::Mat3
+    } else if self.consume(Token::Mat3x4)? { TypeSpecifierNonArray::Mat3x4
+    } else if self.consume(Token::Mat4)? { TypeSpecifierNonArray::Mat4
+    } else if self.consume(Token::Mat4x2)? { TypeSpecifierNonArray::Mat4x2
+    } else if self.consume(Token::Mat4x3)? { TypeSpecifierNonArray::Mat4x3
+    } else if self.consume(Token::Mat4x4)? { TypeSpecifierNonArray::Mat4
     } else if self.consume(Token::AtomicUint)? { TypeSpecifierNonArray::AtomicUint
     } else if self.consume(Token::UImage2D)? { TypeSpecifierNonArray::UImage2D
     } else if self.consume(Token::Struct)? {
@@ -736,6 +748,15 @@ pub enum TypeSpecifierNonArray {
   BVec2,
   BVec3,
   BVec4,
+  Mat2,
+  Mat2x3,
+  Mat2x4,
+  Mat3x2,
+  Mat3,
+  Mat3x4,
+  Mat4x2,
+  Mat4x3,
+  Mat4,
   AtomicUint,
   UImage2D,
   Custom(String),

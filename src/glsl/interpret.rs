@@ -29,6 +29,16 @@ pub enum Value {
   BVec4([u32; 4]),
   Void,
 
+  Mat2([[f32; 2]; 2]),
+  Mat2x3([[f32; 3]; 2]),
+  Mat2x4([[f32; 4]; 2]),
+  Mat3x2([[f32; 2]; 3]),
+  Mat3([[f32; 3]; 3]),
+  Mat3x4([[f32; 4]; 3]),
+  Mat4x2([[f32; 2]; 4]),
+  Mat4x3([[f32; 3]; 4]),
+  Mat4([[f32; 4]; 4]),
+
   UImage2DUnit(usize),
   UImage2D(Arc<gl::Texture>),
 
@@ -36,6 +46,10 @@ pub enum Value {
   Barrier(Arc<Barrier>),
 
   Ref(*mut Value),
+  RefV2(*mut [f32; 2]),
+  RefV3(*mut [f32; 3]),
+  RefV4(*mut [f32; 4]),
+  // RefI(*mut Value, usize),
 }
 
 impl Value {
@@ -44,6 +58,21 @@ impl Value {
       &mut Value::Ref(inner) => {
         let inner = unsafe{ &mut *inner };
         inner.set(val);
+      },
+      &mut Value::RefV2(v) => {
+        if let Value::Vec2(ref t) = val {
+          unsafe{ *v = *t; }
+        } else { unreachable!() }
+      },
+      &mut Value::RefV3(v) => {
+        if let Value::Vec3(ref t) = val {
+          unsafe{ *v = *t; }
+        } else { unreachable!() }
+      },
+      &mut Value::RefV4(v) => {
+        if let Value::Vec4(ref t) = val {
+          unsafe{ *v = *t; }
+        } else { unreachable!() }
       },
       &mut Value::Buffer(ref typ, ptr, _) => {
         match (typ, val) {
@@ -426,7 +455,15 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       }
     },
     Expression::Index(ref container, ref index) => {
-      let container = eval(container, vars, shader);
+      let mut container = eval(container, vars, shader);
+      let mut container = &mut container;
+
+
+      while let &mut Value::Ref(p) = container {
+        container = unsafe{ &mut *p };
+      };
+
+
       let index = eval(index, vars, shader).get();
       let index = match index {
         Value::Int(i) => i as isize,
@@ -435,13 +472,22 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       };
 
       match container {
-        Value::Buffer(ref s, p, _len) => {
+        &mut Value::Buffer(ref s, p, _len) => {
           let stride = super::stride_of(s, Some(&shader.types));
 
           Value::Buffer(s.clone(),
-                        unsafe{ p.offset(index as isize * stride as isize) },
+                        unsafe{ p.offset(index * stride as isize) },
                         None)
         },
+        &mut Value::Mat2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat2x3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat2x4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat3x2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat3x4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat4x2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat4x3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
         x => unimplemented!("{:?}", x),
       }
     },

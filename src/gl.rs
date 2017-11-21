@@ -2368,10 +2368,6 @@ pub extern "C" fn glDispatchCompute(
       }
     }
   }
-
-  // println!("{:?}", current.buffers);
-  // println!("{:?}", current.textures);
-
 }
 
 #[allow(unused_variables)]
@@ -2391,7 +2387,7 @@ pub extern "C" fn glDrawArrays(
   use std::ops::Deref;
 
   use glsl::interpret::{self,Vars,Value};
-  // use glsl::{Interface};
+  use glsl::TypeSpecifierNonArray;
 
 
   let current = current();
@@ -2408,7 +2404,7 @@ pub extern "C" fn glDrawArrays(
   let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
   let vert_compiled = Arc::clone(Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
 
-  let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.name.clone()) } else { None }).collect::<Vec<_>>();
+  let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some((v.name.clone(), v.type_.clone())) } else { None }).collect::<Vec<_>>();
 
 
   assert_eq!(current.vertex_array, 0);
@@ -2434,14 +2430,44 @@ pub extern "C" fn glDrawArrays(
         (GL_INT, 2) => Value::IVec2(unsafe{ *(p as *const _) }),
         (GL_INT, 3) => Value::IVec3(unsafe{ *(p as *const _) }),
         (GL_INT, 4) => Value::IVec4(unsafe{ *(p as *const _) }),
+        (GL_UNSIGNED_INT, 1) => Value::Uint(unsafe{ *(p as *const _) }),
+        (GL_UNSIGNED_INT, 2) => Value::UVec2(unsafe{ *(p as *const _) }),
+        (GL_UNSIGNED_INT, 3) => Value::UVec3(unsafe{ *(p as *const _) }),
+        (GL_UNSIGNED_INT, 4) => Value::UVec4(unsafe{ *(p as *const _) }),
         (t, s) => unimplemented!("{:x} {}", t, s),
       };
 
       vars.insert(name.clone(), v);
     }
 
-    for v in &vert_out_vars {
-      vars.insert(v.clone(), Value::Void);
+    for &(ref name, ref type_) in &vert_out_vars {
+      let value = match type_ {
+        &TypeSpecifierNonArray::Float => Value::Float(Default::default()),
+        &TypeSpecifierNonArray::Vec2 => Value::Vec2(Default::default()),
+        &TypeSpecifierNonArray::Vec3 => Value::Vec3(Default::default()),
+        &TypeSpecifierNonArray::Vec4 => Value::Vec4(Default::default()),
+        &TypeSpecifierNonArray::Mat2 => Value::Mat2(Default::default()),
+        &TypeSpecifierNonArray::Mat2x3 => Value::Mat2x3(Default::default()),
+        &TypeSpecifierNonArray::Mat2x4 => Value::Mat2x4(Default::default()),
+        &TypeSpecifierNonArray::Mat3x2 => Value::Mat3x2(Default::default()),
+        &TypeSpecifierNonArray::Mat3 => Value::Mat3(Default::default()),
+        &TypeSpecifierNonArray::Mat3x4 => Value::Mat3x4(Default::default()),
+        &TypeSpecifierNonArray::Mat4x2 => Value::Mat4x2(Default::default()),
+        &TypeSpecifierNonArray::Mat4x3 => Value::Mat4x3(Default::default()),
+        &TypeSpecifierNonArray::Mat4 => Value::Mat4(Default::default()),
+        &TypeSpecifierNonArray::Int => Value::Int(Default::default()),
+        &TypeSpecifierNonArray::IVec2 => Value::IVec2(Default::default()),
+        &TypeSpecifierNonArray::IVec3 => Value::IVec3(Default::default()),
+        &TypeSpecifierNonArray::IVec4 => Value::IVec4(Default::default()),
+        &TypeSpecifierNonArray::Uint => Value::Uint(Default::default()),
+        &TypeSpecifierNonArray::UVec2 => Value::UVec2(Default::default()),
+        &TypeSpecifierNonArray::UVec3 => Value::UVec3(Default::default()),
+        &TypeSpecifierNonArray::UVec4 => Value::UVec4(Default::default()),
+
+        x => unimplemented!("{:?}", x),
+      };
+
+      vars.insert(name.clone(), value);
     }
 
     let main = &vert_compiled.functions[&"main".to_string()][0];
@@ -2513,6 +2539,23 @@ pub extern "C" fn glDrawArrays(
             &Value::Vec2(ref v) => push(v, p, offset),
             &Value::Vec3(ref v) => push(v, p, offset),
             &Value::Vec4(ref v) => push(v, p, offset),
+            &Value::Mat2(ref v) => push(v, p, offset),
+            &Value::Mat2x3(ref v) => push(v, p, offset),
+            &Value::Mat2x4(ref v) => push(v, p, offset),
+            &Value::Mat3x2(ref v) => push(v, p, offset),
+            &Value::Mat3(ref v) => push(v, p, offset),
+            &Value::Mat3x4(ref v) => push(v, p, offset),
+            &Value::Mat4x2(ref v) => push(v, p, offset),
+            &Value::Mat4x3(ref v) => push(v, p, offset),
+            &Value::Mat4(ref v) => push(v, p, offset),
+            &Value::Int(ref i) => push(i, p, offset),
+            &Value::IVec2(ref i) => push(i, p, offset),
+            &Value::IVec3(ref i) => push(i, p, offset),
+            &Value::IVec4(ref i) => push(i, p, offset),
+            &Value::Uint(ref u) => push(u, p, offset),
+            &Value::UVec2(ref u) => push(u, p, offset),
+            &Value::UVec3(ref u) => push(u, p, offset),
+            &Value::UVec4(ref u) => push(u, p, offset),
             x => unimplemented!("{:?}", x),
           }
         }

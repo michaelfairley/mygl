@@ -92,6 +92,7 @@ pub struct CustomType {
   pub size: usize,
   pub fields: Vec<Variable>,
 }
+// TODO: different packing formats
 pub fn size_of(
   type_: &TypeSpecifierNonArray,
   types: Option<&HashMap<String, CustomType>>,
@@ -113,10 +114,20 @@ pub fn size_of(
     &TypeSpecifierNonArray::BVec2 => mem::size_of::<u32>() * 2,
     &TypeSpecifierNonArray::BVec3 => mem::size_of::<u32>() * 3,
     &TypeSpecifierNonArray::BVec4 => mem::size_of::<u32>() * 4,
+    &TypeSpecifierNonArray::Mat2 => mem::size_of::<f32>() * 2*2,
+    &TypeSpecifierNonArray::Mat2x3 => mem::size_of::<f32>() * 2*3,
+    &TypeSpecifierNonArray::Mat2x4 => mem::size_of::<f32>() * 2*4,
+    &TypeSpecifierNonArray::Mat3x2 => mem::size_of::<f32>() * 3*2,
+    &TypeSpecifierNonArray::Mat3 => mem::size_of::<f32>() * 3*3,
+    &TypeSpecifierNonArray::Mat3x4 => mem::size_of::<f32>() * 3*4,
+    &TypeSpecifierNonArray::Mat4x2 => mem::size_of::<f32>() * 4*2,
+    &TypeSpecifierNonArray::Mat4x3 => mem::size_of::<f32>() * 4*3,
+    &TypeSpecifierNonArray::Mat4 => mem::size_of::<f32>() * 4*4,
     &TypeSpecifierNonArray::Custom(ref n) => types.unwrap().get(n).unwrap().size,
     ref x => unimplemented!("{:?}", x),
   }
 }
+// TODO: different packing formats
 pub fn alignment_of(
   type_: &TypeSpecifierNonArray,
   types: Option<&HashMap<String, CustomType>>,
@@ -168,6 +179,15 @@ pub fn gl_type(
     &TypeSpecifierNonArray::BVec4 => gl::GL_BOOL_VEC4,
     &TypeSpecifierNonArray::AtomicUint => gl::GL_UNSIGNED_INT_ATOMIC_COUNTER,
     &TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
+    &TypeSpecifierNonArray::Mat2 => gl::GL_FLOAT_MAT2,
+    &TypeSpecifierNonArray::Mat2x3 => gl::GL_FLOAT_MAT2x3,
+    &TypeSpecifierNonArray::Mat2x4 => gl::GL_FLOAT_MAT2x4,
+    &TypeSpecifierNonArray::Mat3x2 => gl::GL_FLOAT_MAT3x2,
+    &TypeSpecifierNonArray::Mat3 => gl::GL_FLOAT_MAT3,
+    &TypeSpecifierNonArray::Mat3x4 => gl::GL_FLOAT_MAT3x4,
+    &TypeSpecifierNonArray::Mat4x2 => gl::GL_FLOAT_MAT4x2,
+    &TypeSpecifierNonArray::Mat4x3 => gl::GL_FLOAT_MAT4x3,
+    &TypeSpecifierNonArray::Mat4 => gl::GL_FLOAT_MAT4,
 
     // INCOMPLETE
     x => unimplemented!("{:?}", x),
