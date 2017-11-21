@@ -1,9 +1,0 @@
-todo:
-- textures (and images in compute shaders)
-- transform feedback (vertex arrays, vertex shaders)
-- the whole rendering shebang
-
-todone:
-- compute shaders
-- clear
-- buffer mapping
