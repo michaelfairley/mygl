@@ -2243,7 +2243,7 @@ pub extern "C" fn glDispatchCompute(
           let buf_ptr = unsafe{ buffer.as_mut_ptr().offset(binding.offset) };
 
           let size = info.active_variables.last().and_then(|v| {
-            if v.array_size == 0 {
+            if glsl::array_size(&v.array) == 0 {
               Some(((binding.size - v.offset as usize) / glsl::size_of(&v.type_, Some(&compiled.types))) as u32)
             } else { None }
           });
@@ -2253,7 +2253,7 @@ pub extern "C" fn glDispatchCompute(
           } else {
             // TODO: unify with Expression::FieldSelection
             for field in &info.active_variables {
-              let length = Some(if field.array_size > 0 { field.array_size } else { size.unwrap() });
+              let length = Some(if glsl::array_size(&field.array) > 0 { glsl::array_size(&field.array) } else { size.unwrap() });
 
               let val = Value::Buffer(field.type_.clone(), unsafe{ buf_ptr.offset(field.offset as isize) }, length);
               init_vars.insert(field.name.clone(), val);
@@ -2404,7 +2404,7 @@ pub extern "C" fn glDrawArrays(
   let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
   let vert_compiled = Arc::clone(Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
 
-  let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some((v.name.clone(), v.type_.clone())) } else { None }).collect::<Vec<_>>();
+  let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
 
 
   assert_eq!(current.vertex_array, 0);
@@ -2440,8 +2440,8 @@ pub extern "C" fn glDrawArrays(
       vars.insert(name.clone(), v);
     }
 
-    for &(ref name, ref type_) in &vert_out_vars {
-      let value = match type_ {
+    for var in &vert_out_vars {
+      let value = match &var.type_ {
         &TypeSpecifierNonArray::Float => Value::Float(Default::default()),
         &TypeSpecifierNonArray::Vec2 => Value::Vec2(Default::default()),
         &TypeSpecifierNonArray::Vec3 => Value::Vec3(Default::default()),
@@ -2467,7 +2467,7 @@ pub extern "C" fn glDrawArrays(
         x => unimplemented!("{:?}", x),
       };
 
-      vars.insert(name.clone(), value);
+      vars.insert(var.name.clone(), value);
     }
 
     let main = &vert_compiled.functions[&"main".to_string()][0];
@@ -3216,7 +3216,7 @@ pub extern "C" fn glGetProgramResourceiv(
           match prop {
             GL_BLOCK_INDEX => push(*program.ssbos.iter().find(|&(_, ref ssbo)| ssbo.active_variables.contains(var)).unwrap().0 as i32),
             GL_TYPE => push(glsl::gl_type(&var.type_) as i32),
-            GL_ARRAY_SIZE => push(var.array_size as i32),
+            GL_ARRAY_SIZE => push(glsl::array_size(&var.array) as i32),
             GL_OFFSET => push(var.offset as i32),
             GL_ARRAY_STRIDE => push(glsl::stride_of(&var.type_, None) as i32),
             GL_MATRIX_STRIDE => push(0), // TODO
@@ -3234,7 +3234,7 @@ pub extern "C" fn glGetProgramResourceiv(
             match prop {
               GL_BLOCK_INDEX => push(*program.ubos.iter().find(|&(_, ref ssbo)| ssbo.active_variables.contains(var)).unwrap().0 as i32),
               GL_TYPE => push(glsl::gl_type(&var.type_) as i32),
-              GL_ARRAY_SIZE => push(var.array_size as i32),
+              GL_ARRAY_SIZE => push(glsl::array_size(&var.array) as i32),
               GL_OFFSET => push(var.offset as i32),
               GL_ARRAY_STRIDE => push(glsl::stride_of(&var.type_, None) as i32),
               GL_MATRIX_STRIDE => push(0), // TODO

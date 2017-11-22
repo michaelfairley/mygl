@@ -41,8 +41,18 @@ pub struct Variable {
   pub name: String,
   pub index: i32,
   pub type_: parse::TypeSpecifierNonArray,
-  pub array_size: GLuint,
+  pub array: Vec<GLuint>,
   pub offset: GLuint,
+}
+
+pub fn array_size(
+  array: &[GLuint],
+) -> u32 {
+  if array.is_empty() {
+    1
+  } else {
+    array.iter().sum()
+  }
 }
 
 #[derive(Debug,Clone)]
@@ -92,6 +102,7 @@ pub struct CustomType {
   pub size: usize,
   pub fields: Vec<Variable>,
 }
+
 // TODO: different packing formats
 pub fn size_of(
   type_: &TypeSpecifierNonArray,
@@ -237,17 +248,14 @@ impl Shader {
             }
 
             names.iter().map(|&(ref name, ref array)| {
-              let array_size: u32 = if array.is_empty() {
-                1
-              } else {
-                array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
-              };
+              let array = array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).collect::<Vec<_>>();
+              let array_size = array_size(&array);
 
               let var = Variable{
                 name: name.clone(),
                 index: -1,
                 type_: type_.clone(),
-                array_size: array_size,
+                array: array,
                 offset: size,
               };
 
@@ -326,7 +334,7 @@ impl Shader {
                 name: name.clone(),
                 index: 0,
                 type_: type_,
-                array_size: 0,
+                array: vec![], // TODO
                 offset: 0,
               };
 
@@ -338,7 +346,7 @@ impl Shader {
                 name: name.clone(),
                 index: 0,
                 type_: type_,
-                array_size: 0,
+                array: vec![], // TODO
                 offset: 0,
               };
 
@@ -366,17 +374,14 @@ impl Shader {
               }
 
               names.iter().map(|&(ref name, ref array)| {
-                let array_size: u32 = if array.is_empty() {
-                  1
-                } else {
-                  array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
-                };
+                let array = array.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).collect::<Vec<_>>();
+                let array_size = array_size(&array);
 
                 let var = Variable{
                   name: name.clone(),
                   index: -1,
                   type_: type_.clone(),
-                  array_size: array_size,
+                  array: array,
                   offset: size,
                 };
 
@@ -403,7 +408,7 @@ impl Shader {
         name: "gl_Position".to_string(),
         index: 0,
         type_: TypeSpecifierNonArray::Vec4,
-        array_size: 0,
+        array: vec![],
         offset: 0,
       }));
 
@@ -411,7 +416,7 @@ impl Shader {
         name: "gl_PointSize".to_string(),
         index: 0,
         type_: TypeSpecifierNonArray::Float,
-        array_size: 0,
+        array: vec![],
         offset: 0,
       }));
     }

@@ -521,7 +521,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             info.active_variables.iter().find(|v| &v.name == field).expect("2")
           };
 
-          let length = Some(if field.array_size > 0 { field.array_size } else { len.unwrap() });
+          let length = Some(if super::array_size(&field.array) > 0 { super::array_size(&field.array) } else { len.unwrap() });
 
           Value::Buffer(field.type_.clone(), unsafe{ p.offset(field.offset as isize) }, length)
         },
