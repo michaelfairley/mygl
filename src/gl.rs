@@ -24,7 +24,7 @@ const MAX_UNIFORM_BUFFER_BINDINGS: usize = 72;
 const MAX_ATOMIC_COUNTER_BUFFER_BINDINGS: usize = 1;
 const MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: usize = 4;
 const MAX_IMAGE_UNITS: usize = 8;
-const MAX_VERTEX_ATTRIBS: usize = 16;
+const MAX_VERTEX_ATTRIBS: usize = 32; // TODO: try 16 after error handling is better
 
 
 #[derive(Debug)]
@@ -378,7 +378,7 @@ impl Program {
       atomic_counters: HashMap::new(),
       pending_transform_feedback: None,
       transform_feedback: None,
-      attrib_locations: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
+      attrib_locations: [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None],
     }
   }
 }
@@ -2467,6 +2467,13 @@ pub extern "C" fn glDrawArrays(
         x => unimplemented!("{:?}", x),
       };
 
+      let value = var.array.iter().rev().fold(value, |val, &size| {
+        let size = size as usize;
+        let mut v = Vec::with_capacity(size);
+        v.resize(size, val);
+        Value::Array(v)
+      });
+
       vars.insert(var.name.clone(), value);
     }
 
@@ -2533,31 +2540,50 @@ pub extern "C" fn glDrawArrays(
             *offset += mem::size_of::<T>() as isize;
           }
 
-          let value = vert.get(var);
-          match value {
-            &Value::Float(ref f) => push(f, p, offset),
-            &Value::Vec2(ref v) => push(v, p, offset),
-            &Value::Vec3(ref v) => push(v, p, offset),
-            &Value::Vec4(ref v) => push(v, p, offset),
-            &Value::Mat2(ref v) => push(v, p, offset),
-            &Value::Mat2x3(ref v) => push(v, p, offset),
-            &Value::Mat2x4(ref v) => push(v, p, offset),
-            &Value::Mat3x2(ref v) => push(v, p, offset),
-            &Value::Mat3(ref v) => push(v, p, offset),
-            &Value::Mat3x4(ref v) => push(v, p, offset),
-            &Value::Mat4x2(ref v) => push(v, p, offset),
-            &Value::Mat4x3(ref v) => push(v, p, offset),
-            &Value::Mat4(ref v) => push(v, p, offset),
-            &Value::Int(ref i) => push(i, p, offset),
-            &Value::IVec2(ref i) => push(i, p, offset),
-            &Value::IVec3(ref i) => push(i, p, offset),
-            &Value::IVec4(ref i) => push(i, p, offset),
-            &Value::Uint(ref u) => push(u, p, offset),
-            &Value::UVec2(ref u) => push(u, p, offset),
-            &Value::UVec3(ref u) => push(u, p, offset),
-            &Value::UVec4(ref u) => push(u, p, offset),
-            x => unimplemented!("{:?}", x),
+          fn push_all(value: &Value, p: *mut u8, offset: &mut isize) {
+            match value {
+              &Value::Float(ref f) => push(f, p, offset),
+              &Value::Vec2(ref v) => push(v, p, offset),
+              &Value::Vec3(ref v) => push(v, p, offset),
+              &Value::Vec4(ref v) => push(v, p, offset),
+              &Value::Mat2(ref v) => push(v, p, offset),
+              &Value::Mat2x3(ref v) => push(v, p, offset),
+              &Value::Mat2x4(ref v) => push(v, p, offset),
+              &Value::Mat3x2(ref v) => push(v, p, offset),
+              &Value::Mat3(ref v) => push(v, p, offset),
+              &Value::Mat3x4(ref v) => push(v, p, offset),
+              &Value::Mat4x2(ref v) => push(v, p, offset),
+              &Value::Mat4x3(ref v) => push(v, p, offset),
+              &Value::Mat4(ref v) => push(v, p, offset),
+              &Value::Int(ref i) => push(i, p, offset),
+              &Value::IVec2(ref i) => push(i, p, offset),
+              &Value::IVec3(ref i) => push(i, p, offset),
+              &Value::IVec4(ref i) => push(i, p, offset),
+              &Value::Uint(ref u) => push(u, p, offset),
+              &Value::UVec2(ref u) => push(u, p, offset),
+              &Value::UVec3(ref u) => push(u, p, offset),
+              &Value::UVec4(ref u) => push(u, p, offset),
+
+              &Value::Array(ref a) => for i in a {
+                push_all(i, p, offset);
+              },
+
+              x => unimplemented!("{:?}", x),
+            }
           }
+
+          let (name, array_indices) = parse_variable_name(var);
+
+          let value = vert.get(&name.to_string());
+          let value = array_indices.iter().fold(value, |v, &i| {
+            if let &Value::Array(ref a) = v {
+              &a[i as usize]
+            } else { unreachable!() }
+          });
+
+
+          push_all(&value, p, offset);
+
         }
       }
     }
@@ -3471,15 +3497,18 @@ pub extern "C" fn glGetTransformFeedbackVarying(
   let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
   let vert_compiled = Arc::clone(&*Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()));
 
-  let out_var = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i {
-    if n == &v.name {
-      Some(v)
+  let (name, _array_indices) = parse_variable_name(n);
+
+  let var_type = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i {
+    if name == &v.name {
+      Some(v.type_.clone())
     } else { None }
-  } else { None }).next().unwrap();
+  } else { None }).next().expect(&format!("Didn't find {} as an out variable for glGetTransformFeedbackVarying", n));
+
 
   unsafe{
-    *type_ = glsl::gl_type(&out_var.type_);
-    *size = glsl::size_of(&out_var.type_, None) as GLint;
+    *type_ = glsl::gl_type(&var_type);
+    *size = glsl::size_of(&var_type, None) as GLint;
   }
 }
 
@@ -3763,7 +3792,7 @@ pub extern "C" fn glLinkProgram(
     }
   }
 
-  let mut attrib_locations = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None];
+  let mut attrib_locations = [None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None];
   if let Some(vert) = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER) {
     // TODO: assign the ones with explicit locations first
     for iface in &vert.compiled.borrow().as_ref().unwrap().interfaces {
@@ -4978,4 +5007,26 @@ fn format_size_of(typ: GLenum) -> usize {
     GL_R32UI => 32/8,
     x => unimplemented!("{:x}", x),
   }
+}
+
+fn parse_variable_name(
+  name: &str
+) -> (&str, Vec<u32>) {
+  let mut split = name.split('[');
+
+  let base = split.next().unwrap();
+
+  let mut indices = vec![];
+  for part in split {
+    let trimmed = part.trim_right_matches(']');
+    if trimmed.len() != part.len() - 1 { return (name, vec![]); }
+
+    if let Ok(i) = trimmed.parse::<u32>() {
+      indices.push(i);
+    } else {
+      return (name, vec![]);
+    }
+  }
+
+  (base, indices)
 }

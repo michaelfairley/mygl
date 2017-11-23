@@ -280,6 +280,8 @@ impl Shader {
           } else { unimplemented!(); }
         },
         &ExternalDeclaration::Variable((ref quals, ref typespec), ref name, ref array_spec) => {
+          let array = array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).collect::<Vec<_>>();
+
           if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Uniform)) {
             let typ = gl_type(&typespec.0);
 
@@ -290,11 +292,7 @@ impl Shader {
             } else { None }).next().unwrap_or(0);
 
             if typ == gl::GL_UNSIGNED_INT_ATOMIC_COUNTER {
-              let size: u32 = if array_spec.is_empty() {
-                1
-              } else {
-                array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
-              };
+              let size = array_size(&array);
 
               let atomic_info = AtomicCounterInfo{
                 name: name.clone(),
@@ -314,11 +312,7 @@ impl Shader {
           } else if quals.iter().any(|q| q == &TypeQualifier::Storage(StorageQualifier::Shared)) {
             let typ = typespec.0.clone();
 
-            let size: u32 = if array_spec.is_empty() {
-              1
-            } else {
-              array_spec.iter().map(|a| a.as_ref().map(|a| a.eval()).unwrap_or(0)).sum()
-            };
+            let size = array_size(&array);
 
             let info = SharedInfo{
               name: name.clone(),
@@ -334,7 +328,7 @@ impl Shader {
                 name: name.clone(),
                 index: 0,
                 type_: type_,
-                array: vec![], // TODO
+                array: array,
                 offset: 0,
               };
 
@@ -346,7 +340,7 @@ impl Shader {
                 name: name.clone(),
                 index: 0,
                 type_: type_,
-                array: vec![], // TODO
+                array: array,
                 offset: 0,
               };
 

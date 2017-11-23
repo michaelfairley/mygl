@@ -558,6 +558,8 @@ impl<'a> Parser<'a> {
         result.push(TypeQualifier::Storage(StorageQualifier::Readonly));
       } else if self.consume(Token::Writeonly)? {
         result.push(TypeQualifier::Storage(StorageQualifier::Writeonly));
+      } else if self.consume(Token::Centroid)? {
+        result.push(TypeQualifier::Storage(StorageQualifier::Centroid));
       } else if self.consume(Token::HighPrecision)? {
         result.push(TypeQualifier::Precision(PrecisionQualifier::High));
       } else if self.consume(Token::MediumPrecision)? {
@@ -711,16 +713,21 @@ pub enum InterpolationQualifier {
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum StorageQualifier {
+  Const,
   In,
   Out,
   Inout,
-  Buffer,
+  Centroid,
+  Patch,
+  Sample,
   Uniform,
-  Coherent,
+  Buffer,
   Shared,
+  Coherent,
+  Volatile,
+  Restrict,
   Readonly,
   Writeonly,
-  // INCOMPLETE
 }
 
 // TODO: this needs to be a struct

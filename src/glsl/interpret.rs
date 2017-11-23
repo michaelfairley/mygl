@@ -43,6 +43,9 @@ pub enum Value {
   UImage2D(Arc<gl::Texture>),
 
   Buffer(TypeSpecifierNonArray, *mut u8, Option<u32>),
+
+  Array(Vec<Value>),
+
   Barrier(Arc<Barrier>),
 
   Ref(*mut Value),
@@ -488,6 +491,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         &mut Value::Mat4x2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
         &mut Value::Mat4x3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
         &mut Value::Mat4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Array(ref mut a) => a[index as usize].get_ref(),
         x => unimplemented!("{:?}", x),
       }
     },
