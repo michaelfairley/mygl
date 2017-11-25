@@ -307,6 +307,8 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         (Value::UVec3(a), Value::UVec3(b)) => Value::UVec3([a[0] + b[0],
                                                             a[1] + b[1],
                                                             a[2] + b[2]]),
+        (Value::Vec2(a), Value::Vec2(b)) => Value::Vec2([a[0] + b[0],
+                                                         a[1] + b[1]]),
         x => unimplemented!("{:?}", x),
       };
 
@@ -317,11 +319,17 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       let args = args.iter().map(|a| eval(a, vars, shader)).collect::<Vec<_>>();
 
       if name == "uint"
-        || name == "int"
-        || name == "float"
-        || name == "vec4"
-        || name == "ivec2"
+        || name == "uvec2"
+        || name == "uvec3"
         || name == "uvec4"
+        || name == "int"
+        || name == "ivec2"
+        || name == "ivec3"
+        || name == "ivec4"
+        || name == "float"
+        || name == "vec2"
+        || name == "vec3"
+        || name == "vec4"
       {
         return convert(name, &args)
       }
@@ -404,6 +412,10 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         (Value::UVec3(a), Value::UVec3(b)) => Value::UVec3([a[0] + b[0],
                                                             a[1] + b[1],
                                                             a[2] + b[2]]),
+        (Value::Vec4(a), Value::Vec4(b)) => Value::Vec4([a[0] + b[0],
+                                                         a[1] + b[1],
+                                                         a[2] + b[2],
+                                                         a[3] + b[3]]),
         x => unimplemented!("{:?}", x),
       }
     },
@@ -432,6 +444,18 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         (Value::UVec3(a), Value::UVec3(b)) => Value::UVec3([a[0] * b[0],
                                                             a[1] * b[1],
                                                             a[2] * b[2]]),
+        (Value::Vec3(a), Value::Float(b)) => Value::Vec3([a[0] * b,
+                                                          a[1] * b,
+                                                          a[2] * b]),
+        (Value::Float(a), Value::Vec3(b)) => Value::Vec3([a * b[0],
+                                                          a * b[1],
+                                                          a * b[2]]),
+        (Value::Float(a), Value::Vec2(b)) => Value::Vec2([a * b[0],
+                                                          a * b[1]]),
+        (Value::Vec4(a), Value::Float(b)) => Value::Vec4([a[0] * b,
+                                                          a[1] * b,
+                                                          a[2] * b,
+                                                          a[3] * b]),
         x => unimplemented!("{:?}", x),
       }
     },
@@ -529,6 +553,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
 
           Value::Buffer(field.type_.clone(), unsafe{ p.offset(field.offset as isize) }, length)
         },
+        // TODO: unhardcoded version of these
         Value::UVec3(v) => {
           match field.as_ref() {
             "x" => Value::Uint(v[0]),
@@ -549,6 +574,14 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         Value::UVec4(v) => {
           match field.as_ref() {
             "x" => Value::Uint(v[0]),
+            x => unimplemented!("{}", x),
+          }
+        },
+        Value::Vec2(v) => {
+          match field.as_ref() {
+            "x" => Value::Float(v[0]),
+            "y" => Value::Float(v[1]),
+            "xy" => Value::Vec2([v[0], v[1]]),
             x => unimplemented!("{}", x),
           }
         },
@@ -673,9 +706,17 @@ fn into_int(val: &Value) -> Vec<i32> {
 fn into_float(val: &Value) -> Vec<f32> {
   match val {
     &Value::Uint(u) => vec![u as f32],
-    &Value::IVec2(ref v) => vec![v[0] as f32, v[1] as f32],
-    &Value::Float(a) => vec![a as f32],
+    &Value::UVec2(ref v) => vec![v[0] as f32, v[1] as f32],
+    &Value::UVec3(ref v) => vec![v[0] as f32, v[1] as f32, v[2] as f32],
+    &Value::UVec4(ref v) => vec![v[0] as f32, v[1] as f32, v[2] as f32, v[3] as f32],
     &Value::Int(a) => vec![a as f32],
+    &Value::IVec2(ref v) => vec![v[0] as f32, v[1] as f32],
+    &Value::IVec3(ref v) => vec![v[0] as f32, v[1] as f32, v[2] as f32],
+    &Value::IVec4(ref v) => vec![v[0] as f32, v[1] as f32, v[2] as f32, v[3] as f32],
+    &Value::Float(a) => vec![a],
+    &Value::Vec2(ref v) => vec![v[0], v[1]],
+    &Value::Vec3(ref v) => vec![v[0], v[1], v[2]],
+    &Value::Vec4(ref v) => vec![v[0], v[1], v[2], v[3]],
     x => unimplemented!("{:?}", x),
   }
 }

@@ -25,6 +25,12 @@ const MAX_ATOMIC_COUNTER_BUFFER_BINDINGS: usize = 1;
 const MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: usize = 4;
 const MAX_IMAGE_UNITS: usize = 8;
 const MAX_VERTEX_ATTRIBS: usize = 32; // TODO: try 16 after error handling is better
+const MAX_CUBE_MAP_TEXTURE_SIZE: usize = 2048;
+const MAX_TEXTURE_SIZE: usize = 2048;
+const MAX_3D_TEXTURE_SIZE: usize = 2048;
+const MAX_RENDERBUFFER_SIZE: usize = 2048;
+const MAX_ARRAY_TEXTURE_LAYERS: usize = 256;
+
 
 
 #[derive(Debug)]
@@ -48,6 +54,7 @@ pub struct Context {
   blend: bool,
 
   viewport: Rect,
+  depth_range: (GLfloat, GLfloat),
 
   clear_color: (GLfloat, GLfloat, GLfloat, GLfloat),
 
@@ -72,6 +79,7 @@ pub struct Context {
 
   vertex_array: GLuint,
   vertex_arrays: HashMap<GLuint, Option<VertexArray>>,
+  current_vertex_attrib: [[GLfloat; 4]; MAX_VERTEX_ATTRIBS],
 
   culling: bool,
   cull_face: GLenum,
@@ -97,7 +105,6 @@ pub struct Context {
   queries: HashMap<GLuint, Option<Query>>,
   query: Option<(GLuint, GLenum)>,
 
-  depth_range: (GLfloat, GLfloat),
   line_width: GLfloat,
   primitive_restart_fixed_index: bool,
   polygon_offset: (GLfloat, GLfloat),
@@ -138,6 +145,7 @@ impl Context {
       blend: false,
 
       viewport: (0, 0, 0, 0),
+      depth_range: (0.0, 1.0),
 
       clear_color: (0.0, 0.0, 0.0, 0.0),
 
@@ -161,6 +169,7 @@ impl Context {
 
       vertex_array: 0,
       vertex_arrays: HashMap::new(),
+      current_vertex_attrib: [[0.0, 0.0, 0.0, 1.0]; MAX_VERTEX_ATTRIBS],
 
       culling: false,
       cull_face: GL_BACK,
@@ -186,7 +195,6 @@ impl Context {
       queries: HashMap::new(),
       query: None,
 
-      depth_range: (0.0, 1.0),
       line_width: 1.0,
       primitive_restart_fixed_index: false,
       polygon_offset: (0.0, 0.0),
@@ -2387,8 +2395,7 @@ pub extern "C" fn glDrawArrays(
   use std::ops::Deref;
 
   use glsl::interpret::{self,Vars,Value};
-  use glsl::TypeSpecifierNonArray;
-
+  use glsl::{TypeSpecifierNonArray,Interface};
 
   let current = current();
 
@@ -2406,12 +2413,50 @@ pub extern "C" fn glDrawArrays(
 
   let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
 
+  let mut uniforms = HashMap::new();
+
+  for iface in &vert_compiled.interfaces {
+    match iface {
+      &Interface::Uniform(ref info) => {
+        let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
+        let val = &program.uniform_values[index];
+        let val = match val {
+          &Value::UImage2DUnit(unit) => {
+            let unit_target = current.images[unit];
+            let texture = current.textures.get(&unit_target).expect("No texture for unit");
+            let texture = texture.as_ref().expect("No texture in slot");
+
+            Value::UImage2D(Arc::clone(texture))
+          },
+          x => x.clone(),
+        };
+        if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
+        uniforms.insert(info.name.clone(), val);
+      },
+      _ => {},
+    }
+  }
+
 
   assert_eq!(current.vertex_array, 0);
 
+  let array_buffer_pointer = if current.array_buffer == 0 {
+    None
+  } else {
+    Some(current.buffers.get(&current.array_buffer).unwrap().as_ref().unwrap().as_ptr())
+  };
+
   let vertex_array = current.vertex_arrays.get(&current.vertex_array).unwrap().as_ref().unwrap();
+  let current_vertex_attrib = &current.current_vertex_attrib;
 
   // TODO: thread
+  glFinish();
+
+  let packed_stride = vertex_array.attribs.iter()
+    .filter(|a| a.enabled)
+    .map(|a| a.size * size_of(a.type_) as i32)
+    .sum();
+
   let vertex_results = (first..(first+count)).map(|i| {
     let mut vars = Vars::new();
     vars.push();
@@ -2419,25 +2464,37 @@ pub extern "C" fn glDrawArrays(
     for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
       let attrib = &vertex_array.attribs[loc as usize];
 
-      let p = unsafe{ attrib.pointer.offset((attrib.stride * i) as isize) };
+      let value = if attrib.enabled {
+        let stride = if attrib.stride == 0 { packed_stride } else { attrib.stride };
+        let p = if let Some(abp) = array_buffer_pointer {
+          unsafe{ abp.offset(attrib.pointer as isize).offset((stride * i) as isize) as *const c_void }
+        } else {
+          unsafe{ attrib.pointer.offset((stride * i) as isize) }
+        };
 
-      let v = match (attrib.type_, attrib.size) {
-        (GL_FLOAT, 1) => Value::Float(unsafe{ *(p as *const _) }),
-        (GL_FLOAT, 2) => Value::Vec2(unsafe{ *(p as *const _) }),
-        (GL_FLOAT, 3) => Value::Vec3(unsafe{ *(p as *const _) }),
-        (GL_FLOAT, 4) => Value::Vec4(unsafe{ *(p as *const _) }),
-        (GL_INT, 1) => Value::Int(unsafe{ *(p as *const _) }),
-        (GL_INT, 2) => Value::IVec2(unsafe{ *(p as *const _) }),
-        (GL_INT, 3) => Value::IVec3(unsafe{ *(p as *const _) }),
-        (GL_INT, 4) => Value::IVec4(unsafe{ *(p as *const _) }),
-        (GL_UNSIGNED_INT, 1) => Value::Uint(unsafe{ *(p as *const _) }),
-        (GL_UNSIGNED_INT, 2) => Value::UVec2(unsafe{ *(p as *const _) }),
-        (GL_UNSIGNED_INT, 3) => Value::UVec3(unsafe{ *(p as *const _) }),
-        (GL_UNSIGNED_INT, 4) => Value::UVec4(unsafe{ *(p as *const _) }),
-        (t, s) => unimplemented!("{:x} {}", t, s),
+        match (attrib.type_, attrib.size) {
+          (GL_FLOAT, 1) => Value::Float(unsafe{ *(p as *const _) }),
+          (GL_FLOAT, 2) => Value::Vec2(unsafe{ *(p as *const _) }),
+          (GL_FLOAT, 3) => Value::Vec3(unsafe{ *(p as *const _) }),
+          (GL_FLOAT, 4) => Value::Vec4(unsafe{ *(p as *const _) }),
+          (GL_INT, 1) => Value::Int(unsafe{ *(p as *const _) }),
+          (GL_INT, 2) => Value::IVec2(unsafe{ *(p as *const _) }),
+          (GL_INT, 3) => Value::IVec3(unsafe{ *(p as *const _) }),
+          (GL_INT, 4) => Value::IVec4(unsafe{ *(p as *const _) }),
+          (GL_UNSIGNED_INT, 1) => Value::Uint(unsafe{ *(p as *const _) }),
+          (GL_UNSIGNED_INT, 2) => Value::UVec2(unsafe{ *(p as *const _) }),
+          (GL_UNSIGNED_INT, 3) => Value::UVec3(unsafe{ *(p as *const _) }),
+          (GL_UNSIGNED_INT, 4) => Value::UVec4(unsafe{ *(p as *const _) }),
+          (t, s) => unimplemented!("{:x} {}", t, s),
+        }
+      } else {
+        let attrib = current_vertex_attrib[loc as usize];
+
+        // TODO: non-float types
+        Value::Vec4(attrib)
       };
 
-      vars.insert(name.clone(), v);
+      vars.insert(name.clone(), value);
     }
 
     for var in &vert_out_vars {
@@ -2475,6 +2532,10 @@ pub extern "C" fn glDrawArrays(
       });
 
       vars.insert(var.name.clone(), value);
+    }
+
+    for (ref name, ref data) in &uniforms {
+      vars.insert((*name).clone(), (*data).clone());
     }
 
     let main = &vert_compiled.functions[&"main".to_string()][0];
@@ -2586,11 +2647,51 @@ pub extern "C" fn glDrawArrays(
 
         }
       }
+    } // transform feedback
+
+    match prim {
+      Primitive::Point(p) => {
+        let clip_coords = if let &Value::Vec4(ref v) = p.get(&"gl_Position".to_string()) {
+          v
+        } else { unreachable!() };
+        let ndc = [clip_coords[0] / clip_coords[3],
+                   clip_coords[1] / clip_coords[3],
+                   clip_coords[2] / clip_coords[3]];
+
+        let viewport = current.viewport;
+        let px = viewport.2 as f32;
+        let py = viewport.3 as f32;
+        let ox = viewport.0 as f32 + px / 2.0;
+        let oy = viewport.1 as f32 + py / 2.0;
+        let (n, f) = current.depth_range;
+
+        if ndc[0] < -1.0
+          || ndc[0] > 1.0
+          || ndc[1] < -1.0
+          || ndc[1] > 1.0 {
+            continue;
+          }
+
+        let window_coords = [
+          px / 2.0 * ndc[0] + ox,
+          py / 2.0 * ndc[1] + oy,
+          (f-n) / 2.0 * ndc[2] + (n+f) / 2.0,
+        ];
+
+        assert_eq!(current.draw_framebuffer, 0);
+
+        let mut draw = unsafe{ current.draw_surface.as_mut() };
+        let mut draw = draw.as_mut().unwrap();
+
+        draw.set_pixel(window_coords[0] as i32,
+                       window_coords[1] as i32,
+                       (1.0, 1.0, 1.0, 1.0),
+                       current.color_mask);
+      },
+      _ => unimplemented!(),
     }
+
   }
-
-
-  // TODO: clipping, rasterization and beyond
 }
 
 #[allow(unused_variables)]
@@ -3027,7 +3128,7 @@ pub extern "C" fn glGetIntegeri_v(target: GLenum, index: GLuint, data: *mut GLin
 pub extern "C" fn glGetIntegerv(pname: GLenum, data: *mut GLint) -> () {
   let result = match pname {
     GL_NUM_EXTENSIONS => 0,
-    GL_MAX_VERTEX_ATTRIBS => 0, // TODO
+    GL_MAX_VERTEX_ATTRIBS => MAX_VERTEX_ATTRIBS as GLint,
     GL_MAX_SAMPLE_MASK_WORDS => 0, // TODO
     GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS => 0, // TODO
     GL_MAX_UNIFORM_BUFFER_BINDINGS => 0, // TODO
@@ -3035,6 +3136,12 @@ pub extern "C" fn glGetIntegerv(pname: GLenum, data: *mut GLint) -> () {
     GL_MAX_ATOMIC_COUNTER_BUFFER_BINDINGS => 0, // TODO
     GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS => 0, // TODO
     GL_MAX_IMAGE_UNITS => 0, // TODO
+    GL_MAX_TEXTURE_IMAGE_UNITS => 0, // TODO
+    GL_MAX_TEXTURE_SIZE => MAX_TEXTURE_SIZE as GLint,
+    GL_MAX_CUBE_MAP_TEXTURE_SIZE => MAX_CUBE_MAP_TEXTURE_SIZE as GLint,
+    GL_MAX_RENDERBUFFER_SIZE => MAX_RENDERBUFFER_SIZE as GLint,
+    GL_MAX_ARRAY_TEXTURE_LAYERS => MAX_ARRAY_TEXTURE_LAYERS as GLint,
+    GL_MAX_3D_TEXTURE_SIZE => MAX_3D_TEXTURE_SIZE as GLint,
     x => unimplemented!("{:x}", x),
   };
 
@@ -4551,10 +4658,15 @@ pub extern "C" fn glTransformFeedbackVaryings(
   program.pending_transform_feedback = Some((names, seperate));
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glUniform1f(location: GLint, v0: GLfloat) -> () {
-  unimplemented!()
+pub extern "C" fn glUniform1f(
+  location: GLint,
+  v0: GLfloat,
+) -> () {
+  let current = current();
+  let program = current.programs.get_mut(&current.program).unwrap();
+
+  program.uniform_values[location as usize] = glsl::interpret::Value::Float(v0);
 }
 
 #[allow(unused_variables)]
@@ -4854,10 +4966,17 @@ pub extern "C" fn glVertexAttrib3fv(index: GLuint, v: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glVertexAttrib4f(index: GLuint, x: GLfloat, y: GLfloat, z: GLfloat, w: GLfloat) -> () {
-  unimplemented!()
+pub extern "C" fn glVertexAttrib4f(
+  index: GLuint,
+  x: GLfloat,
+  y: GLfloat,
+  z: GLfloat,
+  w: GLfloat,
+) -> () {
+  let current = current();
+
+  current.current_vertex_attrib[index as usize] = [x, y, z, w];
 }
 
 #[allow(unused_variables)]
