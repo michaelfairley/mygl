@@ -455,13 +455,14 @@ pub struct Query {
 #[derive(Debug)]
 pub struct VertexArray {
   attribs: [VertexAttrib; MAX_VERTEX_ATTRIBS],
-
+  bindings: [VertexBinding; MAX_VERTEX_ATTRIBS],
 }
 
 impl VertexArray {
   fn new() -> Self {
     Self{
       attribs: [VertexAttrib::new(); MAX_VERTEX_ATTRIBS],
+      bindings: [VertexBinding::new(); MAX_VERTEX_ATTRIBS],
     }
   }
 }
@@ -485,6 +486,25 @@ impl VertexAttrib {
       normalized: false,
       stride: 0,
       pointer: ptr::null(),
+    }
+  }
+}
+
+#[derive(Debug,Copy,Clone)]
+struct VertexBinding {
+  divisor: GLuint,
+  buffer: GLuint,
+  stride: GLint,
+  offset: isize,
+}
+
+impl VertexBinding {
+  fn new() -> Self {
+    Self{
+      divisor: 0,
+      buffer: 0,
+      stride: 0,
+      offset: 0,
     }
   }
 }
@@ -1760,10 +1780,20 @@ pub extern "C" fn glBindVertexArray(
   current().vertex_array = array;
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glBindVertexBuffer(bindingindex: GLuint, buffer: GLuint, offset: GLintptr, stride: GLsizei) -> () {
-  unimplemented!()
+pub extern "C" fn glBindVertexBuffer(
+  bindingindex: GLuint,
+  buffer: GLuint,
+  offset: GLintptr,
+  stride: GLsizei,
+) -> () {
+  let current = current();
+
+  let binding = &mut current.vertex_arrays.get_mut(&current.vertex_array).unwrap().as_mut().unwrap().bindings[bindingindex as usize];
+
+  binding.buffer = buffer;
+  binding.offset = offset;
+  binding.stride = stride;
 }
 
 #[allow(unused_variables)]
@@ -2397,107 +2427,8 @@ pub extern "C" fn glDrawArrays(
   use glsl::interpret::{self,Vars,Value};
   use glsl::{TypeSpecifierNonArray,Interface};
 
-  let current = current();
-
-  let primitive = match mode {
-    GL_POINTS => GL_POINTS,
-    GL_LINE_STRIP | GL_LINE_LOOP | GL_LINES => GL_LINES,
-    GL_TRIANGLE_STRIP | GL_TRIANGLE_FAN | GL_TRIANGLES => GL_TRIANGLES,
-    x => unimplemented!("{:x}", x),
-  };
-
-  let program = current.programs.get(&current.program).unwrap();
-
-  let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
-  let vert_compiled = Arc::clone(Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
-
-  let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
-
-  let mut uniforms = HashMap::new();
-
-  for iface in &vert_compiled.interfaces {
-    match iface {
-      &Interface::Uniform(ref info) => {
-        let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
-        let val = &program.uniform_values[index];
-        let val = match val {
-          &Value::UImage2DUnit(unit) => {
-            let unit_target = current.images[unit];
-            let texture = current.textures.get(&unit_target).expect("No texture for unit");
-            let texture = texture.as_ref().expect("No texture in slot");
-
-            Value::UImage2D(Arc::clone(texture))
-          },
-          x => x.clone(),
-        };
-        if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
-        uniforms.insert(info.name.clone(), val);
-      },
-      _ => {},
-    }
-  }
-
-
-  assert_eq!(current.vertex_array, 0);
-
-  let array_buffer_pointer = if current.array_buffer == 0 {
-    None
-  } else {
-    Some(current.buffers.get(&current.array_buffer).unwrap().as_ref().unwrap().as_ptr())
-  };
-
-  let vertex_array = current.vertex_arrays.get(&current.vertex_array).unwrap().as_ref().unwrap();
-  let current_vertex_attrib = &current.current_vertex_attrib;
-
-  // TODO: thread
-  glFinish();
-
-  let packed_stride = vertex_array.attribs.iter()
-    .filter(|a| a.enabled)
-    .map(|a| a.size * size_of(a.type_) as i32)
-    .sum();
-
-  let vertex_results = (first..(first+count)).map(|i| {
-    let mut vars = Vars::new();
-    vars.push();
-
-    for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
-      let attrib = &vertex_array.attribs[loc as usize];
-
-      let value = if attrib.enabled {
-        let stride = if attrib.stride == 0 { packed_stride } else { attrib.stride };
-        let p = if let Some(abp) = array_buffer_pointer {
-          unsafe{ abp.offset(attrib.pointer as isize).offset((stride * i) as isize) as *const c_void }
-        } else {
-          unsafe{ attrib.pointer.offset((stride * i) as isize) }
-        };
-
-        match (attrib.type_, attrib.size) {
-          (GL_FLOAT, 1) => Value::Float(unsafe{ *(p as *const _) }),
-          (GL_FLOAT, 2) => Value::Vec2(unsafe{ *(p as *const _) }),
-          (GL_FLOAT, 3) => Value::Vec3(unsafe{ *(p as *const _) }),
-          (GL_FLOAT, 4) => Value::Vec4(unsafe{ *(p as *const _) }),
-          (GL_INT, 1) => Value::Int(unsafe{ *(p as *const _) }),
-          (GL_INT, 2) => Value::IVec2(unsafe{ *(p as *const _) }),
-          (GL_INT, 3) => Value::IVec3(unsafe{ *(p as *const _) }),
-          (GL_INT, 4) => Value::IVec4(unsafe{ *(p as *const _) }),
-          (GL_UNSIGNED_INT, 1) => Value::Uint(unsafe{ *(p as *const _) }),
-          (GL_UNSIGNED_INT, 2) => Value::UVec2(unsafe{ *(p as *const _) }),
-          (GL_UNSIGNED_INT, 3) => Value::UVec3(unsafe{ *(p as *const _) }),
-          (GL_UNSIGNED_INT, 4) => Value::UVec4(unsafe{ *(p as *const _) }),
-          (t, s) => unimplemented!("{:x} {}", t, s),
-        }
-      } else {
-        let attrib = current_vertex_attrib[loc as usize];
-
-        // TODO: non-float types
-        Value::Vec4(attrib)
-      };
-
-      vars.insert(name.clone(), value);
-    }
-
-    for var in &vert_out_vars {
+  fn init_out_vars(vars: &mut Vars, out_vars: &[glsl::Variable]) {
+    for var in out_vars {
       let value = match &var.type_ {
         &TypeSpecifierNonArray::Float => Value::Float(Default::default()),
         &TypeSpecifierNonArray::Vec2 => Value::Vec2(Default::default()),
@@ -2533,6 +2464,114 @@ pub extern "C" fn glDrawArrays(
 
       vars.insert(var.name.clone(), value);
     }
+  }
+
+
+  let current = current();
+
+  let primitive = match mode {
+    GL_POINTS => GL_POINTS,
+    GL_LINE_STRIP | GL_LINE_LOOP | GL_LINES => GL_LINES,
+    GL_TRIANGLE_STRIP | GL_TRIANGLE_FAN | GL_TRIANGLES => GL_TRIANGLES,
+    x => unimplemented!("{:x}", x),
+  };
+
+  let program = current.programs.get(&current.program).unwrap();
+
+  let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
+  let vert_compiled = Arc::clone(Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
+
+  let frag_shader = program.shaders.iter().find(|s| s.type_ == GL_FRAGMENT_SHADER).unwrap();
+  let frag_compiled = Arc::clone(Ref::map(frag_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
+
+  let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
+
+  let frag_in_vars = frag_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Input(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
+  let frag_out_vars = frag_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
+
+
+  let mut uniforms = HashMap::new();
+
+  for iface in &vert_compiled.interfaces {
+    match iface {
+      &Interface::Uniform(ref info) => {
+        let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
+        let val = &program.uniform_values[index];
+        let val = match val {
+          &Value::UImage2DUnit(unit) => {
+            let unit_target = current.images[unit];
+            let texture = current.textures.get(&unit_target).expect("No texture for unit");
+            let texture = texture.as_ref().expect("No texture in slot");
+
+            Value::UImage2D(Arc::clone(texture))
+          },
+          x => x.clone(),
+        };
+        if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
+        uniforms.insert(info.name.clone(), val);
+      },
+      _ => {},
+    }
+  }
+
+  assert_eq!(current.vertex_array, 0);
+
+  let vertex_array = current.vertex_arrays.get(&current.vertex_array).unwrap().as_ref().unwrap();
+  let current_vertex_attrib = &current.current_vertex_attrib;
+
+  // TODO: thread
+  glFinish();
+
+  let buffers = &current.buffers;
+
+  let vertex_results = (first..(first+count)).map(|i| {
+    let mut vars = Vars::new();
+    vars.push();
+
+    for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
+      let attrib = &vertex_array.attribs[loc as usize];
+      let binding = &vertex_array.bindings[loc as usize];
+
+      let value = if attrib.enabled {
+
+        let buffer_pointer = if binding.buffer == 0 {
+          None
+        } else {
+          Some(buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr())
+        };
+
+        let p = if let Some(abp) = buffer_pointer {
+          unsafe{ abp.offset(attrib.pointer as isize).offset((binding.stride * i) as isize + binding.offset) as *const c_void }
+        } else {
+          unsafe{ attrib.pointer.offset((binding.stride * i) as isize) }
+        };
+
+        match (attrib.type_, attrib.size) {
+          (GL_FLOAT, 1) => Value::Float(unsafe{ *(p as *const _) }),
+          (GL_FLOAT, 2) => Value::Vec2(unsafe{ *(p as *const _) }),
+          (GL_FLOAT, 3) => Value::Vec3(unsafe{ *(p as *const _) }),
+          (GL_FLOAT, 4) => Value::Vec4(unsafe{ *(p as *const _) }),
+          (GL_INT, 1) => Value::Int(unsafe{ *(p as *const _) }),
+          (GL_INT, 2) => Value::IVec2(unsafe{ *(p as *const _) }),
+          (GL_INT, 3) => Value::IVec3(unsafe{ *(p as *const _) }),
+          (GL_INT, 4) => Value::IVec4(unsafe{ *(p as *const _) }),
+          (GL_UNSIGNED_INT, 1) => Value::Uint(unsafe{ *(p as *const _) }),
+          (GL_UNSIGNED_INT, 2) => Value::UVec2(unsafe{ *(p as *const _) }),
+          (GL_UNSIGNED_INT, 3) => Value::UVec3(unsafe{ *(p as *const _) }),
+          (GL_UNSIGNED_INT, 4) => Value::UVec4(unsafe{ *(p as *const _) }),
+          (t, s) => unimplemented!("{:x} {}", t, s),
+        }
+      } else {
+        let attrib = current_vertex_attrib[loc as usize];
+
+        // TODO: non-float types
+        Value::Vec4(attrib)
+      };
+
+      vars.insert(name.clone(), value);
+    }
+
+    init_out_vars(&mut vars, &vert_out_vars);
 
     for (ref name, ref data) in &uniforms {
       vars.insert((*name).clone(), (*data).clone());
@@ -2559,13 +2598,13 @@ pub extern "C" fn glDrawArrays(
 
       for i in 0..tfv.0.len() {
         let binding = &current.indexed_transform_feedback_buffer[i];
-        ps.push(unsafe{ current.buffers.get_mut(&binding.buffer).unwrap().as_mut().unwrap().as_mut_ptr().offset(binding.offset) });
+        ps.push(unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _});
       }
 
         ps
     } else {
       let binding = &current.indexed_transform_feedback_buffer[0];
-      vec![unsafe{ current.buffers.get_mut(&binding.buffer).unwrap().as_mut().unwrap().as_mut_ptr().offset(binding.offset) }]
+      vec![unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _}]
     };
 
     let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
@@ -2678,15 +2717,38 @@ pub extern "C" fn glDrawArrays(
           (f-n) / 2.0 * ndc[2] + (n+f) / 2.0,
         ];
 
+
+        let x = window_coords[0] as i32;
+        let y = window_coords[1] as i32;
+
+        // Fragment
+        let color;
+        {
+          let mut vars = Vars::new();
+          vars.push();
+
+          init_out_vars(&mut vars, &frag_out_vars);
+
+          for var in &frag_in_vars {
+            vars.insert(var.name.clone(), p.get(&var.name).clone());
+          }
+
+          let main = &frag_compiled.functions[&"main".to_string()][0];
+
+          vars.push();
+          interpret::execute(&main.1, &mut vars, &frag_compiled);
+
+          if let &Value::Vec4(c) = vars.get(&frag_out_vars[0].name) {
+            color = (c[0], c[1], c[2], c[3]);
+          } else { unreachable!() }
+        } // Fragment
+
         assert_eq!(current.draw_framebuffer, 0);
 
         let mut draw = unsafe{ current.draw_surface.as_mut() };
         let mut draw = draw.as_mut().unwrap();
 
-        draw.set_pixel(window_coords[0] as i32,
-                       window_coords[1] as i32,
-                       (1.0, 1.0, 1.0, 1.0),
-                       current.color_mask);
+        draw.set_pixel(x, y, color, current.color_mask);
       },
       _ => unimplemented!(),
     }
@@ -4942,10 +5004,13 @@ pub extern "C" fn glVertexAttrib1fv(index: GLuint, v: *const GLfloat) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glVertexAttrib2f(index: GLuint, x: GLfloat, y: GLfloat) -> () {
-  unimplemented!()
+pub extern "C" fn glVertexAttrib2f(
+  index: GLuint,
+  x: GLfloat,
+  y: GLfloat,
+) -> () {
+  glVertexAttrib4f(index, x, y, 0.0, 1.0)
 }
 
 #[allow(unused_variables)]
@@ -4992,8 +5057,15 @@ pub extern "C" fn glVertexAttribBinding(attribindex: GLuint, bindingindex: GLuin
 }
 
 #[no_mangle]
-pub extern "C" fn glVertexAttribDivisor(_index: GLuint, divisor: GLuint) -> () {
-  assert_eq!(divisor, 0);
+pub extern "C" fn glVertexAttribDivisor(
+  index: GLuint,
+  divisor: GLuint,
+) -> () {
+  let current = current();
+
+  let binding = &mut current.vertex_arrays.get_mut(&current.vertex_array).unwrap().as_mut().unwrap().bindings[index as usize];
+
+  binding.divisor = divisor;
 }
 
 #[allow(unused_variables)]
@@ -5002,10 +5074,15 @@ pub extern "C" fn glVertexAttribFormat(attribindex: GLuint, size: GLint, type_: 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glVertexAttribI4i(index: GLuint, x: GLint, y: GLint, z: GLint, w: GLint) -> () {
-  unimplemented!()
+pub extern "C" fn glVertexAttribI4i(
+  index: GLuint,
+  x: GLint,
+  y: GLint,
+  z: GLint,
+  w: GLint,
+) -> () {
+  glVertexAttrib4f(index, x as f32, y as f32, z as f32, w as f32)
 }
 
 #[allow(unused_variables)]
@@ -5032,6 +5109,30 @@ pub extern "C" fn glVertexAttribIFormat(attribindex: GLuint, size: GLint, type_:
   unimplemented!()
 }
 
+fn glBindVertexBufferFromVertexAttribPointer(
+  index: GLuint,
+  size: GLint,
+  type_: GLenum,
+  stride: GLsizei,
+  pointer: *const c_void,
+) {
+  let current = current();
+
+  let buffer = current.array_buffer;
+
+  let offset = if buffer == 0 {
+    0
+  } else {
+    pointer as isize
+  };
+
+  let effective_stride = if stride == 0 {
+    size_of(type_) as i32 * size
+  } else { stride };
+
+  glBindVertexBuffer(index, buffer, offset, effective_stride);
+}
+
 #[no_mangle]
 pub extern "C" fn glVertexAttribIPointer(
   index: GLuint,
@@ -5049,6 +5150,8 @@ pub extern "C" fn glVertexAttribIPointer(
   attrib.normalized = false;
   attrib.stride = stride;
   attrib.pointer = pointer;
+
+  glBindVertexBufferFromVertexAttribPointer(index, size, type_, stride, pointer);
 }
 
 #[no_mangle]
@@ -5069,6 +5172,8 @@ pub extern "C" fn glVertexAttribPointer(
   attrib.normalized = normalized == GL_TRUE;
   attrib.stride = stride;
   attrib.pointer = pointer;
+
+  glBindVertexBufferFromVertexAttribPointer(index, size, type_, stride, pointer);
 }
 
 #[allow(unused_variables)]

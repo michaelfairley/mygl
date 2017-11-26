@@ -52,6 +52,9 @@ pub enum Value {
   RefV2(*mut [f32; 2]),
   RefV3(*mut [f32; 3]),
   RefV4(*mut [f32; 4]),
+
+  RefV22(*mut f32, *mut f32),
+
   // RefI(*mut Value, usize),
 }
 
@@ -65,6 +68,14 @@ impl Value {
       &mut Value::RefV2(v) => {
         if let Value::Vec2(ref t) = val {
           unsafe{ *v = *t; }
+        } else { unreachable!() }
+      },
+      &mut Value::RefV22(a, b) => {
+        if let Value::Vec2(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+          }
         } else { unreachable!() }
       },
       &mut Value::RefV3(v) => {
@@ -107,6 +118,9 @@ impl Value {
       &Value::Ref(inner) => {
         let inner = unsafe{ &*inner };
         inner.get()
+      },
+      &Value::RefV22(a, b) => {
+        Value::Vec2(unsafe{ [*a, *b] })
       },
       &Value::Buffer(ref typ, ptr, size) => {
         match typ {
@@ -456,6 +470,8 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
                                                           a[1] * b,
                                                           a[2] * b,
                                                           a[3] * b]),
+        (Value::Vec2(a), Value::Vec2(b)) => Value::Vec2([a[0] * b[0],
+                                                         a[1] * b[1]]),
         x => unimplemented!("{:?}", x),
       }
     },
@@ -484,7 +500,6 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
     Expression::Index(ref container, ref index) => {
       let mut container = eval(container, vars, shader);
       let mut container = &mut container;
-
 
       while let &mut Value::Ref(p) = container {
         container = unsafe{ &mut *p };
@@ -521,18 +536,19 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
     },
     Expression::FieldSelection(ref container, ref field) => {
       let mut container = eval(container, vars, shader);
+      let mut container = &mut container;
 
-      while let Value::Ref(p) = container {
-        container = unsafe{ ::std::ptr::read(p) };
+      while let &mut Value::Ref(p) = container {
+        container = unsafe{ &mut *p };
       };
 
       match container {
-        Value::Buffer(typ, p, len) => {
+        &mut Value::Buffer(ref typ, ref p, ref len) => {
           if field == "length" {
             return Value::Uint(len.unwrap())
           }
 
-          let typ = if let TypeSpecifierNonArray::Custom(ref t) = typ { t } else { unreachable!() };
+          let typ = if let &TypeSpecifierNonArray::Custom(ref t) = typ { t } else { unreachable!() };
 
           let field = if let Some(custom_type) = shader.types.get(typ) {
             custom_type.fields.iter().find(|v| &v.name == field).unwrap()
@@ -554,7 +570,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
           Value::Buffer(field.type_.clone(), unsafe{ p.offset(field.offset as isize) }, length)
         },
         // TODO: unhardcoded version of these
-        Value::UVec3(v) => {
+        &mut Value::UVec3(ref mut v) => {
           match field.as_ref() {
             "x" => Value::Uint(v[0]),
             "y" => Value::Uint(v[1]),
@@ -563,7 +579,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             x => unimplemented!("{}", x),
           }
         },
-        Value::UVec2(v) => {
+        &mut Value::UVec2(ref mut v) => {
           match field.as_ref() {
             "x" => Value::Uint(v[0]),
             "y" => Value::Uint(v[1]),
@@ -571,17 +587,35 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             x => unimplemented!("{}", x),
           }
         },
-        Value::UVec4(v) => {
+        &mut Value::UVec4(ref mut v) => {
           match field.as_ref() {
             "x" => Value::Uint(v[0]),
             x => unimplemented!("{}", x),
           }
         },
-        Value::Vec2(v) => {
+        &mut Value::Vec2(ref mut v) => {
           match field.as_ref() {
             "x" => Value::Float(v[0]),
             "y" => Value::Float(v[1]),
             "xy" => Value::Vec2([v[0], v[1]]),
+            x => unimplemented!("{}", x),
+          }
+        },
+        &mut Value::Vec3(ref mut v) => unsafe {
+          match field.as_ref() {
+            "xy" => Value::RefV22(v.as_mut_ptr().offset(0),
+                                  v.as_mut_ptr().offset(1)),
+            "rg" => Value::RefV22(v.as_mut_ptr().offset(0),
+                                  v.as_mut_ptr().offset(1)),
+            x => unimplemented!("{}", x),
+          }
+        },
+        &mut Value::Vec4(ref mut v) => unsafe {
+          match field.as_ref() {
+            "xy" => Value::RefV22(v.as_mut_ptr().offset(0),
+                                  v.as_mut_ptr().offset(1)),
+            "rg" => Value::RefV22(v.as_mut_ptr().offset(0),
+                                  v.as_mut_ptr().offset(1)),
             x => unimplemented!("{}", x),
           }
         },
