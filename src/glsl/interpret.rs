@@ -55,6 +55,7 @@ pub enum Value {
 
   RefV22(*mut f32, *mut f32),
   RefV32(*mut f32, *mut f32, *mut f32),
+  RefV42(*mut f32, *mut f32, *mut f32, *mut f32),
   RefIV22(*mut i32, *mut i32),
   RefIV32(*mut i32, *mut i32, *mut i32),
 
@@ -87,6 +88,16 @@ impl Value {
             *a = t[0];
             *b = t[1];
             *c = t[2];
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefV42(a, b, c, d) => {
+        if let Value::Vec4(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+            *c = t[2];
+            *d = t[3];
           }
         } else { unreachable!() }
       },
@@ -148,11 +159,23 @@ impl Value {
         let inner = unsafe{ &*inner };
         inner.get()
       },
+      &Value::RefV2(p) => {
+        Value::Vec2(unsafe{ *p })
+      },
+      &Value::RefV3(p) => {
+        Value::Vec3(unsafe{ *p })
+      },
+      &Value::RefV4(p) => {
+        Value::Vec4(unsafe{ *p })
+      },
       &Value::RefV22(a, b) => {
         Value::Vec2(unsafe{ [*a, *b] })
       },
       &Value::RefV32(a, b, c) => {
         Value::Vec3(unsafe{ [*a, *b, *c] })
+      },
+      &Value::RefV42(a, b, c, d) => {
+        Value::Vec4(unsafe{ [*a, *b, *c, *d] })
       },
       &Value::RefIV22(a, b) => {
         Value::IVec2(unsafe{ [*a, *b] })
@@ -361,6 +384,10 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
                                                             a[2] + b[2]]),
         (Value::Vec2(a), Value::Vec2(b)) => Value::Vec2([a[0] + b[0],
                                                          a[1] + b[1]]),
+        (Value::Vec4(a), Value::Vec4(b)) => Value::Vec4([a[0] + b[0],
+                                                         a[1] + b[1],
+                                                         a[2] + b[2],
+                                                         a[3] + b[3]]),
         x => unimplemented!("{:?}", x),
       };
 
@@ -513,6 +540,10 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
         (Value::Vec3(a), Value::Vec3(b)) => Value::Vec3([a[0] * b[0],
                                                          a[1] * b[1],
                                                          a[2] * b[2]]),
+        (Value::Vec4(a), Value::Vec4(b)) => Value::Vec4([a[0] * b[0],
+                                                         a[1] * b[1],
+                                                         a[2] * b[2],
+                                                         a[3] * b[3]]),
         x => unimplemented!("{:?}", x),
       }
     },
@@ -639,6 +670,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             "x" => Value::Float(v[0]),
             "y" => Value::Float(v[1]),
             "xy" => Value::Vec2([v[0], v[1]]),
+            "xxyy" => Value::Vec4([v[0], v[0], v[1], v[1]]),
             x => unimplemented!("{}", x),
           }
         },
@@ -654,6 +686,10 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
             "xyz" => Value::RefV32(v.as_mut_ptr().offset(0),
                                    v.as_mut_ptr().offset(1),
                                    v.as_mut_ptr().offset(2)),
+            "xyzx" => Value::RefV42(v.as_mut_ptr().offset(0),
+                                    v.as_mut_ptr().offset(1),
+                                    v.as_mut_ptr().offset(2),
+                                    v.as_mut_ptr().offset(0)),
             x => unimplemented!("{}", x),
           }
         },

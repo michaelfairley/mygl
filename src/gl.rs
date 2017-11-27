@@ -2500,8 +2500,8 @@ fn glDrawArraysOneInstance(
   let frag_out_vars = frag_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
 
 
-  let mut uniforms = HashMap::new();
-
+  // TODO: do something about these
+  let mut vert_uniforms = HashMap::new();
   for iface in &vert_compiled.interfaces {
     match iface {
       &Interface::Uniform(ref info) => {
@@ -2518,7 +2518,29 @@ fn glDrawArraysOneInstance(
           x => x.clone(),
         };
         if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
-        uniforms.insert(info.name.clone(), val);
+        vert_uniforms.insert(info.name.clone(), val);
+      },
+      _ => {},
+    }
+  }
+  let mut frag_uniforms = HashMap::new();
+  for iface in &frag_compiled.interfaces {
+    match iface {
+      &Interface::Uniform(ref info) => {
+        let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
+        let val = &program.uniform_values[index];
+        let val = match val {
+          &Value::UImage2DUnit(unit) => {
+            let unit_target = current.images[unit];
+            let texture = current.textures.get(&unit_target).expect("No texture for unit");
+            let texture = texture.as_ref().expect("No texture in slot");
+
+            Value::UImage2D(Arc::clone(texture))
+          },
+          x => x.clone(),
+        };
+        if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
+        frag_uniforms.insert(info.name.clone(), val);
       },
       _ => {},
     }
@@ -2588,7 +2610,7 @@ fn glDrawArraysOneInstance(
 
     init_out_vars(&mut vars, &vert_out_vars);
 
-    for (ref name, ref data) in &uniforms {
+    for (ref name, ref data) in &vert_uniforms {
       vars.insert((*name).clone(), (*data).clone());
     }
 
@@ -2748,6 +2770,10 @@ fn glDrawArraysOneInstance(
             vars.insert(var.name.clone(), p.get(&var.name).clone());
           }
 
+          for (ref name, ref data) in &frag_uniforms {
+            vars.insert((*name).clone(), (*data).clone());
+          }
+
           let main = &frag_compiled.functions[&"main".to_string()][0];
 
           vars.push();
@@ -2765,7 +2791,7 @@ fn glDrawArraysOneInstance(
 
         draw.set_pixel(x, y, color, current.color_mask);
       },
-      _ => unimplemented!(),
+      _ => {},
     }
 
   }
