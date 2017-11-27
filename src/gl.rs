@@ -2420,6 +2420,16 @@ pub extern "C" fn glDrawArrays(
   first: GLint,
   count: GLsizei,
 ) -> () {
+  glDrawArraysOneInstance(mode, first, count, 0, 0);
+}
+
+fn glDrawArraysOneInstance(
+  mode: GLenum,
+  first: GLint,
+  count: GLsizei,
+  instance: GLint,
+  _baseinstance: GLuint,
+) {
   use draw::*;
 
   use std::ops::Deref;
@@ -2533,17 +2543,22 @@ pub extern "C" fn glDrawArrays(
       let binding = &vertex_array.bindings[loc as usize];
 
       let value = if attrib.enabled {
-
         let buffer_pointer = if binding.buffer == 0 {
           None
         } else {
           Some(buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr())
         };
 
-        let p = if let Some(abp) = buffer_pointer {
-          unsafe{ abp.offset(attrib.pointer as isize).offset((binding.stride * i) as isize + binding.offset) as *const c_void }
+        let attrib_index = if binding.divisor == 0 {
+          i
         } else {
-          unsafe{ attrib.pointer.offset((binding.stride * i) as isize) }
+          instance / binding.divisor as i32
+        };
+
+        let p = if let Some(abp) = buffer_pointer {
+          unsafe{ abp.offset(attrib.pointer as isize).offset((binding.stride * attrib_index) as isize + binding.offset) as *const c_void }
+        } else {
+          unsafe{ attrib.pointer.offset((binding.stride * attrib_index) as isize) }
         };
 
         match (attrib.type_, attrib.size) {
@@ -5091,10 +5106,15 @@ pub extern "C" fn glVertexAttribI4iv(index: GLuint, v: *const GLint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
-pub extern "C" fn glVertexAttribI4ui(index: GLuint, x: GLuint, y: GLuint, z: GLuint, w: GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glVertexAttribI4ui(
+  index: GLuint,
+  x: GLuint,
+  y: GLuint,
+  z: GLuint,
+  w: GLuint,
+) -> () {
+  glVertexAttrib4f(index, x as f32, y as f32, z as f32, w as f32)
 }
 
 #[allow(unused_variables)]

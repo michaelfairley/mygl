@@ -54,6 +54,9 @@ pub enum Value {
   RefV4(*mut [f32; 4]),
 
   RefV22(*mut f32, *mut f32),
+  RefV32(*mut f32, *mut f32, *mut f32),
+  RefIV22(*mut i32, *mut i32),
+  RefIV32(*mut i32, *mut i32, *mut i32),
 
   // RefI(*mut Value, usize),
 }
@@ -75,6 +78,32 @@ impl Value {
           unsafe {
             *a = t[0];
             *b = t[1];
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefV32(a, b, c) => {
+        if let Value::Vec3(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+            *c = t[2];
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefIV22(a, b) => {
+        if let Value::IVec2(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefIV32(a, b, c) => {
+        if let Value::IVec3(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+            *c = t[2];
           }
         } else { unreachable!() }
       },
@@ -121,6 +150,15 @@ impl Value {
       },
       &Value::RefV22(a, b) => {
         Value::Vec2(unsafe{ [*a, *b] })
+      },
+      &Value::RefV32(a, b, c) => {
+        Value::Vec3(unsafe{ [*a, *b, *c] })
+      },
+      &Value::RefIV22(a, b) => {
+        Value::IVec2(unsafe{ [*a, *b] })
+      },
+      &Value::RefIV32(a, b, c) => {
+        Value::IVec3(unsafe{ [*a, *b, *c] })
       },
       &Value::Buffer(ref typ, ptr, size) => {
         match typ {
@@ -472,6 +510,9 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
                                                           a[3] * b]),
         (Value::Vec2(a), Value::Vec2(b)) => Value::Vec2([a[0] * b[0],
                                                          a[1] * b[1]]),
+        (Value::Vec3(a), Value::Vec3(b)) => Value::Vec3([a[0] * b[0],
+                                                         a[1] * b[1],
+                                                         a[2] * b[2]]),
         x => unimplemented!("{:?}", x),
       }
     },
@@ -607,6 +648,27 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
                                   v.as_mut_ptr().offset(1)),
             "rg" => Value::RefV22(v.as_mut_ptr().offset(0),
                                   v.as_mut_ptr().offset(1)),
+            "rgb" => Value::RefV32(v.as_mut_ptr().offset(0),
+                                   v.as_mut_ptr().offset(1),
+                                   v.as_mut_ptr().offset(2)),
+            "xyz" => Value::RefV32(v.as_mut_ptr().offset(0),
+                                   v.as_mut_ptr().offset(1),
+                                   v.as_mut_ptr().offset(2)),
+            x => unimplemented!("{}", x),
+          }
+        },
+        &mut Value::IVec3(ref mut v) => unsafe {
+          match field.as_ref() {
+            "xy" => Value::RefIV22(v.as_mut_ptr().offset(0),
+                                   v.as_mut_ptr().offset(1)),
+            "rg" => Value::RefIV22(v.as_mut_ptr().offset(0),
+                                   v.as_mut_ptr().offset(1)),
+            "rgb" => Value::RefIV32(v.as_mut_ptr().offset(0),
+                                    v.as_mut_ptr().offset(1),
+                                    v.as_mut_ptr().offset(2)),
+            "xyz" => Value::RefIV32(v.as_mut_ptr().offset(0),
+                                    v.as_mut_ptr().offset(1),
+                                    v.as_mut_ptr().offset(2)),
             x => unimplemented!("{}", x),
           }
         },
@@ -616,6 +678,12 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
                                   v.as_mut_ptr().offset(1)),
             "rg" => Value::RefV22(v.as_mut_ptr().offset(0),
                                   v.as_mut_ptr().offset(1)),
+            "rgb" => Value::RefV32(v.as_mut_ptr().offset(0),
+                                   v.as_mut_ptr().offset(1),
+                                   v.as_mut_ptr().offset(2)),
+            "xyz" => Value::RefV32(v.as_mut_ptr().offset(0),
+                                   v.as_mut_ptr().offset(1),
+                                   v.as_mut_ptr().offset(2)),
             x => unimplemented!("{}", x),
           }
         },
