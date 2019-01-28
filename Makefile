@@ -1,13 +1,17 @@
 FILTER=
 
+export LD_LIBRARY_PATH=../../../../target/release
+export DYLD_LIBRARY_PATH=../../../../target/release
+
 build:
 	cargo build --release
 
+
 test: build
 ifeq ($(FILTER),)
-	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./cts-runner --type=es32
+	cd cts_build/external/openglcts/modules && ./cts-runner --type=es32
 else
-	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n $(FILTER)
+	cd cts_build/external/openglcts/modules && ./glcts -n $(FILTER)
 endif
 
 debug: build
@@ -23,8 +27,8 @@ prepare_cts:
 	cd cts_build && cmake --build .
 
 good: build
-	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.functional.compute.basic.*
-	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.info.*
-	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.functional.shaders.builtin_var.*
-	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute
-	cd cts_build/external/openglcts/modules && DYLD_LIBRARY_PATH=../../../../target/release ./glcts -n dEQP-GLES3.functional.transform_feedback.*
+	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.compute.basic.*
+	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.info.*
+	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.shaders.builtin_var.*
+	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute
+	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.transform_feedback.*
