@@ -5288,7 +5288,7 @@ fn parse_variable_name(
 
   let mut indices = vec![];
   for part in split {
-    let trimmed = part.trim_right_matches(']');
+    let trimmed = part.trim_end_matches(']');
     if trimmed.len() != part.len() - 1 { return (name, vec![]); }
 
     if let Ok(i) = trimmed.parse::<u32>() {
