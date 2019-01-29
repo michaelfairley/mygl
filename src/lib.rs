@@ -6,6 +6,9 @@ extern crate lazy_static;
 #[macro_use]
 extern crate pretty_assertions;
 
+#[cfg(feature = "trace")]
+extern crate trace;
+
 
 pub mod egl;
 pub mod gl;

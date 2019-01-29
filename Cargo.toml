@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 lazy_static = "*"
+trace = {version = "*", optional = true, git = "https://github.com/gsingh93/trace"}
 
 [dev-dependencies]
 pretty_assertions = "*"
@@ -20,3 +21,6 @@ opt-level = 1
 panic = "abort"
 debug = true
 codegen-units = 32
+
+[features]
+default = []

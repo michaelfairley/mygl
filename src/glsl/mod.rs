@@ -30,6 +30,9 @@ pub fn compile(source: &[u8], type_: GLenum) -> Result<Shader> {
     .replace("\r\n", "\r")
     .replace("\r", "\n");
 
+  #[cfg(feature = "trace")]
+  println!("Shader source:\n{}", source);
+
   let version = lex::version(&source)?;
   let tokens = lex::tokenize(&source, version)?;
   let parse = parse::parse(&tokens, version)?;
