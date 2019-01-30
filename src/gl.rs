@@ -2812,28 +2812,21 @@ fn glDrawArraysOneInstance(
       }
     } // transform feedback
 
-    match prim {
-      Primitive::Point(p) => {
-        let clip_coords = if let &Value::Vec4(ref v) = p.get(&"gl_Position".to_string()) {
+    // RASTERIZATION
+
+    fn window_coords(vars: &Vars, viewport: Rect, depth_range: (GLfloat, GLfloat)) -> [f32; 3] {
+        let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".to_string()) {
           v
         } else { unreachable!() };
         let ndc = [clip_coords[0] / clip_coords[3],
                    clip_coords[1] / clip_coords[3],
                    clip_coords[2] / clip_coords[3]];
 
-        let viewport = current.viewport;
         let px = viewport.2 as f32;
         let py = viewport.3 as f32;
         let ox = viewport.0 as f32 + px / 2.0;
         let oy = viewport.1 as f32 + py / 2.0;
-        let (n, f) = current.depth_range;
-
-        if ndc[0] < -1.0
-          || ndc[0] > 1.0
-          || ndc[1] < -1.0
-          || ndc[1] > 1.0 {
-            continue;
-          }
+        let (n, f) = depth_range;
 
         let window_coords = [
           px / 2.0 * ndc[0] + ox,
@@ -2841,42 +2834,280 @@ fn glDrawArraysOneInstance(
           (f-n) / 2.0 * ndc[2] + (n+f) / 2.0,
         ];
 
+      window_coords
+    }
+
+    fn do_fragment(
+      (x, y): (i32, i32),
+      vert_vars: &Vars,
+      frag_in_vars: &Vec<glsl::Variable>,
+      frag_out_vars: &Vec<glsl::Variable>,
+      frag_uniforms: &HashMap<String, Value>,
+      frag_compiled: &Arc<glsl::Shader>,
+      draw_framebuffer: GLuint,
+      draw_surface: &mut Surface,
+      color_mask: ColorMask,
+    ) {
+      // TODO: real clipping
+      if x < 0 || x >= draw_surface.width || y < 0 || y >= draw_surface.height {
+        return;
+      }
+
+      let color;
+      {
+        let mut vars = Vars::new();
+        vars.push();
+
+        init_out_vars(&mut vars, frag_out_vars);
+
+        for var in frag_in_vars {
+          vars.insert(var.name.clone(), vert_vars.get(&var.name).clone());
+        }
+
+        for (ref name, ref data) in frag_uniforms {
+          vars.insert((*name).clone(), (*data).clone());
+        }
+
+        let main = &frag_compiled.functions[&"main".to_string()][0];
+
+        vars.push();
+        interpret::execute(&main.1, &mut vars, &frag_compiled);
+
+        if let &Value::Vec4(c) = vars.get(&frag_out_vars[0].name) {
+          color = (c[0], c[1], c[2], c[3]);
+        } else { unreachable!() }
+      } // Fragment
+
+      assert_eq!(draw_framebuffer, 0);
+
+      draw_surface.set_pixel(x, y, color, color_mask);
+    }
+
+    match prim {
+      Primitive::Point(p) => {
+        let window_coords = window_coords(p, current.viewport, current.depth_range);
 
         let x = window_coords[0] as i32;
         let y = window_coords[1] as i32;
 
-        // Fragment
-        let color;
-        {
+        do_fragment(
+          (x, y),
+          p,
+          &frag_in_vars,
+          &frag_out_vars,
+          &frag_uniforms,
+          &frag_compiled,
+          current.draw_framebuffer,
+          unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
+          current.color_mask,
+        );
+      },
+      Primitive::Line(a, b) => {
+        let p_a = window_coords(a, current.viewport, current.depth_range);
+        let p_b = window_coords(b, current.viewport, current.depth_range);
+
+        let delta_x = p_b[0]-p_a[0];
+        let delta_y = p_b[1]-p_a[1];
+        let slope = delta_y / delta_x;
+
+        let x_major = slope >= -1.0 && slope <= 1.0;
+
+        let mut x = p_a[0];
+        let mut y = p_a[1];
+        let mut t = 1.0;
+        // let mut error = 0.0;
+
+        fn interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, t: f32) -> Vars {
+          fn lerp(a: f32, b: f32, t: f32) -> f32 { t * a + (1.0-t) * b }
+          fn lerp2(a: [f32; 2], b: [f32; 2], t: f32) -> [f32; 2] {
+            [
+              lerp(a[0], b[0], t),
+              lerp(a[1], b[1], t),
+            ]
+          }
+          fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+            [
+              lerp(a[0], b[0], t),
+              lerp(a[1], b[1], t),
+              lerp(a[2], b[2], t),
+            ]
+          }
+          fn lerp4(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+            [
+              lerp(a[0], b[0], t),
+              lerp(a[1], b[1], t),
+              lerp(a[2], b[2], t),
+              lerp(a[3], b[3], t),
+            ]
+          }
+
+          fn interp(a: &Value, b: &Value, t: f32) -> Value {
+            match (a, b) {
+              (&Value::Float(a), &Value::Float(b)) => Value::Float(lerp(a, b, t)),
+              (&Value::Vec2(a), &Value::Vec2(b)) => Value::Vec2(lerp2(a, b, t)),
+              (&Value::Vec3(a), &Value::Vec3(b)) => Value::Vec3(lerp3(a, b, t)),
+              (&Value::Vec4(a), &Value::Vec4(b)) => Value::Vec4(lerp4(a, b, t)),
+              (&Value::Mat2(a), &Value::Mat2(b)) => Value::Mat2([
+                lerp2(a[0], b[0], t),
+                lerp2(a[1], b[1], t),
+              ]),
+              (&Value::Mat2x3(a), &Value::Mat2x3(b)) => Value::Mat2x3([
+                lerp3(a[0], b[0], t),
+                lerp3(a[1], b[1], t),
+              ]),
+              (&Value::Mat2x4(a), &Value::Mat2x4(b)) => Value::Mat2x4([
+                lerp4(a[0], b[0], t),
+                lerp4(a[1], b[1], t),
+              ]),
+              (&Value::Mat3x2(a), &Value::Mat3x2(b)) => Value::Mat3x2([
+                lerp2(a[0], b[0], t),
+                lerp2(a[1], b[1], t),
+                lerp2(a[2], b[2], t),
+              ]),
+              (&Value::Mat3(a), &Value::Mat3(b)) => Value::Mat3([
+                lerp3(a[0], b[0], t),
+                lerp3(a[1], b[1], t),
+                lerp3(a[2], b[2], t),
+              ]),
+              (&Value::Mat3x4(a), &Value::Mat3x4(b)) => Value::Mat3x4([
+                lerp4(a[0], b[0], t),
+                lerp4(a[1], b[1], t),
+                lerp4(a[2], b[2], t),
+              ]),
+              (&Value::Mat4x2(a), &Value::Mat4x2(b)) => Value::Mat4x2([
+                lerp2(a[0], b[0], t),
+                lerp2(a[1], b[1], t),
+                lerp2(a[2], b[2], t),
+                lerp2(a[3], b[3], t),
+              ]),
+              (&Value::Mat4x3(a), &Value::Mat4x3(b)) => Value::Mat4x3([
+                lerp3(a[0], b[0], t),
+                lerp3(a[1], b[1], t),
+                lerp3(a[2], b[2], t),
+                lerp3(a[3], b[3], t),
+              ]),
+              (&Value::Mat4(a), &Value::Mat4(b)) => Value::Mat4([
+                lerp4(a[0], b[0], t),
+                lerp4(a[1], b[1], t),
+                lerp4(a[2], b[2], t),
+                lerp4(a[3], b[3], t),
+              ]),
+              (&Value::Array(ref a), &Value::Array(ref b)) => Value::Array(a.iter().zip(b.iter()).map(|(a, b)| interp(a, b, t)).collect()),
+              x => unimplemented!("{:?}", x),
+            }
+          }
+
+
           let mut vars = Vars::new();
           vars.push();
 
-          init_out_vars(&mut vars, &frag_out_vars);
+          for var in frag_in_vars {
+            let a_val = a.get(&var.name).clone();
+            let b_val = b.get(&var.name).clone();
 
-          for var in &frag_in_vars {
-            vars.insert(var.name.clone(), p.get(&var.name).clone());
+            let val = if var.flat {
+              a_val
+            } else {
+              interp(&a_val, &b_val, t)
+            };
+
+            vars.insert(var.name.clone(), val);
           }
 
-          for (ref name, ref data) in &frag_uniforms {
-            vars.insert((*name).clone(), (*data).clone());
+          vars
+        }
+
+
+        if x_major {
+          let idx = 1.0 / delta_x.abs();
+
+          if p_a[0] < p_b[0] {
+            while x < p_b[0] {
+              let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+
+              do_fragment(
+                (x.round() as i32, y.round() as i32),
+                &frag_vals,
+                &frag_in_vars,
+                &frag_out_vars,
+                &frag_uniforms,
+                &frag_compiled,
+                current.draw_framebuffer,
+                unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
+                current.color_mask,
+              );
+
+              y += slope;
+              x += 1.0;
+              t -= idx;
+            }
+          } else {
+            while x > p_b[0] {
+              let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+
+              do_fragment(
+                (x.round() as i32, y.round() as i32),
+                &frag_vals,
+                &frag_in_vars,
+                &frag_out_vars,
+                &frag_uniforms,
+                &frag_compiled,
+                current.draw_framebuffer,
+                unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
+                current.color_mask,
+              );
+
+              y -= slope;
+              x -= 1.0;
+              t -= idx;
+            }
           }
+        } else {
+          let idy = 1.0 / delta_y.abs();
+          let islope = delta_x / delta_y;
 
-          let main = &frag_compiled.functions[&"main".to_string()][0];
+          if p_a[1] < p_b[1] {
+            while y < p_b[1] {
+              let frag_vals = interp_vars(&frag_in_vars, a, b, t);
 
-          vars.push();
-          interpret::execute(&main.1, &mut vars, &frag_compiled);
+              do_fragment(
+                (x.round() as i32, y.round() as i32),
+                &frag_vals,
+                &frag_in_vars,
+                &frag_out_vars,
+                &frag_uniforms,
+                &frag_compiled,
+                current.draw_framebuffer,
+                unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
+                current.color_mask,
+              );
 
-          if let &Value::Vec4(c) = vars.get(&frag_out_vars[0].name) {
-            color = (c[0], c[1], c[2], c[3]);
-          } else { unreachable!() }
-        } // Fragment
+              x += islope;
+              y += 1.0;
+              t -= idy;
+            }
+          } else {
+            while y > p_b[1] {
+              let frag_vals = interp_vars(&frag_in_vars, a, b, t);
 
-        assert_eq!(current.draw_framebuffer, 0);
+              do_fragment(
+                (x.round() as i32, y.round() as i32),
+                &frag_vals,
+                &frag_in_vars,
+                &frag_out_vars,
+                &frag_uniforms,
+                &frag_compiled,
+                current.draw_framebuffer,
+                unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
+                current.color_mask,
+              );
 
-        let mut draw = unsafe{ current.draw_surface.as_mut() };
-        let mut draw = draw.as_mut().unwrap();
-
-        draw.set_pixel(x, y, color, current.color_mask);
+              x -= islope;
+              y -= 1.0;
+              t -= idy;
+            }
+          }
+        }
       },
       _ => {},
     }

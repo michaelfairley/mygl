@@ -32,3 +32,5 @@ good: build
 	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.shaders.builtin_var.*
 	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute
 	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.transform_feedback.*
+	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.draw.draw_arrays.points.*
+	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.draw.draw_arrays.lines.*

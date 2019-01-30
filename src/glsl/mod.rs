@@ -46,6 +46,7 @@ pub struct Variable {
   pub type_: parse::TypeSpecifierNonArray,
   pub array: Vec<GLuint>,
   pub offset: GLuint,
+  pub flat: bool,
 }
 
 pub fn array_size(
@@ -260,6 +261,7 @@ impl Shader {
                 type_: type_.clone(),
                 array: array,
                 offset: size,
+                flat: quals.contains(&TypeQualifier::Interpolation(InterpolationQualifier::Flat)),
               };
 
               size += type_size as u32 * array_size;
@@ -333,6 +335,7 @@ impl Shader {
                 type_: type_,
                 array: array,
                 offset: 0,
+                flat: quals.contains(&TypeQualifier::Interpolation(InterpolationQualifier::Flat)),
               };
 
               interfaces.push(Interface::Input(v));
@@ -345,6 +348,7 @@ impl Shader {
                 type_: type_,
                 array: array,
                 offset: 0,
+                flat: quals.contains(&TypeQualifier::Interpolation(InterpolationQualifier::Flat)),
               };
 
               interfaces.push(Interface::Output(v));
@@ -380,6 +384,7 @@ impl Shader {
                   type_: type_.clone(),
                   array: array,
                   offset: size,
+                  flat: false,
                 };
 
                 size += type_size as u32 * array_size;
@@ -407,6 +412,7 @@ impl Shader {
         type_: TypeSpecifierNonArray::Vec4,
         array: vec![],
         offset: 0,
+        flat: false,
       }));
 
       interfaces.push(Interface::Output(Variable{
@@ -415,6 +421,7 @@ impl Shader {
         type_: TypeSpecifierNonArray::Float,
         array: vec![],
         offset: 0,
+        flat: false,
       }));
     }
 
