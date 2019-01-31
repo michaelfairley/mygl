@@ -9,6 +9,8 @@ extern crate pretty_assertions;
 #[cfg(feature = "trace")]
 extern crate trace;
 
+extern crate string_cache;
+
 
 pub mod egl;
 pub mod gl;

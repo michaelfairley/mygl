@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc,Barrier,RwLock};
 use std::cell::{RefCell,Ref,Cell};
 use std::mem;
+use string_cache::DefaultAtom as Atom;
 
 use egl::{self,Config,Surface};
 use glsl;
@@ -376,7 +377,7 @@ pub struct Program{
   atomic_counters: HashMap<GLuint, glsl::AtomicCounterInfo>,
   pending_transform_feedback: Option<(Vec<String>, bool)>,
   transform_feedback: Option<(Vec<String>, bool)>,
-  attrib_locations: [Option<String>; MAX_VERTEX_ATTRIBS],
+  attrib_locations: [Option<Atom>; MAX_VERTEX_ATTRIBS],
 }
 
 impl Program {
@@ -2448,27 +2449,27 @@ pub extern "C" fn glDispatchCompute(
                 // TODO: omg clean up
                 let mut vars = Vars::new();
                 vars.push();
-                vars.insert("__barrier".to_string(), Value::Barrier(barrier));
+                vars.insert("__barrier".into(), Value::Barrier(barrier));
 
-                vars.insert("gl_NumWorkGroups".to_string(), Value::UVec3([num_groups_x,
+                vars.insert("gl_NumWorkGroups".into(), Value::UVec3([num_groups_x,
                                                                           num_groups_y,
                                                                           num_groups_z]));
-                vars.insert("gl_WorkGroupSize".to_string(), Value::UVec3(work_group_size));
+                vars.insert("gl_WorkGroupSize".into(), Value::UVec3(work_group_size));
 
-                vars.insert("gl_WorkGroupID".to_string(), Value::UVec3([gx, gy, gz]));
-                vars.insert("gl_LocalInvocationID".to_string(), Value::UVec3([lx, ly, lz]));
+                vars.insert("gl_WorkGroupID".into(), Value::UVec3([gx, gy, gz]));
+                vars.insert("gl_LocalInvocationID".into(), Value::UVec3([lx, ly, lz]));
 
                 let gid = [
                   gx * work_group_size[0] + lx,
                   gy * work_group_size[1] + ly,
                   gz * work_group_size[2] + lz,
                 ];
-                vars.insert("gl_GlobalInvocationID".to_string(), Value::UVec3(gid));
+                vars.insert("gl_GlobalInvocationID".into(), Value::UVec3(gid));
 
                 let lii = lz * work_group_size[0] * work_group_size[1]
                   + ly * work_group_size[0]
                   + lx;
-                vars.insert("gl_LocalInvocationIndex".to_string(), Value::Uint(lii));
+                vars.insert("gl_LocalInvocationIndex".into(), Value::Uint(lii));
 
                 for (ref name, ref data) in &init_vars {
                   vars.insert((*name).clone(), (*data).clone());
@@ -2476,7 +2477,7 @@ pub extern "C" fn glDispatchCompute(
 
                 vars.push();
 
-                let main = &compiled.functions[&"main".to_string()][0];
+                let main = &compiled.functions[&"main".into()][0];
 
                 interpret::execute(&main.1, &mut vars, &compiled);
               });
@@ -2701,7 +2702,7 @@ fn glDrawArraysOneInstance(
       vars.insert((*name).clone(), (*data).clone());
     }
 
-    let main = &vert_compiled.functions[&"main".to_string()][0];
+    let main = &vert_compiled.functions[&"main".into()][0];
 
     vars.push();
     interpret::execute(&main.1, &mut vars, &vert_compiled);
@@ -2798,7 +2799,7 @@ fn glDrawArraysOneInstance(
 
           let (name, array_indices) = parse_variable_name(var);
 
-          let value = vert.get(&name.to_string());
+          let value = vert.get(&name.into());
           let value = array_indices.iter().fold(value, |v, &i| {
             if let &Value::Array(ref a) = v {
               &a[i as usize]
@@ -2815,7 +2816,7 @@ fn glDrawArraysOneInstance(
     // RASTERIZATION
 
     fn window_coords(vars: &Vars, viewport: Rect, depth_range: (GLfloat, GLfloat)) -> [f32; 3] {
-        let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".to_string()) {
+        let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".into()) {
           v
         } else { unreachable!() };
         let ndc = [clip_coords[0] / clip_coords[3],
@@ -2842,7 +2843,7 @@ fn glDrawArraysOneInstance(
       vert_vars: &Vars,
       frag_in_vars: &Vec<glsl::Variable>,
       frag_out_vars: &Vec<glsl::Variable>,
-      frag_uniforms: &HashMap<String, Value>,
+      frag_uniforms: &HashMap<Atom, Value>,
       frag_compiled: &Arc<glsl::Shader>,
       draw_framebuffer: GLuint,
       draw_surface: &mut Surface,
@@ -2868,7 +2869,7 @@ fn glDrawArraysOneInstance(
           vars.insert((*name).clone(), (*data).clone());
         }
 
-        let main = &frag_compiled.functions[&"main".to_string()][0];
+        let main = &frag_compiled.functions[&"main".into()][0];
 
         vars.push();
         interpret::execute(&main.1, &mut vars, &frag_compiled);
@@ -3733,6 +3734,7 @@ pub extern "C" fn glGetProgramResourceIndex(
 
   let name = unsafe{ CStr::from_ptr(name) };
   let name = name.to_str().unwrap();
+  let name = Atom::from(name);
 
   match programInterface {
     GL_SHADER_STORAGE_BLOCK => {
@@ -4182,6 +4184,7 @@ pub extern "C" fn glGetUniformLocation(
 
   let name = unsafe{ CStr::from_ptr(name) };
   let name = name.to_str().unwrap();
+  let name = Atom::from(name);
 
   program.uniforms.iter().enumerate().find(|&(_i, info)| {
     info.name == name

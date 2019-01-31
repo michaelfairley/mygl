@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 [dependencies]
 lazy_static = "*"
 trace = {version = "*", optional = true, git = "https://github.com/gsingh93/trace"}
+string_cache = "*"
 
 [dev-dependencies]
 pretty_assertions = "*"

@@ -1,6 +1,8 @@
 use super::{Result,Version};
 use super::lex::{FullToken,Token};
 
+use string_cache::DefaultAtom as Atom;
+
 pub(super) fn parse(tokens: &[FullToken], version: Version) -> Result<TranslationUnit> {
   Parser::new(tokens, version).parse_translation_unit()
 }
@@ -55,7 +57,7 @@ impl<'a> Parser<'a> {
     } else { Ok(()) }
   }
 
-  fn consume_ident(&mut self) -> Result<Option<String>> {
+  fn consume_ident(&mut self) -> Result<Option<Atom>> {
     let (first, rest) = self.tokens.split_first().ok_or("Ran out of input too soon".to_string())?;
 
     if let Token::Ident(ref ident) = first.typ {
@@ -66,7 +68,7 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn must_consume_ident(&mut self) -> Result<String> {
+  fn must_consume_ident(&mut self) -> Result<Atom> {
     let (first, rest) = self.tokens.split_first().ok_or("Ran out of input too soon".to_string())?;
 
     if let Token::Ident(ref ident) = first.typ {
@@ -359,22 +361,22 @@ impl<'a> Parser<'a> {
     // TODO: cleanup
     let possible_function_name = match *self.peek()? {
       Token::Ident(ref name) => Some(name.clone()),
-      Token::Uint => Some("uint".to_string()),
-      Token::UVec2 => Some("uvec2".to_string()),
-      Token::UVec3 => Some("uvec3".to_string()),
-      Token::UVec4 => Some("uvec4".to_string()),
-      Token::Int => Some("int".to_string()),
-      Token::IVec2 => Some("ivec2".to_string()),
-      Token::IVec3 => Some("ivec3".to_string()),
-      Token::IVec4 => Some("ivec4".to_string()),
-      Token::Float => Some("float".to_string()),
-      Token::Vec2 => Some("vec2".to_string()),
-      Token::Vec3 => Some("vec3".to_string()),
-      Token::Vec4 => Some("vec4".to_string()),
-      Token::Bool => Some("bool".to_string()),
-      Token::BVec2 => Some("bvec2".to_string()),
-      Token::BVec3 => Some("bvec3".to_string()),
-      Token::BVec4 => Some("bvec4".to_string()),
+      Token::Uint => Some("uint".into()),
+      Token::UVec2 => Some("uvec2".into()),
+      Token::UVec3 => Some("uvec3".into()),
+      Token::UVec4 => Some("uvec4".into()),
+      Token::Int => Some("int".into()),
+      Token::IVec2 => Some("ivec2".into()),
+      Token::IVec3 => Some("ivec3".into()),
+      Token::IVec4 => Some("ivec4".into()),
+      Token::Float => Some("float".into()),
+      Token::Vec2 => Some("vec2".into()),
+      Token::Vec3 => Some("vec3".into()),
+      Token::Vec4 => Some("vec4".into()),
+      Token::Bool => Some("bool".into()),
+      Token::BVec2 => Some("bvec2".into()),
+      Token::BVec3 => Some("bvec3".into()),
+      Token::BVec4 => Some("bvec4".into()),
       _ => None,
     };
 
@@ -410,7 +412,7 @@ impl<'a> Parser<'a> {
       } else if self.consume(Token::Dot)? {
         let field = self.must_consume_ident()?;
 
-        if field.as_str() == "length" && self.consume(Token::OpenParen)? {
+        if &field == "length" && self.consume(Token::OpenParen)? {
           self.must_consume(Token::CloseParen)?;
         }
         expr = Expression::FieldSelection(Box::new(expr), field);
@@ -652,7 +654,7 @@ impl ConstantExpression {
 
 pub type ArraySpecifier = Vec<Option<ConstantExpression>>;
 
-pub type Identifier = String;
+pub type Identifier = Atom;
 
 pub type TranslationUnit = Vec<ExternalDeclaration>;
 
@@ -660,7 +662,7 @@ pub type TranslationUnit = Vec<ExternalDeclaration>;
 pub enum ExternalDeclaration {
   FunctionPrototype(FunctionPrototype),
   FunctionDefinition(FunctionPrototype, Statement),
-  Block(Vec<TypeQualifier>, String, MemberList, Option<String>),
+  Block(Vec<TypeQualifier>, Atom, MemberList, Option<Atom>),
   TypeQualifier(Vec<TypeQualifier>),
   Variable(FullySpecifiedType, Identifier, ArraySpecifier),
   TypeDeclaration(FullySpecifiedType),
@@ -766,8 +768,8 @@ pub enum TypeSpecifierNonArray {
   Mat4,
   AtomicUint,
   UImage2D,
-  Custom(String),
-  Struct(Option<String>, MemberList),
+  Custom(Atom),
+  Struct(Option<Atom>, MemberList),
   Void,
   // INCOMPLETE
 }
@@ -775,7 +777,7 @@ pub enum TypeSpecifierNonArray {
 #[derive(Debug,PartialEq,Clone)]
 pub enum Statement {
   Compound(Vec<Statement>),
-  Declaration(FullySpecifiedType, String, Option<Expression>),
+  Declaration(FullySpecifiedType, Atom, Option<Expression>),
   For(Box<Statement>, Expression, Expression, Box<Statement>),
   Expression(Expression),
   Builtin(super::builtin::Func),
@@ -785,7 +787,7 @@ pub enum Statement {
 #[derive(Debug,PartialEq,Clone)]
 pub enum Expression {
   Empty,
-  Variable(String),
+  Variable(Atom),
   IntConstant(i32),
   UintConstant(u32),
   FloatConstant(f32),
@@ -794,8 +796,8 @@ pub enum Expression {
   Modulo(Box<Expression>, Box<Expression>),
   Add(Box<Expression>, Box<Expression>),
   Sub(Box<Expression>, Box<Expression>),
-  FunctionCall(String, Vec<Expression>),
-  FieldSelection(Box<Expression>, String),
+  FunctionCall(Atom, Vec<Expression>),
+  FieldSelection(Box<Expression>, Atom),
   Comparison(Box<Expression>, Comparison, Box<Expression>),
   PostInc(Box<Expression>),
   Index(Box<Expression>, Box<Expression>),
@@ -896,19 +898,19 @@ void main (void) {}
              vec![
                ExternalDeclaration::TypeQualifier(vec![
                  TypeQualifier::Layout(vec![
-                   LayoutQualifierId::Int("local_size_x".to_string(), 1)
+                   LayoutQualifierId::Int("local_size_x".into(), 1)
                  ]),
                  TypeQualifier::Storage(StorageQualifier::In),
                ]),
                ExternalDeclaration::FunctionPrototype(FunctionPrototype{
                  typ: (vec![], (TypeSpecifierNonArray::Void, vec![])),
-                 name: "main".to_string(),
+                 name: "main".into(),
                  params: vec![((vec![], (TypeSpecifierNonArray::Void, vec![])), None)],
                }),
                ExternalDeclaration::FunctionDefinition(
                  FunctionPrototype{
                    typ: (vec![], (TypeSpecifierNonArray::Void, vec![])),
-                   name: "main".to_string(),
+                   name: "main".into(),
                    params: vec![((vec![], (TypeSpecifierNonArray::Void, vec![])), None)],
                  },
                  Statement::Compound(vec![]),
@@ -934,13 +936,13 @@ void main (void) {
                ExternalDeclaration::FunctionDefinition(
                  FunctionPrototype{
                    typ: (vec![], (TypeSpecifierNonArray::Void, vec![])),
-                   name: "main".to_string(),
+                   name: "main".into(),
                    params: vec![((vec![], (TypeSpecifierNonArray::Void, vec![])), None)],
                  },
                  Statement::Compound(vec![
                    Statement::Declaration(
                      (vec![], (TypeSpecifierNonArray::Int, vec![])),
-                     "a".to_string(),
+                     "a".into(),
                      Expression::Sub(
                        Box::new(Expression::Sub(
                          Box::new(Expression::IntConstant(3)),

@@ -4,6 +4,8 @@ use super::Shader;
 use std::sync::{Barrier,Arc};
 use std::ops::Deref;
 
+use string_cache::DefaultAtom as Atom;
+
 use gl;
 
 const DEBUG: bool = false;
@@ -402,7 +404,7 @@ unsafe impl Send for Value {}
 
 #[derive(Debug)]
 pub struct Vars {
-  scopes: Vec<Vec<(String, Value)>>,
+  scopes: Vec<Vec<(Atom, Value)>>,
 }
 
 impl Vars {
@@ -420,11 +422,11 @@ impl Vars {
     self.scopes.pop().expect("Tried to pop an empty vars");
   }
 
-  pub fn insert(&mut self, ident: String, value: Value) {
+  pub fn insert(&mut self, ident: Atom, value: Value) {
     self.scopes.last_mut().unwrap().push((ident, value));
   }
 
-  pub fn get(&self, ident: &String) -> &Value {
+  pub fn get(&self, ident: &Atom) -> &Value {
     for scope in self.scopes.iter().rev() {
       for (name, val) in scope.iter() {
         if name == ident {
@@ -436,7 +438,7 @@ impl Vars {
     panic!("Didn't find {} in the vars", ident);
   }
 
-  pub fn get_mut<'a>(&'a mut self, ident: &String) -> &mut Value {
+  pub fn get_mut<'a>(&'a mut self, ident: &Atom) -> &mut Value {
     for scope in self.scopes.iter_mut().rev() {
       for (name, val) in scope.iter_mut() {
         if name == ident {

@@ -9,6 +9,8 @@ mod builtin;
 
 use self::parse::{FunctionPrototype,Statement};
 
+use string_cache::DefaultAtom as Atom;
+
 pub use self::parse::TypeSpecifierNonArray;
 
 pub type Result<T> = ::std::result::Result<T, String>;
@@ -41,7 +43,7 @@ pub fn compile(source: &[u8], type_: GLenum) -> Result<Shader> {
 
 #[derive(Debug,Clone,PartialEq)]
 pub struct Variable {
-  pub name: String,
+  pub name: Atom,
   pub index: i32,
   pub type_: parse::TypeSpecifierNonArray,
   pub array: Vec<GLuint>,
@@ -61,8 +63,8 @@ pub fn array_size(
 
 #[derive(Debug,Clone)]
 pub struct BlockInfo {
-  pub name: String,
-  pub var_name: Option<String>,
+  pub name: Atom,
+  pub var_name: Option<Atom>,
   pub binding: u32,
   pub size: u32,
   pub active_variables: Vec<Variable>,
@@ -70,7 +72,7 @@ pub struct BlockInfo {
 
 #[derive(Debug,Clone)]
 pub struct UniformInfo {
-  pub name: String,
+  pub name: Atom,
   pub typ: GLuint,
   pub binding: usize,
   pub index: i32,
@@ -78,14 +80,14 @@ pub struct UniformInfo {
 
 #[derive(Debug,Clone)]
 pub struct SharedInfo {
-  pub name: String,
+  pub name: Atom,
   pub typ: TypeSpecifierNonArray,
   pub size: usize,
 }
 
 #[derive(Debug,Clone)]
 pub struct AtomicCounterInfo {
-  pub name: String,
+  pub name: Atom,
   pub size: usize,
   pub binding: usize,
 }
@@ -110,7 +112,7 @@ pub struct CustomType {
 // TODO: different packing formats
 pub fn size_of(
   type_: &TypeSpecifierNonArray,
-  types: Option<&HashMap<String, CustomType>>,
+  types: Option<&HashMap<Atom, CustomType>>,
 ) -> usize {
   match type_ {
     &TypeSpecifierNonArray::Uint => mem::size_of::<u32>(),
@@ -145,7 +147,7 @@ pub fn size_of(
 // TODO: different packing formats
 pub fn alignment_of(
   type_: &TypeSpecifierNonArray,
-  types: Option<&HashMap<String, CustomType>>,
+  types: Option<&HashMap<Atom, CustomType>>,
 ) -> usize {
   match type_ {
     &TypeSpecifierNonArray::UVec3 => mem::size_of::<u32>() * 4,
@@ -161,7 +163,7 @@ pub fn alignment_of(
 }
 pub fn stride_of(
   type_: &TypeSpecifierNonArray,
-  types: Option<&HashMap<String, CustomType>>,
+  types: Option<&HashMap<Atom, CustomType>>,
 ) -> usize {
   let size = size_of(type_, types);
   let alignment = alignment_of(type_, types);
@@ -212,10 +214,10 @@ pub fn gl_type(
 #[derive(Debug)]
 pub struct Shader {
   pub version: Version,
-  pub functions: HashMap<String, Vec<(FunctionPrototype, Statement)>>,
+  pub functions: HashMap<Atom, Vec<(FunctionPrototype, Statement)>>,
   pub interfaces: Vec<Interface>,
   pub work_group_size: Option<[u32; 3]>,
-  pub types: HashMap<String, CustomType>,
+  pub types: HashMap<Atom, CustomType>,
 }
 
 impl Shader {
@@ -225,7 +227,7 @@ impl Shader {
     let mut functions = builtin::all();
     let mut interfaces = vec![];
 
-    let mut types: HashMap<String, CustomType> = HashMap::new();
+    let mut types: HashMap<Atom, CustomType> = HashMap::new();
 
     for decl in &translation_unit {
       match decl {
@@ -407,7 +409,7 @@ impl Shader {
 
     if type_ == gl::GL_VERTEX_SHADER {
       interfaces.push(Interface::Output(Variable{
-        name: "gl_Position".to_string(),
+        name: "gl_Position".into(),
         index: 0,
         type_: TypeSpecifierNonArray::Vec4,
         array: vec![],
@@ -416,7 +418,7 @@ impl Shader {
       }));
 
       interfaces.push(Interface::Output(Variable{
-        name: "gl_PointSize".to_string(),
+        name: "gl_PointSize".into(),
         index: 0,
         type_: TypeSpecifierNonArray::Float,
         array: vec![],

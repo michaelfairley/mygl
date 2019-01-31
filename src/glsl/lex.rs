@@ -2,6 +2,8 @@ use std::collections::VecDeque;
 
 use super::{Version,Result};
 
+use string_cache::DefaultAtom as Atom;
+
 #[derive(PartialEq,Debug)]
 pub struct FullToken {
   pub line: usize,
@@ -134,7 +136,7 @@ pub enum Token {
   Case,
   Default,
   // Literals
-  Ident(String),
+  Ident(Atom),
   FloatConstant(f32),
   IntConstant(i32),
   UintConstant(u32),
@@ -423,7 +425,7 @@ pub(super) fn tokenize(source: &str, version: Version) -> Result<Vec<FullToken>>
         "case" => Some(Token::Case),
         "default" => Some(Token::Default),
         _ => None,
-      }.unwrap_or(Token::Ident(string)) // TODO: cleanup with NLL
+      }.unwrap_or_else(|| Token::Ident(string.into())) // TODO: cleanup with NLL
     } else if next.is_digit(10) {
       let string = l.take(|c| c.is_digit(10) || c == '.');
 

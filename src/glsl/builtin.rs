@@ -1,6 +1,7 @@
 use super::parse::{TypeSpecifierNonArray,TypeQualifier,StorageQualifier,Statement,FunctionPrototype};
 use super::interpret::{Vars,Value};
 use std::collections::HashMap;
+use string_cache::DefaultAtom as Atom;
 
 #[derive(Clone)]
 pub struct Func(pub Box<fn(&mut Vars) -> Value>);
@@ -149,7 +150,7 @@ macro_rules! builtin_body_bindings {
     if let (
       $( &builtin_value_ref!($atype $(#$anum)*, $aname), )*
     ) = (
-      $( $vars.get(&stringify!($aname).to_string()), )*
+      $( $vars.get(&stringify!($aname).into()), )*
     ) {
       builtin_body!($rtype $(#$rnum)*, $body)
     } else { unreachable!() }
@@ -158,14 +159,14 @@ macro_rules! builtin_body_bindings {
 
 macro_rules! builtin_raw {
   ($funcs:ident, $fname:expr, ($($aname:ident : $(!$flag:ident)* $atype:ident $(#$anum:ident)*),*) => $rtype:ident $(#$rnum:ident)* - $func:expr) => {{
-    let func_name = $fname.to_string();
+    let func_name: Atom = $fname.into();
 
     let prototype = FunctionPrototype{
       typ: builtin_type!($rtype $(#$rnum)*),
       name: func_name.clone(),
       params: vec![
         $(
-          (builtin_type!($(!$flag)* $atype $(#$anum)*), Some((stringify!($aname).to_string(), vec![]))),
+          (builtin_type!($(!$flag)* $atype $(#$anum)*), Some((stringify!($aname).into(), vec![]))),
         )*
       ],
     };
@@ -226,7 +227,7 @@ macro_rules! builtin_gentype {
 }
 
 // TODO: Do a lazy static thing
-pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
+pub fn all() -> HashMap<Atom, Vec<(FunctionPrototype, Statement)>> {
   use std::sync::atomic::{AtomicU32,Ordering};
 
   let mut funcs = HashMap::new();
@@ -287,26 +288,26 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   });
 
   builtin_raw!(funcs, "modf", (x: float, i: !out float) => float - |vars: &mut Vars| {
-    if let &Value::Float(x) = vars.get(&"x".to_string()) {
-      vars.get_mut(&"i".to_string()).set(Value::Float(x.trunc()));
+    if let &Value::Float(x) = vars.get(&"x".into()) {
+      vars.get_mut(&"i".into()).set(Value::Float(x.trunc()));
       Value::Float(x.fract())
     } else { unreachable!() }
   });
   builtin_raw!(funcs, "modf", (x: vec2, i: !out vec2) => vec2 - |vars: &mut Vars| {
-    if let &Value::Vec2(x) = vars.get(&"x".to_string()) {
-      vars.get_mut(&"i".to_string()).set(Value::Vec2([x[0].trunc(), x[1].trunc()]));
+    if let &Value::Vec2(x) = vars.get(&"x".into()) {
+      vars.get_mut(&"i".into()).set(Value::Vec2([x[0].trunc(), x[1].trunc()]));
       Value::Vec2([x[0].fract(), x[1].fract()])
     } else { unreachable!() }
   });
   builtin_raw!(funcs, "modf", (x: vec3, i: !out vec3) => vec3 - |vars: &mut Vars| {
-    if let &Value::Vec3(x) = vars.get(&"x".to_string()) {
-      vars.get_mut(&"i".to_string()).set(Value::Vec3([x[0].trunc(), x[1].trunc(), x[2].trunc()]));
+    if let &Value::Vec3(x) = vars.get(&"x".into()) {
+      vars.get_mut(&"i".into()).set(Value::Vec3([x[0].trunc(), x[1].trunc(), x[2].trunc()]));
       Value::Vec3([x[0].fract(), x[1].fract(), x[2].fract()])
     } else { unreachable!() }
   });
   builtin_raw!(funcs, "modf", (x: vec4, i: !out vec4) => vec4 - |vars: &mut Vars| {
-    if let &Value::Vec4(x) = vars.get(&"x".to_string()) {
-      vars.get_mut(&"i".to_string()).set(Value::Vec4([x[0].trunc(), x[1].trunc(), x[2].trunc(), x[3].trunc()]));
+    if let &Value::Vec4(x) = vars.get(&"x".into()) {
+      vars.get_mut(&"i".into()).set(Value::Vec4([x[0].trunc(), x[1].trunc(), x[2].trunc(), x[3].trunc()]));
       Value::Vec4([x[0].fract(), x[1].fract(), x[2].fract(), x[3].fract()])
     } else { unreachable!() }
   });
@@ -336,40 +337,40 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
     (f32::from_bits(s), exp)
   }
   builtin_raw!(funcs, "frexp", (x: float, exp: !out int) => float - |vars: &mut Vars| {
-    if let &Value::Float(x) = vars.get(&"x".to_string()) {
+    if let &Value::Float(x) = vars.get(&"x".into()) {
       let(s, e) = frexp(x);
 
-      vars.get_mut(&"exp".to_string()).set(Value::Int(e));
+      vars.get_mut(&"exp".into()).set(Value::Int(e));
       Value::Float(s)
     } else { unreachable!() }
   });
   builtin_raw!(funcs, "frexp", (x: vec2, exp: !out ivec2) => vec2 - |vars: &mut Vars| {
-    if let &Value::Vec2(x) = vars.get(&"x".to_string()) {
+    if let &Value::Vec2(x) = vars.get(&"x".into()) {
       let(s0, e0) = frexp(x[0]);
       let(s1, e1) = frexp(x[1]);
 
-      vars.get_mut(&"exp".to_string()).set(Value::IVec2([e0, e1]));
+      vars.get_mut(&"exp".into()).set(Value::IVec2([e0, e1]));
       Value::Vec2([s0, s1])
     } else { unreachable!() }
   });
   builtin_raw!(funcs, "frexp", (x: vec3, exp: !out ivec3) => vec3 - |vars: &mut Vars| {
-    if let &Value::Vec3(x) = vars.get(&"x".to_string()) {
+    if let &Value::Vec3(x) = vars.get(&"x".into()) {
       let(s0, e0) = frexp(x[0]);
       let(s1, e1) = frexp(x[1]);
       let(s2, e2) = frexp(x[2]);
 
-      vars.get_mut(&"exp".to_string()).set(Value::IVec3([e0, e1, e2]));
+      vars.get_mut(&"exp".into()).set(Value::IVec3([e0, e1, e2]));
       Value::Vec3([s0, s1, s2])
     } else { unreachable!() }
   });
   builtin_raw!(funcs, "frexp", (x: vec4, exp: !out ivec4) => vec4 - |vars: &mut Vars| {
-    if let &Value::Vec4(x) = vars.get(&"x".to_string()) {
+    if let &Value::Vec4(x) = vars.get(&"x".into()) {
       let(s0, e0) = frexp(x[0]);
       let(s1, e1) = frexp(x[1]);
       let(s2, e2) = frexp(x[2]);
       let(s3, e3) = frexp(x[3]);
 
-      vars.get_mut(&"exp".to_string()).set(Value::IVec4([e0, e1, e2, e3]));
+      vars.get_mut(&"exp".into()).set(Value::IVec4([e0, e1, e2, e3]));
       Value::Vec4([s0, s1, s2, s3])
     } else { unreachable!() }
   });
@@ -401,54 +402,54 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   builtin_raw!(funcs, "uaddCarry", (x: uint, y: uint, carry: !out uint) => uint - |vars: &mut Vars| {
     if let (&Value::Uint(x),
             &Value::Uint(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let (sum, carry) = x.overflowing_add(y);
 
-        vars.get_mut(&"carry".to_string()).set(Value::Uint(carry as u32));
+        vars.get_mut(&"carry".into()).set(Value::Uint(carry as u32));
         Value::Uint(sum)
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "uaddCarry", (x: uvec2, y: uvec2, carry: !out uvec2) => uvec2 - |vars: &mut Vars| {
     if let (&Value::UVec2(x),
             &Value::UVec2(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let (sum0, carry0) = x[0].overflowing_add(y[0]);
         let (sum1, carry1) = x[1].overflowing_add(y[1]);
 
-        vars.get_mut(&"carry".to_string()).set(Value::UVec2([carry0 as u32, carry1 as u32]));
+        vars.get_mut(&"carry".into()).set(Value::UVec2([carry0 as u32, carry1 as u32]));
         Value::UVec2([sum0, sum1])
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "uaddCarry", (x: uvec3, y: uvec3, carry: !out uvec3) => uvec3 - |vars: &mut Vars| {
     if let (&Value::UVec3(x),
             &Value::UVec3(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let (sum0, carry0) = x[0].overflowing_add(y[0]);
         let (sum1, carry1) = x[1].overflowing_add(y[1]);
         let (sum2, carry2) = x[2].overflowing_add(y[2]);
 
-        vars.get_mut(&"carry".to_string()).set(Value::UVec3([carry0 as u32, carry1 as u32, carry2 as u32]));
+        vars.get_mut(&"carry".into()).set(Value::UVec3([carry0 as u32, carry1 as u32, carry2 as u32]));
         Value::UVec3([sum0, sum1, sum2])
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "uaddCarry", (x: uvec4, y: uvec4, carry: !out uvec4) => uvec4 - |vars: &mut Vars| {
     if let (&Value::UVec4(x),
             &Value::UVec4(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let (sum0, carry0) = x[0].overflowing_add(y[0]);
         let (sum1, carry1) = x[1].overflowing_add(y[1]);
         let (sum2, carry2) = x[2].overflowing_add(y[2]);
         let (sum3, carry3) = x[3].overflowing_add(y[3]);
 
-        vars.get_mut(&"carry".to_string()).set(Value::UVec4([carry0 as u32, carry1 as u32, carry2 as u32, carry3 as u32]));
+        vars.get_mut(&"carry".into()).set(Value::UVec4([carry0 as u32, carry1 as u32, carry2 as u32, carry3 as u32]));
         Value::UVec4([sum0, sum1, sum2, sum3])
       } else { unreachable!() }
   });
@@ -456,54 +457,54 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   builtin_raw!(funcs, "usubBorrow", (x: uint, y: uint, borrow: !out uint) => uint - |vars: &mut Vars| {
     if let (&Value::Uint(x),
             &Value::Uint(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let (diff, borrow) = x.overflowing_sub(y);
 
-        vars.get_mut(&"borrow".to_string()).set(Value::Uint(borrow as u32));
+        vars.get_mut(&"borrow".into()).set(Value::Uint(borrow as u32));
         Value::Uint(diff)
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "usubBorrow", (x: uvec2, y: uvec2, borrow: !out uvec2) => uvec2 - |vars: &mut Vars| {
     if let (&Value::UVec2(x),
             &Value::UVec2(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let (diff0, borrow0) = x[0].overflowing_sub(y[0]);
         let (diff1, borrow1) = x[1].overflowing_sub(y[1]);
 
-        vars.get_mut(&"borrow".to_string()).set(Value::UVec2([borrow0 as u32, borrow1 as u32]));
+        vars.get_mut(&"borrow".into()).set(Value::UVec2([borrow0 as u32, borrow1 as u32]));
         Value::UVec2([diff0, diff1])
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "usubBorrow", (x: uvec3, y: uvec3, borrow: !out uvec3) => uvec3 - |vars: &mut Vars| {
     if let (&Value::UVec3(x),
             &Value::UVec3(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let (diff0, borrow0) = x[0].overflowing_sub(y[0]);
         let (diff1, borrow1) = x[1].overflowing_sub(y[1]);
         let (diff2, borrow2) = x[2].overflowing_sub(y[2]);
 
-        vars.get_mut(&"borrow".to_string()).set(Value::UVec3([borrow0 as u32, borrow1 as u32, borrow2 as u32]));
+        vars.get_mut(&"borrow".into()).set(Value::UVec3([borrow0 as u32, borrow1 as u32, borrow2 as u32]));
         Value::UVec3([diff0, diff1, diff2])
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "usubBorrow", (x: uvec4, y: uvec4, borrow: !out uvec4) => uvec4 - |vars: &mut Vars| {
     if let (&Value::UVec4(x),
             &Value::UVec4(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let (diff0, borrow0) = x[0].overflowing_sub(y[0]);
         let (diff1, borrow1) = x[1].overflowing_sub(y[1]);
         let (diff2, borrow2) = x[2].overflowing_sub(y[2]);
         let (diff3, borrow3) = x[3].overflowing_sub(y[3]);
 
-        vars.get_mut(&"borrow".to_string()).set(Value::UVec4([borrow0 as u32, borrow1 as u32, borrow2 as u32, borrow3 as u32]));
+        vars.get_mut(&"borrow".into()).set(Value::UVec4([borrow0 as u32, borrow1 as u32, borrow2 as u32, borrow3 as u32]));
         Value::UVec4([diff0, diff1, diff2, diff3])
       } else { unreachable!() }
   });
@@ -511,58 +512,58 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   builtin_raw!(funcs, "umulExtended", (x: uint, y: uint, msb: !out uint, lsb: !out uint) => void - |vars: &mut Vars| {
     if let (&Value::Uint(x),
             &Value::Uint(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let product: [u32; 2] = unsafe{ ::std::mem::transmute(x as u64 * y as u64) };
 
-        vars.get_mut(&"msb".to_string()).set(Value::Uint(product[1] as u32));
-        vars.get_mut(&"lsb".to_string()).set(Value::Uint(product[0] as u32));
+        vars.get_mut(&"msb".into()).set(Value::Uint(product[1] as u32));
+        vars.get_mut(&"lsb".into()).set(Value::Uint(product[0] as u32));
         Value::Void
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "umulExtended", (x: uvec2, y: uvec2, msb: !out uvec2, lsb: !out uvec2) => void - |vars: &mut Vars| {
     if let (&Value::UVec2(x),
             &Value::UVec2(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let product0: [u32; 2] = unsafe{ ::std::mem::transmute(x[0] as u64 * y[0] as u64) };
         let product1: [u32; 2] = unsafe{ ::std::mem::transmute(x[1] as u64 * y[1] as u64) };
 
-        vars.get_mut(&"msb".to_string()).set(Value::UVec2([product0[1] as u32, product1[1] as u32]));
-        vars.get_mut(&"lsb".to_string()).set(Value::UVec2([product0[0] as u32, product1[0] as u32]));
+        vars.get_mut(&"msb".into()).set(Value::UVec2([product0[1] as u32, product1[1] as u32]));
+        vars.get_mut(&"lsb".into()).set(Value::UVec2([product0[0] as u32, product1[0] as u32]));
         Value::Void
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "umulExtended", (x: uvec3, y: uvec3, msb: !out uvec3, lsb: !out uvec3) => void - |vars: &mut Vars| {
     if let (&Value::UVec3(x),
             &Value::UVec3(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let product0: [u32; 2] = unsafe{ ::std::mem::transmute(x[0] as u64 * y[0] as u64) };
         let product1: [u32; 2] = unsafe{ ::std::mem::transmute(x[1] as u64 * y[1] as u64) };
         let product2: [u32; 2] = unsafe{ ::std::mem::transmute(x[2] as u64 * y[2] as u64) };
 
-        vars.get_mut(&"msb".to_string()).set(Value::UVec3([product0[1] as u32, product1[1] as u32, product2[1] as u32]));
-        vars.get_mut(&"lsb".to_string()).set(Value::UVec3([product0[0] as u32, product1[0] as u32, product2[0] as u32]));
+        vars.get_mut(&"msb".into()).set(Value::UVec3([product0[1] as u32, product1[1] as u32, product2[1] as u32]));
+        vars.get_mut(&"lsb".into()).set(Value::UVec3([product0[0] as u32, product1[0] as u32, product2[0] as u32]));
         Value::Void
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "umulExtended", (x: uvec4, y: uvec4, msb: !out uvec4, lsb: !out uvec4) => void - |vars: &mut Vars| {
     if let (&Value::UVec4(x),
             &Value::UVec4(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let product0: [u32; 2] = unsafe{ ::std::mem::transmute(x[0] as u64 * y[0] as u64) };
         let product1: [u32; 2] = unsafe{ ::std::mem::transmute(x[1] as u64 * y[1] as u64) };
         let product2: [u32; 2] = unsafe{ ::std::mem::transmute(x[2] as u64 * y[2] as u64) };
         let product3: [u32; 2] = unsafe{ ::std::mem::transmute(x[3] as u64 * y[3] as u64) };
 
-        vars.get_mut(&"msb".to_string()).set(Value::UVec4([product0[1] as u32, product1[1] as u32, product2[1] as u32, product3[1] as u32]));
-        vars.get_mut(&"lsb".to_string()).set(Value::UVec4([product0[0] as u32, product1[0] as u32, product2[0] as u32, product3[0] as u32]));
+        vars.get_mut(&"msb".into()).set(Value::UVec4([product0[1] as u32, product1[1] as u32, product2[1] as u32, product3[1] as u32]));
+        vars.get_mut(&"lsb".into()).set(Value::UVec4([product0[0] as u32, product1[0] as u32, product2[0] as u32, product3[0] as u32]));
         Value::Void
       } else { unreachable!() }
   });
@@ -570,58 +571,58 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   builtin_raw!(funcs, "imulExtended", (x: int, y: int, msb: !out int, lsb: !out int) => void - |vars: &mut Vars| {
     if let (&Value::Int(x),
             &Value::Int(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let product: [i32; 2] = unsafe{ ::std::mem::transmute(x as i64 * y as i64) };
 
-        vars.get_mut(&"msb".to_string()).set(Value::Int(product[1] as i32));
-        vars.get_mut(&"lsb".to_string()).set(Value::Int(product[0] as i32));
+        vars.get_mut(&"msb".into()).set(Value::Int(product[1] as i32));
+        vars.get_mut(&"lsb".into()).set(Value::Int(product[0] as i32));
         Value::Void
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "imulExtended", (x: ivec2, y: ivec2, msb: !out ivec2, lsb: !out ivec2) => void - |vars: &mut Vars| {
     if let (&Value::IVec2(x),
             &Value::IVec2(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let product0: [i32; 2] = unsafe{ ::std::mem::transmute(x[0] as i64 * y[0] as i64) };
         let product1: [i32; 2] = unsafe{ ::std::mem::transmute(x[1] as i64 * y[1] as i64) };
 
-        vars.get_mut(&"msb".to_string()).set(Value::IVec2([product0[1] as i32, product1[1] as i32]));
-        vars.get_mut(&"lsb".to_string()).set(Value::IVec2([product0[0] as i32, product1[0] as i32]));
+        vars.get_mut(&"msb".into()).set(Value::IVec2([product0[1] as i32, product1[1] as i32]));
+        vars.get_mut(&"lsb".into()).set(Value::IVec2([product0[0] as i32, product1[0] as i32]));
         Value::Void
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "imulExtended", (x: ivec3, y: ivec3, msb: !out ivec3, lsb: !out ivec3) => void - |vars: &mut Vars| {
     if let (&Value::IVec3(x),
             &Value::IVec3(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let product0: [i32; 2] = unsafe{ ::std::mem::transmute(x[0] as i64 * y[0] as i64) };
         let product1: [i32; 2] = unsafe{ ::std::mem::transmute(x[1] as i64 * y[1] as i64) };
         let product2: [i32; 2] = unsafe{ ::std::mem::transmute(x[2] as i64 * y[2] as i64) };
 
-        vars.get_mut(&"msb".to_string()).set(Value::IVec3([product0[1] as i32, product1[1] as i32, product2[1] as i32]));
-        vars.get_mut(&"lsb".to_string()).set(Value::IVec3([product0[0] as i32, product1[0] as i32, product2[0] as i32]));
+        vars.get_mut(&"msb".into()).set(Value::IVec3([product0[1] as i32, product1[1] as i32, product2[1] as i32]));
+        vars.get_mut(&"lsb".into()).set(Value::IVec3([product0[0] as i32, product1[0] as i32, product2[0] as i32]));
         Value::Void
       } else { unreachable!() }
   });
   builtin_raw!(funcs, "imulExtended", (x: ivec4, y: ivec4, msb: !out ivec4, lsb: !out ivec4) => void - |vars: &mut Vars| {
     if let (&Value::IVec4(x),
             &Value::IVec4(y))
-      = (vars.get(&"x".to_string()),
-         vars.get(&"y".to_string())) {
+      = (vars.get(&"x".into()),
+         vars.get(&"y".into())) {
 
         let product0: [i32; 2] = unsafe{ ::std::mem::transmute(x[0] as i64 * y[0] as i64) };
         let product1: [i32; 2] = unsafe{ ::std::mem::transmute(x[1] as i64 * y[1] as i64) };
         let product2: [i32; 2] = unsafe{ ::std::mem::transmute(x[2] as i64 * y[2] as i64) };
         let product3: [i32; 2] = unsafe{ ::std::mem::transmute(x[3] as i64 * y[3] as i64) };
 
-        vars.get_mut(&"msb".to_string()).set(Value::IVec4([product0[1] as i32, product1[1] as i32, product2[1] as i32, product3[1] as i32]));
-        vars.get_mut(&"lsb".to_string()).set(Value::IVec4([product0[0] as i32, product1[0] as i32, product2[0] as i32, product3[0] as i32]));
+        vars.get_mut(&"msb".into()).set(Value::IVec4([product0[1] as i32, product1[1] as i32, product2[1] as i32, product3[1] as i32]));
+        vars.get_mut(&"lsb".into()).set(Value::IVec4([product0[0] as i32, product1[0] as i32, product2[0] as i32, product3[0] as i32]));
         Value::Void
       } else { unreachable!() }
   });
@@ -777,7 +778,7 @@ pub fn all() -> HashMap<String, Vec<(FunctionPrototype, Statement)>> {
   builtin!(funcs, "memoryBarrierBuffer", () => void {});
 
   builtin_raw!(funcs, "barrier", () => void - |vars: &mut Vars| {
-    if let &Value::Barrier(ref barrier) = vars.get(&"__barrier".to_string()) {
+    if let &Value::Barrier(ref barrier) = vars.get(&"__barrier".into()) {
       barrier.wait();
       Value::Void
     } else { unreachable!() }
