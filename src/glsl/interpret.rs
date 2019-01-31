@@ -404,34 +404,35 @@ unsafe impl Send for Value {}
 
 #[derive(Debug)]
 pub struct Vars {
-  scopes: Vec<Vec<(Atom, Value)>>,
+  checkpoints: Vec<usize>,
+  values: Vec<(Atom, Value)>,
 }
 
 impl Vars {
   pub fn new() -> Self {
     Self{
-      scopes: vec![vec![]],
+      checkpoints: vec![0],
+      values: vec![],
     }
   }
 
   pub fn push(&mut self) {
-    self.scopes.push(Vec::new());
+    self.checkpoints.push(self.values.len() - 1);
   }
 
   fn pop(&mut self) {
-    self.scopes.pop().expect("Tried to pop an empty vars");
+    let checkpoint = self.checkpoints.pop().expect("Tried to pop an empty vars");
+    self.values.truncate(checkpoint);
   }
 
   pub fn insert(&mut self, ident: Atom, value: Value) {
-    self.scopes.last_mut().unwrap().push((ident, value));
+    self.values.push((ident, value));
   }
 
   pub fn get(&self, ident: &Atom) -> &Value {
-    for scope in self.scopes.iter().rev() {
-      for (name, val) in scope.iter() {
-        if name == ident {
-          return val;
-        }
+    for (name, val) in self.values.iter().rev() {
+      if name == ident {
+        return val;
       }
     }
 
@@ -439,11 +440,9 @@ impl Vars {
   }
 
   pub fn get_mut<'a>(&'a mut self, ident: &Atom) -> &mut Value {
-    for scope in self.scopes.iter_mut().rev() {
-      for (name, val) in scope.iter_mut() {
-        if name == ident {
-          return val;
-        }
+    for (name, val) in self.values.iter_mut().rev() {
+      if name == ident {
+        return val;
       }
     }
 
