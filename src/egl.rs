@@ -219,14 +219,19 @@ impl Surface {
                    y: gl::GLint,
                    color: (f32, f32, f32, f32),
                    mask: gl::ColorMask) {
-    let old = self.get_pixel(x, y);
+    let fully_masked = mask.0 && mask.1 && mask.2 && mask.3;
 
-    let color = (
-      if mask.0 { color.0 } else { old.0 },
-      if mask.1 { color.1 } else { old.1 },
-      if mask.2 { color.2 } else { old.2 },
-      if mask.3 { color.3 } else { old.3 },
-    );
+    let color = if fully_masked {
+      color
+    } else {
+      let old = self.get_pixel(x, y);
+      (
+        if mask.0 { color.0 } else { old.0 },
+        if mask.1 { color.1 } else { old.1 },
+        if mask.2 { color.2 } else { old.2 },
+        if mask.3 { color.3 } else { old.3 },
+      )
+    };
 
     let color_format = self.config.color_format;
     let size = color_format.byte_size();
