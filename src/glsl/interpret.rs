@@ -1,7 +1,6 @@
 use super::parse::{Statement,Expression,TypeSpecifierNonArray,Comparison,TypeQualifier,StorageQualifier};
 use super::Shader;
 
-use std::collections::HashMap;
 use std::sync::{Barrier,Arc};
 use std::ops::Deref;
 
@@ -403,18 +402,18 @@ unsafe impl Send for Value {}
 
 #[derive(Debug)]
 pub struct Vars {
-  scopes: Vec<HashMap<String, Value>>,
+  scopes: Vec<Vec<(String, Value)>>,
 }
 
 impl Vars {
   pub fn new() -> Self {
     Self{
-      scopes: vec![HashMap::new()],
+      scopes: vec![vec![]],
     }
   }
 
   pub fn push(&mut self) {
-    self.scopes.push(HashMap::new());
+    self.scopes.push(Vec::new());
   }
 
   fn pop(&mut self) {
@@ -422,13 +421,15 @@ impl Vars {
   }
 
   pub fn insert(&mut self, ident: String, value: Value) {
-    self.scopes.last_mut().unwrap().insert(ident, value);
+    self.scopes.last_mut().unwrap().push((ident, value));
   }
 
   pub fn get(&self, ident: &String) -> &Value {
     for scope in self.scopes.iter().rev() {
-      if let Some(val) = scope.get(ident) {
-        return val
+      for (name, val) in scope.iter() {
+        if name == ident {
+          return val;
+        }
       }
     }
 
@@ -437,8 +438,10 @@ impl Vars {
 
   pub fn get_mut<'a>(&'a mut self, ident: &String) -> &mut Value {
     for scope in self.scopes.iter_mut().rev() {
-      if let Some(val) = scope.get_mut(ident) {
-        return val;
+      for (name, val) in scope.iter_mut() {
+        if name == ident {
+          return val;
+        }
       }
     }
 
