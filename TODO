@@ -1,0 +1,16 @@
+RASTERIZER_DISCARD
+profile!
+face culling
+EGL?
+draw elements
+depth, scissor, etc tests
+texture sampling during rendering
+
+clipping
+wide lines
+
+geom + tess
+
+
+
+optimize glsl

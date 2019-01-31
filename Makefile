@@ -34,3 +34,4 @@ good: build
 	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.transform_feedback.*
 	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.draw.draw_arrays.points.*
 	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.draw.draw_arrays.lines.*
+	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.draw.draw_arrays.triangles.*

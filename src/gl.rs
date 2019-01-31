@@ -2915,89 +2915,9 @@ fn glDrawArraysOneInstance(
         let mut x = p_a[0];
         let mut y = p_a[1];
         let mut t = 1.0;
-        // let mut error = 0.0;
+
 
         fn interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, t: f32) -> Vars {
-          fn lerp(a: f32, b: f32, t: f32) -> f32 { t * a + (1.0-t) * b }
-          fn lerp2(a: [f32; 2], b: [f32; 2], t: f32) -> [f32; 2] {
-            [
-              lerp(a[0], b[0], t),
-              lerp(a[1], b[1], t),
-            ]
-          }
-          fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
-            [
-              lerp(a[0], b[0], t),
-              lerp(a[1], b[1], t),
-              lerp(a[2], b[2], t),
-            ]
-          }
-          fn lerp4(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
-            [
-              lerp(a[0], b[0], t),
-              lerp(a[1], b[1], t),
-              lerp(a[2], b[2], t),
-              lerp(a[3], b[3], t),
-            ]
-          }
-
-          fn interp(a: &Value, b: &Value, t: f32) -> Value {
-            match (a, b) {
-              (&Value::Float(a), &Value::Float(b)) => Value::Float(lerp(a, b, t)),
-              (&Value::Vec2(a), &Value::Vec2(b)) => Value::Vec2(lerp2(a, b, t)),
-              (&Value::Vec3(a), &Value::Vec3(b)) => Value::Vec3(lerp3(a, b, t)),
-              (&Value::Vec4(a), &Value::Vec4(b)) => Value::Vec4(lerp4(a, b, t)),
-              (&Value::Mat2(a), &Value::Mat2(b)) => Value::Mat2([
-                lerp2(a[0], b[0], t),
-                lerp2(a[1], b[1], t),
-              ]),
-              (&Value::Mat2x3(a), &Value::Mat2x3(b)) => Value::Mat2x3([
-                lerp3(a[0], b[0], t),
-                lerp3(a[1], b[1], t),
-              ]),
-              (&Value::Mat2x4(a), &Value::Mat2x4(b)) => Value::Mat2x4([
-                lerp4(a[0], b[0], t),
-                lerp4(a[1], b[1], t),
-              ]),
-              (&Value::Mat3x2(a), &Value::Mat3x2(b)) => Value::Mat3x2([
-                lerp2(a[0], b[0], t),
-                lerp2(a[1], b[1], t),
-                lerp2(a[2], b[2], t),
-              ]),
-              (&Value::Mat3(a), &Value::Mat3(b)) => Value::Mat3([
-                lerp3(a[0], b[0], t),
-                lerp3(a[1], b[1], t),
-                lerp3(a[2], b[2], t),
-              ]),
-              (&Value::Mat3x4(a), &Value::Mat3x4(b)) => Value::Mat3x4([
-                lerp4(a[0], b[0], t),
-                lerp4(a[1], b[1], t),
-                lerp4(a[2], b[2], t),
-              ]),
-              (&Value::Mat4x2(a), &Value::Mat4x2(b)) => Value::Mat4x2([
-                lerp2(a[0], b[0], t),
-                lerp2(a[1], b[1], t),
-                lerp2(a[2], b[2], t),
-                lerp2(a[3], b[3], t),
-              ]),
-              (&Value::Mat4x3(a), &Value::Mat4x3(b)) => Value::Mat4x3([
-                lerp3(a[0], b[0], t),
-                lerp3(a[1], b[1], t),
-                lerp3(a[2], b[2], t),
-                lerp3(a[3], b[3], t),
-              ]),
-              (&Value::Mat4(a), &Value::Mat4(b)) => Value::Mat4([
-                lerp4(a[0], b[0], t),
-                lerp4(a[1], b[1], t),
-                lerp4(a[2], b[2], t),
-                lerp4(a[3], b[3], t),
-              ]),
-              (&Value::Array(ref a), &Value::Array(ref b)) => Value::Array(a.iter().zip(b.iter()).map(|(a, b)| interp(a, b, t)).collect()),
-              x => unimplemented!("{:?}", x),
-            }
-          }
-
-
           let mut vars = Vars::new();
           vars.push();
 
@@ -3008,7 +2928,7 @@ fn glDrawArraysOneInstance(
             let val = if var.flat {
               a_val
             } else {
-              interp(&a_val, &b_val, t)
+              interpret::add(&interpret::mul(&a_val, t), &interpret::mul(&b_val, 1.0 - t))
             };
 
             vars.insert(var.name.clone(), val);
@@ -3109,7 +3029,110 @@ fn glDrawArraysOneInstance(
           }
         }
       },
-      _ => {},
+      Primitive::Triangle(a, b, c) => {
+        let p_a = window_coords(a, current.viewport, current.depth_range);
+        let p_b = window_coords(b, current.viewport, current.depth_range);
+        let p_c = window_coords(c, current.viewport, current.depth_range);
+
+        let (mut left, mut middle, mut right) = (p_a, p_b, p_c);
+        if middle[0] < left[0] { mem::swap(&mut left, &mut middle) };
+        if right[0] < middle[0] { mem::swap(&mut middle, &mut right) };
+        if middle[0] < left[0] { mem::swap(&mut left, &mut middle) };
+        let (left, middle, right) = (left, middle, right);
+
+        let slope_lm = (middle[1]-left[1]) / (middle[0]-left[0]);
+        let slope_mr = (right[1]-middle[1]) / (right[0]-middle[0]);
+        let slope_lr = (right[1]-left[1]) / (right[0]-left[0]);
+
+        let lr_top = slope_lr > slope_lm;
+
+        let mut x = left[0];
+        let mut y_lr = left[1];
+        let mut y_lmr = left[1];
+
+        let first_hop = 1.0 - (x + 0.5).fract();
+
+        x += first_hop;
+        y_lr += first_hop * slope_lr;
+        y_lmr += first_hop * slope_lm;
+
+        fn barycentric(x: f32, y: f32, a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> (f32, f32, f32) {
+          let [x1, y1, _] = a;
+          let [x2, y2, _] = b;
+          let [x3, y3, _] = c;
+
+          // From https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Conversion_between_barycentric_and_Cartesian_coordinates
+          let bary_a = ((y2 - y3)*(x - x3) + (x3 - x2)*(y - y3)) / ((y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3));
+          let bary_b = ((y3 - y1)*(x - x3) + (x1 - x3)*(y - y3)) / ((y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3));
+          let bary_c = 1.0 - bary_a - bary_b;
+          (bary_a, bary_b, bary_c)
+        }
+
+        fn bary_interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, c: &Vars, (bary_a, bary_b, bary_c): (f32, f32, f32)) -> Vars {
+          let mut vars = Vars::new();
+          vars.push();
+
+          for var in frag_in_vars {
+            let a_val = a.get(&var.name).clone();
+            let b_val = b.get(&var.name).clone();
+            let c_val = c.get(&var.name).clone();
+
+            let val = if var.flat {
+              a_val
+            } else {
+              interpret::add(
+                &interpret::mul(&a_val, bary_a),
+                &interpret::add(
+                  &interpret::mul(&b_val, bary_b),
+                  &interpret::mul(&c_val, bary_c),
+                )
+              )
+            };
+
+            vars.insert(var.name.clone(), val);
+          }
+
+          vars
+        }
+
+
+        while x < right[0] {
+          let (bottom, top) = if lr_top { (y_lmr, y_lr) } else { (y_lr, y_lmr) };
+          let mut y = bottom.round() + 0.5;
+          while y < top.round() {
+            let barys = barycentric(x, y, p_a, p_b, p_c);
+
+            let frag_vals = bary_interp_vars(&frag_in_vars, a, b, c, barys);
+
+            do_fragment(
+              (x.floor() as i32, y.floor() as i32),
+              &frag_vals,
+              &frag_in_vars,
+              &frag_out_vars,
+              &frag_uniforms,
+              &frag_compiled,
+              current.draw_framebuffer,
+              unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
+              current.color_mask,
+            );
+            y += 1.0;
+          }
+
+          if x < middle[0] && x + 1.0 > middle[0] {
+            let hop_to_mid = middle[0] - x;
+            let hop_from_mid = 1.0 - hop_to_mid;
+            y_lmr += slope_lm * hop_to_mid + slope_mr * hop_from_mid;
+
+          } else if x < middle[0] {
+            y_lmr += slope_lm;
+          } else {
+            y_lmr += slope_mr;
+          }
+
+          x += 1.0;
+          y_lr += slope_lr;
+        }
+      },
     }
 
   }

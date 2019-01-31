@@ -214,6 +214,165 @@ impl Value {
   }
 }
 
+pub fn add(a: &Value, b: &Value) -> Value {
+  fn add2(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
+    [
+      a[0] + b[0],
+      a[1] + b[1],
+    ]
+  }
+  fn add3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [
+      a[0] + b[0],
+      a[1] + b[1],
+      a[2] + b[2],
+    ]
+  }
+  fn add4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    [
+      a[0] + b[0],
+      a[1] + b[1],
+      a[2] + b[2],
+      a[3] + b[3],
+    ]
+  }
+
+  match (a, b) {
+    (&Value::Float(a), &Value::Float(b)) => Value::Float(a + b),
+    (&Value::Vec2(a), &Value::Vec2(b)) => Value::Vec2(add2(a, b)),
+    (&Value::Vec3(a), &Value::Vec3(b)) => Value::Vec3(add3(a, b)),
+    (&Value::Vec4(a), &Value::Vec4(b)) => Value::Vec4(add4(a, b)),
+    (&Value::Mat2(a), &Value::Mat2(b)) => Value::Mat2([
+      add2(a[0], b[0]),
+      add2(a[1], b[1]),
+    ]),
+    (&Value::Mat2x3(a), &Value::Mat2x3(b)) => Value::Mat2x3([
+      add3(a[0], b[0]),
+      add3(a[1], b[1]),
+    ]),
+    (&Value::Mat2x4(a), &Value::Mat2x4(b)) => Value::Mat2x4([
+      add4(a[0], b[0]),
+      add4(a[1], b[1]),
+    ]),
+    (&Value::Mat3x2(a), &Value::Mat3x2(b)) => Value::Mat3x2([
+      add2(a[0], b[0]),
+      add2(a[1], b[1]),
+      add2(a[2], b[2]),
+    ]),
+    (&Value::Mat3(a), &Value::Mat3(b)) => Value::Mat3([
+      add3(a[0], b[0]),
+      add3(a[1], b[1]),
+      add3(a[2], b[2]),
+    ]),
+    (&Value::Mat3x4(a), &Value::Mat3x4(b)) => Value::Mat3x4([
+      add4(a[0], b[0]),
+      add4(a[1], b[1]),
+      add4(a[2], b[2]),
+    ]),
+    (&Value::Mat4x2(a), &Value::Mat4x2(b)) => Value::Mat4x2([
+      add2(a[0], b[0]),
+      add2(a[1], b[1]),
+      add2(a[2], b[2]),
+      add2(a[3], b[3]),
+    ]),
+    (&Value::Mat4x3(a), &Value::Mat4x3(b)) => Value::Mat4x3([
+      add3(a[0], b[0]),
+      add3(a[1], b[1]),
+      add3(a[2], b[2]),
+      add3(a[3], b[3]),
+    ]),
+    (&Value::Mat4(a), &Value::Mat4(b)) => Value::Mat4([
+      add4(a[0], b[0]),
+      add4(a[1], b[1]),
+      add4(a[2], b[2]),
+      add4(a[3], b[3]),
+    ]),
+    (&Value::Array(ref a), &Value::Array(ref b)) => Value::Array(a.iter().zip(b.iter()).map(|(a, b)| add(a, b)).collect()),
+    x => unimplemented!("{:?}", x),
+  }
+
+}
+
+pub fn mul(v: &Value, t: f32) -> Value {
+  fn mul2(v: [f32; 2], t: f32) -> [f32; 2] {
+    [
+      v[0] * t,
+      v[1] * t,
+    ]
+  }
+  fn mul3(v: [f32; 3], t: f32) -> [f32; 3] {
+    [
+      v[0] * t,
+      v[1] * t,
+      v[2] * t,
+    ]
+  }
+  fn mul4(v: [f32; 4], t: f32) -> [f32; 4] {
+    [
+      v[0] * t,
+      v[1] * t,
+      v[2] * t,
+      v[3] * t,
+    ]
+  }
+
+  match v {
+    &Value::Float(a) => Value::Float(a * t),
+    &Value::Vec2(a) => Value::Vec2(mul2(a, t)),
+    &Value::Vec3(a) => Value::Vec3(mul3(a, t)),
+    &Value::Vec4(a) => Value::Vec4(mul4(a, t)),
+    &Value::Mat2(a) => Value::Mat2([
+      mul2(a[0], t),
+      mul2(a[1], t),
+    ]),
+    &Value::Mat2x3(a) => Value::Mat2x3([
+      mul3(a[0], t),
+      mul3(a[1], t),
+    ]),
+    &Value::Mat2x4(a) => Value::Mat2x4([
+      mul4(a[0], t),
+      mul4(a[1], t),
+    ]),
+    &Value::Mat3x2(a) => Value::Mat3x2([
+      mul2(a[0], t),
+      mul2(a[1], t),
+      mul2(a[2], t),
+    ]),
+    &Value::Mat3(a) => Value::Mat3([
+      mul3(a[0], t),
+      mul3(a[1], t),
+      mul3(a[2], t),
+    ]),
+    &Value::Mat3x4(a) => Value::Mat3x4([
+      mul4(a[0], t),
+      mul4(a[1], t),
+      mul4(a[2], t),
+    ]),
+    &Value::Mat4x2(a) => Value::Mat4x2([
+      mul2(a[0], t),
+      mul2(a[1], t),
+      mul2(a[2], t),
+      mul2(a[3], t),
+    ]),
+    &Value::Mat4x3(a) => Value::Mat4x3([
+      mul3(a[0], t),
+      mul3(a[1], t),
+      mul3(a[2], t),
+      mul3(a[3], t),
+    ]),
+    &Value::Mat4(a) => Value::Mat4([
+      mul4(a[0], t),
+      mul4(a[1], t),
+      mul4(a[2], t),
+      mul4(a[3], t),
+    ]),
+    &Value::Array(ref a) => Value::Array(a.iter().map(|a| mul(a, t)).collect()),
+    x => unimplemented!("{:?}", x),
+  }
+
+}
+
+
 impl PartialEq for Value {
   fn eq(&self, other: &Self) -> bool {
     match (self, other) {
