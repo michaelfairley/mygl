@@ -1,5 +1,4 @@
 RASTERIZER_DISCARD
-profile!
 face culling
 EGL?
 draw elements
@@ -11,6 +10,3 @@ wide lines
 
 geom + tess
 
-
-
-optimize glsl
