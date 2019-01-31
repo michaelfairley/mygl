@@ -23,8 +23,8 @@ endif
 
 prepare_cts:
 	mkdir -p cts_build
-	cd cts_build && cmake ../VK-GL-CTS/ -DDEQP_TARGET=mygl -DGLCTS_GTF_TARGET=gles32 -DCMAKE_BUILD_TYPE=Debug
-	cd cts_build && cmake --build .
+	cd cts_build && cmake ../VK-GL-CTS/ -DDEQP_TARGET=mygl -DGLCTS_GTF_TARGET=gles32 -DCMAKE_BUILD_TYPE=Release
+	cd cts_build && cmake --build . -j 12
 
 good: build
 	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.compute.basic.*
