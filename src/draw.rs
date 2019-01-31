@@ -1,4 +1,5 @@
 use ::gl::*;
+use std::mem;
 
 use glsl::interpret::{Vars};
 
@@ -51,7 +52,11 @@ pub struct PrimitivePump<I: Iterator<Item=Vars>> {
 enum Mode {
   Points(Option<Vars>),
   Lines(Option<Vars>, Option<Vars>),
+  LineStrip(Option<Vars>, Option<Vars>),
+  LineLoop(Option<Vars>, Option<Vars>, Option<Vars>),
   Triangles(Option<Vars>, Option<Vars>, Option<Vars>),
+  TriangleFan(Option<Vars>, Option<Vars>, Option<Vars>),
+  TriangleStrip(Option<Vars>, Option<Vars>, Option<Vars>),
 }
 
 impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
@@ -62,7 +67,11 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
     let mode = match mode {
       GL_POINTS => Mode::Points(None),
       GL_LINES => Mode::Lines(None, None),
+      GL_LINE_STRIP => Mode::LineStrip(None, None),
+      GL_LINE_LOOP => Mode::LineLoop(None, None, None),
       GL_TRIANGLES => Mode::Triangles(None, None, None),
+      GL_TRIANGLE_FAN => Mode::TriangleFan(None, None, None),
+      GL_TRIANGLE_STRIP => Mode::TriangleStrip(None, None, None),
       x => unimplemented!("{:x}", x),
     };
 
@@ -87,10 +96,66 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
           Some(Primitive::Line(a, b))
         } else { None }
       },
+      Mode::LineStrip(ref mut a, ref mut b) => {
+        if a.is_none() {
+          *a = self.vertex_iter.next();
+          *b = self.vertex_iter.next();
+        } else {
+          *a = mem::replace(b, self.vertex_iter.next());
+        }
+
+        if let (&mut Some(ref a), &mut Some(ref b)) = (a, b) {
+          Some(Primitive::Line(a, b))
+        } else { None }
+      },
+      Mode::LineLoop(ref mut first, ref mut a, ref mut b) => {
+        if a.is_none() {
+          *a = self.vertex_iter.next();
+          *b = self.vertex_iter.next();
+        } else {
+          if first.is_none() {
+            *first = mem::replace(a, mem::replace(b, self.vertex_iter.next()));
+          } else {
+            *a = mem::replace(b, self.vertex_iter.next());
+          }
+        }
+
+        match (first, a, b) {
+          (_, &mut Some(ref a), &mut Some(ref b)) => Some(Primitive::Line(a, b)),
+          (&mut Some(ref first), &mut Some(ref a), None) => Some(Primitive::Line(a, first)),
+          _ => None,
+        }
+      },
       Mode::Triangles(ref mut a, ref mut b, ref mut c) => {
         *a = self.vertex_iter.next();
         *b = self.vertex_iter.next();
         *c = self.vertex_iter.next();
+
+        if let (&mut Some(ref a), &mut Some(ref b), &mut Some(ref c)) = (a, b, c) {
+          Some(Primitive::Triangle(a, b, c))
+        } else { None }
+      },
+      Mode::TriangleFan(ref mut a, ref mut b, ref mut c) => {
+        if a.is_none() {
+          *a = self.vertex_iter.next();
+          *b = self.vertex_iter.next();
+          *c = self.vertex_iter.next();
+        } else {
+          *b = mem::replace(c, self.vertex_iter.next());
+        }
+
+        if let (&mut Some(ref a), &mut Some(ref b), &mut Some(ref c)) = (a, b, c) {
+          Some(Primitive::Triangle(a, b, c))
+        } else { None }
+      },
+      Mode::TriangleStrip(ref mut a, ref mut b, ref mut c) => {
+        if a.is_none() {
+          *a = self.vertex_iter.next();
+          *b = self.vertex_iter.next();
+          *c = self.vertex_iter.next();
+        } else {
+          *a = mem::replace(b, mem::replace(c, self.vertex_iter.next()));
+        }
 
         if let (&mut Some(ref a), &mut Some(ref b), &mut Some(ref c)) = (a, b, c) {
           Some(Primitive::Triangle(a, b, c))
