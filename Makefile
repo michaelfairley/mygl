@@ -21,6 +21,11 @@ else
 	cd cts_build/external/openglcts/modules && lldb -s ../../../../lldb-setup ./glcts -- -n $(FILTER)
 endif
 
+perf: build
+	cd cts_build/external/openglcts/modules && perf record --call-graph dwarf ./glcts -n $(FILTER)
+	perf script -i cts_build/external/openglcts/modules/perf.data | stackcollapse-perf.pl | flamegraph.pl > flame.svg
+
+
 prepare_cts:
 	mkdir -p cts_build
 	cd cts_build && cmake ../VK-GL-CTS/ -DDEQP_TARGET=mygl -DGLCTS_GTF_TARGET=gles32 -DCMAKE_BUILD_TYPE=Release
