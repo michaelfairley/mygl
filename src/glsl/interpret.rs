@@ -417,7 +417,7 @@ impl Vars {
   }
 
   pub fn push(&mut self) {
-    self.checkpoints.push(self.values.len() - 1);
+    self.checkpoints.push(self.values.len());
   }
 
   fn pop(&mut self) {
