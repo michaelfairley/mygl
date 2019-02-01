@@ -1,4 +1,5 @@
-use gl::{GLenum,GLuint,self};
+use types::*;
+use consts::*;
 use std::collections::HashMap;
 use std::mem;
 
@@ -178,33 +179,33 @@ pub fn gl_type(
   type_: &TypeSpecifierNonArray,
 ) -> GLenum {
   match type_ {
-    &TypeSpecifierNonArray::Uint => gl::GL_UNSIGNED_INT,
-    &TypeSpecifierNonArray::UVec2 => gl::GL_UNSIGNED_INT_VEC2,
-    &TypeSpecifierNonArray::UVec3 => gl::GL_UNSIGNED_INT_VEC3,
-    &TypeSpecifierNonArray::UVec4 => gl::GL_UNSIGNED_INT_VEC4,
-    &TypeSpecifierNonArray::Int => gl::GL_INT,
-    &TypeSpecifierNonArray::IVec2 => gl::GL_INT_VEC2,
-    &TypeSpecifierNonArray::IVec3 => gl::GL_INT_VEC3,
-    &TypeSpecifierNonArray::IVec4 => gl::GL_INT_VEC4,
-    &TypeSpecifierNonArray::Float => gl::GL_FLOAT,
-    &TypeSpecifierNonArray::Vec2 => gl::GL_FLOAT_VEC2,
-    &TypeSpecifierNonArray::Vec3 => gl::GL_FLOAT_VEC3,
-    &TypeSpecifierNonArray::Vec4 => gl::GL_FLOAT_VEC4,
-    &TypeSpecifierNonArray::Bool => gl::GL_BOOL,
-    &TypeSpecifierNonArray::BVec2 => gl::GL_BOOL_VEC2,
-    &TypeSpecifierNonArray::BVec3 => gl::GL_BOOL_VEC3,
-    &TypeSpecifierNonArray::BVec4 => gl::GL_BOOL_VEC4,
-    &TypeSpecifierNonArray::AtomicUint => gl::GL_UNSIGNED_INT_ATOMIC_COUNTER,
-    &TypeSpecifierNonArray::UImage2D => gl::GL_UNSIGNED_INT_IMAGE_2D,
-    &TypeSpecifierNonArray::Mat2 => gl::GL_FLOAT_MAT2,
-    &TypeSpecifierNonArray::Mat2x3 => gl::GL_FLOAT_MAT2x3,
-    &TypeSpecifierNonArray::Mat2x4 => gl::GL_FLOAT_MAT2x4,
-    &TypeSpecifierNonArray::Mat3x2 => gl::GL_FLOAT_MAT3x2,
-    &TypeSpecifierNonArray::Mat3 => gl::GL_FLOAT_MAT3,
-    &TypeSpecifierNonArray::Mat3x4 => gl::GL_FLOAT_MAT3x4,
-    &TypeSpecifierNonArray::Mat4x2 => gl::GL_FLOAT_MAT4x2,
-    &TypeSpecifierNonArray::Mat4x3 => gl::GL_FLOAT_MAT4x3,
-    &TypeSpecifierNonArray::Mat4 => gl::GL_FLOAT_MAT4,
+    &TypeSpecifierNonArray::Uint => GL_UNSIGNED_INT,
+    &TypeSpecifierNonArray::UVec2 => GL_UNSIGNED_INT_VEC2,
+    &TypeSpecifierNonArray::UVec3 => GL_UNSIGNED_INT_VEC3,
+    &TypeSpecifierNonArray::UVec4 => GL_UNSIGNED_INT_VEC4,
+    &TypeSpecifierNonArray::Int => GL_INT,
+    &TypeSpecifierNonArray::IVec2 => GL_INT_VEC2,
+    &TypeSpecifierNonArray::IVec3 => GL_INT_VEC3,
+    &TypeSpecifierNonArray::IVec4 => GL_INT_VEC4,
+    &TypeSpecifierNonArray::Float => GL_FLOAT,
+    &TypeSpecifierNonArray::Vec2 => GL_FLOAT_VEC2,
+    &TypeSpecifierNonArray::Vec3 => GL_FLOAT_VEC3,
+    &TypeSpecifierNonArray::Vec4 => GL_FLOAT_VEC4,
+    &TypeSpecifierNonArray::Bool => GL_BOOL,
+    &TypeSpecifierNonArray::BVec2 => GL_BOOL_VEC2,
+    &TypeSpecifierNonArray::BVec3 => GL_BOOL_VEC3,
+    &TypeSpecifierNonArray::BVec4 => GL_BOOL_VEC4,
+    &TypeSpecifierNonArray::AtomicUint => GL_UNSIGNED_INT_ATOMIC_COUNTER,
+    &TypeSpecifierNonArray::UImage2D => GL_UNSIGNED_INT_IMAGE_2D,
+    &TypeSpecifierNonArray::Mat2 => GL_FLOAT_MAT2,
+    &TypeSpecifierNonArray::Mat2x3 => GL_FLOAT_MAT2x3,
+    &TypeSpecifierNonArray::Mat2x4 => GL_FLOAT_MAT2x4,
+    &TypeSpecifierNonArray::Mat3x2 => GL_FLOAT_MAT3x2,
+    &TypeSpecifierNonArray::Mat3 => GL_FLOAT_MAT3,
+    &TypeSpecifierNonArray::Mat3x4 => GL_FLOAT_MAT3x4,
+    &TypeSpecifierNonArray::Mat4x2 => GL_FLOAT_MAT4x2,
+    &TypeSpecifierNonArray::Mat4x3 => GL_FLOAT_MAT4x3,
+    &TypeSpecifierNonArray::Mat4 => GL_FLOAT_MAT4,
 
     // INCOMPLETE
     x => unimplemented!("{:?}", x),
@@ -298,7 +299,7 @@ impl Shader {
               } else { None }).next()
             } else { None }).next().unwrap_or(0);
 
-            if typ == gl::GL_UNSIGNED_INT_ATOMIC_COUNTER {
+            if typ == GL_UNSIGNED_INT_ATOMIC_COUNTER {
               let size = array_size(&array);
 
               let atomic_info = AtomicCounterInfo{
@@ -407,7 +408,7 @@ impl Shader {
       }
     }
 
-    if type_ == gl::GL_VERTEX_SHADER {
+    if type_ == GL_VERTEX_SHADER {
       interfaces.push(Interface::Output(Variable{
         name: "gl_Position".into(),
         index: 0,
@@ -479,6 +480,6 @@ void main (void) {
         sb_out.values[offset + ndx] = ~sb_in.values[offset + ndx];
 }";
 
-  let shader = compile(source.as_bytes(), ::gl::GL_COMPUTE_SHADER);
+  let shader = compile(source.as_bytes(), GL_COMPUTE_SHADER);
   assert!(shader.is_ok());
 }

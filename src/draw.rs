@@ -1,4 +1,6 @@
-use ::gl::*;
+use types::*;
+use consts::*;
+
 use std::mem;
 
 use glsl::interpret::{Vars};

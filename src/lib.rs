@@ -12,6 +12,8 @@ extern crate trace;
 extern crate string_cache;
 
 
+pub mod consts;
+pub mod types;
 pub mod egl;
 pub mod gl;
 pub mod glsl;

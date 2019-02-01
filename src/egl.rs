@@ -8,6 +8,7 @@ use std::ptr;
 use std::cell::Cell;
 use gl;
 use gl::Context;
+use types::*;
 
 #[repr(C)]
 pub struct AttribList(*const EGLint);
@@ -215,8 +216,8 @@ pub struct Surface {
 impl Surface {
   #[inline]
   pub fn set_pixel(&mut self,
-                   x: gl::GLint,
-                   y: gl::GLint,
+                   x: GLint,
+                   y: GLint,
                    color: (f32, f32, f32, f32),
                    mask: gl::ColorMask) {
     let fully_masked = mask.0 && mask.1 && mask.2 && mask.3;
@@ -245,7 +246,7 @@ impl Surface {
   }
 
   #[inline]
-  pub fn get_pixel(&self, x: gl::GLint, y: gl::GLint) -> (f32, f32, f32, f32) {
+  pub fn get_pixel(&self, x: GLint, y: GLint) -> (f32, f32, f32, f32) {
     let color_format = self.config.color_format;
     let size = color_format.byte_size();
     let loc = (y as usize * self.width as usize + x as usize) * size;
