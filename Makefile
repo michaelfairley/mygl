@@ -1,4 +1,5 @@
-FILTER=
+FILTER=dEQP-GLES3.functional.draw.draw_elements.points.single_attribute
+FILTER=dEQP-GLES3.functional.draw.draw_arrays.*
 
 FAST=--deqp-log-images=disable --deqp-log-shader-sources=disable --deqp-log-flush=disable
 
