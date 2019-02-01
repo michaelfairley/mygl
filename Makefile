@@ -25,6 +25,9 @@ else
 	cd cts_build/external/openglcts/modules && ./glcts -n $(FILTER)
 endif
 
+tests:
+	cargo test
+
 debug: build
 ifeq ($(FILTER),)
 	cd cts_build/external/openglcts/modules && lldb -s ../../../../lldb-setup ./cts-runner -- --type=es32
@@ -42,7 +45,7 @@ prepare_cts:
 	cd cts_build && cmake ../VK-GL-CTS/ -DDEQP_TARGET=mygl -DGLCTS_GTF_TARGET=gles32 -DCMAKE_BUILD_TYPE=Release
 	cd cts_build && cmake --build . -j 12
 
-good: $(GOOD)
+good: tests $(GOOD)
 
 $(GOOD): build
 	cd cts_build/external/openglcts/modules && ./glcts $(FAST) -n $@ && (! grep 'StatusCode="Fail"' TestResults.qpa > /dev/null)

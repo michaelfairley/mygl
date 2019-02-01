@@ -1035,23 +1035,23 @@ fn test_basic() {
   ";
 
 
-  let shader = super::compile(source.as_bytes(), ::gl::GL_FRAGMENT_SHADER).unwrap();
+  let shader = super::compile(source.as_bytes(), ::consts::GL_FRAGMENT_SHADER).unwrap();
 
   let input = 0.3;
   let output = [0.0; 4];
 
   let mut vars = Vars::new();
   {
-    vars.insert("c".to_string(), Value::Float(input));
-    vars.insert("color".to_string(), Value::Vec4(output));
+    vars.insert("c".into(), Value::Float(input));
+    vars.insert("color".into(), Value::Vec4(output));
 
-    let main = &shader.functions[&"main".to_string()][0];
+    let main = &shader.functions[&"main".into()][0];
 
     execute(&main.1, &mut vars, &shader);
   }
 
-  assert_eq!(vars.get(&"c".to_string()), &Value::Float(0.3));
-  assert_eq!(vars.get(&"color".to_string()), &Value::Vec4([0.3, 0.3, 0.3, 1.0]));
+  assert_eq!(vars.get(&"c".into()), &Value::Float(0.3));
+  assert_eq!(vars.get(&"color".into()), &Value::Vec4([0.3, 0.3, 0.3, 1.0]));
 }
 
 #[test]
@@ -1073,14 +1073,14 @@ void main (void) {
   let mut input: Vec<u32> = vec![1, 2, 3, 4, 5];
   let mut output: Vec<u32> = vec![0, 0, 0, 0, 0];
 
-  let shader = super::compile(source.as_bytes(), ::gl::GL_COMPUTE_SHADER).unwrap();
+  let shader = super::compile(source.as_bytes(), ::consts::GL_COMPUTE_SHADER).unwrap();
 
   let mut vars = Vars::new();
   {
-    vars.insert("sb_in".to_string(), Value::Buffer("Input".to_string(), input.as_mut_ptr() as *mut _, None));
-    vars.insert("sb_out".to_string(), Value::Buffer("Output".to_string(), output.as_mut_ptr() as *mut _, None));
+    vars.insert("sb_in".into(), Value::Buffer(TypeSpecifierNonArray::Custom("Input".into()), input.as_mut_ptr() as *mut _, None));
+    vars.insert("sb_out".into(), Value::Buffer(TypeSpecifierNonArray::Custom("Output".into()), output.as_mut_ptr() as *mut _, None));
 
-    let main = &shader.functions[&"main".to_string()][0];
+    let main = &shader.functions[&"main".into()][0];
 
     execute(&main.1, &mut vars, &shader);
   }
@@ -1106,18 +1106,18 @@ fn test_out() {
   ";
 
 
-  let shader = super::compile(source.as_bytes(), ::gl::GL_FRAGMENT_SHADER).unwrap();
+  let shader = super::compile(source.as_bytes(), ::consts::GL_FRAGMENT_SHADER).unwrap();
 
   let output = [0.0; 4];
 
   let mut vars = Vars::new();
   {
-    vars.insert("color".to_string(), Value::Vec4(output));
+    vars.insert("color".into(), Value::Vec4(output));
 
-    let main = &shader.functions[&"main".to_string()][0];
+    let main = &shader.functions[&"main".into()][0];
 
     execute(&main.1, &mut vars, &shader);
   }
 
-  assert_eq!(vars.get(&"color".to_string()), &Value::Vec4([0.3, 0.3, 0.3, 1.0]));
+  assert_eq!(vars.get(&"color".into()), &Value::Vec4([0.3, 0.3, 0.3, 1.0]));
 }

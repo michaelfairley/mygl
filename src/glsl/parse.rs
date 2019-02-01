@@ -943,11 +943,11 @@ void main (void) {
                    Statement::Declaration(
                      (vec![], (TypeSpecifierNonArray::Int, vec![])),
                      "a".into(),
-                     Expression::Sub(
+                     Some(Expression::Sub(
                        Box::new(Expression::Sub(
                          Box::new(Expression::IntConstant(3)),
                          Box::new(Expression::IntConstant(2)))),
-                       Box::new(Expression::IntConstant(1)))
+                       Box::new(Expression::IntConstant(1))))
                    )
                  ]),
                ),
