@@ -4,6 +4,7 @@ FILTER=dEQP-GLES3.functional.draw.draw_arrays.*
 FAST=--deqp-log-images=disable --deqp-log-shader-sources=disable --deqp-log-flush=disable
 
 GOOD= \
+dEQP-GLES3.functional.prerequisite.* \
 dEQP-GLES31.functional.compute.basic.* \
 dEQP-GLES31.info.* \
 dEQP-GLES31.functional.shaders.builtin_var.* \
