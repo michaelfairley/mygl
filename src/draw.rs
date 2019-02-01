@@ -247,6 +247,7 @@ pub fn glDrawArraysOneInstance(
   let frag_shader = program.shaders.iter().find(|s| s.type_ == GL_FRAGMENT_SHADER).unwrap();
   let frag_compiled = Arc::clone(Ref::map(frag_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
 
+  let vert_in_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Input(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
   let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
 
   let frag_in_vars = frag_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Input(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
@@ -314,6 +315,9 @@ pub fn glDrawArraysOneInstance(
     vars.push();
 
     for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
+      let in_var = vert_in_vars.iter().find(|v| &v.name == name).unwrap();
+      let type_ = &in_var.type_;
+
       let attrib = &vertex_array.attribs[loc as usize];
       let binding = &vertex_array.bindings[loc as usize];
 
@@ -336,20 +340,64 @@ pub fn glDrawArraysOneInstance(
           unsafe{ attrib.pointer.offset((binding.stride * attrib_index) as isize) }
         };
 
-        match (attrib.type_, attrib.size) {
-          (GL_FLOAT, 1) => Value::Float(unsafe{ *(p as *const _) }),
-          (GL_FLOAT, 2) => Value::Vec2(unsafe{ *(p as *const _) }),
-          (GL_FLOAT, 3) => Value::Vec3(unsafe{ *(p as *const _) }),
-          (GL_FLOAT, 4) => Value::Vec4(unsafe{ *(p as *const _) }),
-          (GL_INT, 1) => Value::Int(unsafe{ *(p as *const _) }),
-          (GL_INT, 2) => Value::IVec2(unsafe{ *(p as *const _) }),
-          (GL_INT, 3) => Value::IVec3(unsafe{ *(p as *const _) }),
-          (GL_INT, 4) => Value::IVec4(unsafe{ *(p as *const _) }),
-          (GL_UNSIGNED_INT, 1) => Value::Uint(unsafe{ *(p as *const _) }),
-          (GL_UNSIGNED_INT, 2) => Value::UVec2(unsafe{ *(p as *const _) }),
-          (GL_UNSIGNED_INT, 3) => Value::UVec3(unsafe{ *(p as *const _) }),
-          (GL_UNSIGNED_INT, 4) => Value::UVec4(unsafe{ *(p as *const _) }),
-          (t, s) => unimplemented!("{:x} {}", t, s),
+        #[derive(Debug)]
+        enum AttribValue {
+          Float([GLfloat; 4]),
+          Int([GLint; 4]),
+          Uint([GLuint; 4]),
+        }
+
+        let attrib_value = match attrib.type_ {
+          GL_FLOAT => {
+            let p = p as *const GLfloat;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0.0, 0.0, 1.0],
+              2 => [p.read(), p.add(1).read(), 0.0, 1.0],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1.0],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::Float(v)
+          },
+          GL_INT => {
+            let p = p as *const GLint;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0, 0, 1],
+              2 => [p.read(), p.add(1).read(), 0, 1],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::Int(v)
+          },
+          GL_UNSIGNED_INT => {
+            let p = p as *const GLuint;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0, 0, 1],
+              2 => [p.read(), p.add(1).read(), 0, 1],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::Uint(v)
+          },
+          x => unimplemented!("{:x}", x),
+        };
+
+        match (attrib_value, type_) {
+          (AttribValue::Float(f), &TypeSpecifierNonArray::Float) => Value::Float(f[0]),
+          (AttribValue::Float(f), &TypeSpecifierNonArray::Vec2) => Value::Vec2([f[0], f[1]]),
+          (AttribValue::Float(f), &TypeSpecifierNonArray::Vec3) => Value::Vec3([f[0], f[1], f[2]]),
+          (AttribValue::Float(f), &TypeSpecifierNonArray::Vec4) => Value::Vec4([f[0], f[1], f[2], f[3]]),
+          (AttribValue::Int(i), &TypeSpecifierNonArray::Int) => Value::Int(i[0]),
+          (AttribValue::Int(i), &TypeSpecifierNonArray::IVec2) => Value::IVec2([i[0], i[1]]),
+          (AttribValue::Int(i), &TypeSpecifierNonArray::IVec3) => Value::IVec3([i[0], i[1], i[2]]),
+          (AttribValue::Int(i), &TypeSpecifierNonArray::IVec4) => Value::IVec4([i[0], i[1], i[2], i[3]]),
+          (AttribValue::Uint(u), &TypeSpecifierNonArray::Uint) => Value::Uint(u[0]),
+          (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec2) => Value::UVec2([u[0], u[1]]),
+          (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec3) => Value::UVec3([u[0], u[1], u[2]]),
+          (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec4) => Value::UVec4([u[0], u[1], u[2], u[3]]),
+          (v, t) => unimplemented!("{:?} {:?}", v, t),
         }
       } else {
         let attrib = current_vertex_attrib[loc as usize];
