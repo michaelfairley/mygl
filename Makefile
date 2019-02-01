@@ -5,6 +5,7 @@ FAST=--deqp-log-images=disable --deqp-log-shader-sources=disable --deqp-log-flus
 
 GOOD= \
 dEQP-GLES3.functional.prerequisite.* \
+dEQP-GLES3.functional.color_clear.* \
 dEQP-GLES31.functional.compute.basic.* \
 dEQP-GLES31.info.* \
 dEQP-GLES31.functional.shaders.builtin_var.* \
