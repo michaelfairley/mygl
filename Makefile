@@ -1,5 +1,7 @@
 FILTER=
 
+FAST=--deqp-log-images=disable --deqp-log-shader-sources=disable --deqp-log-flush=disable
+
 export LD_LIBRARY_PATH=../../../../target/release
 export DYLD_LIBRARY_PATH=../../../../target/release
 
@@ -22,7 +24,7 @@ else
 endif
 
 perf: build
-	cd cts_build/external/openglcts/modules && perf record --call-graph dwarf ./glcts -n $(FILTER)
+	cd cts_build/external/openglcts/modules && perf record --call-graph dwarf ./glcts -n $(FILTER) $(FAST)
 	perf script -i cts_build/external/openglcts/modules/perf.data | stackcollapse-perf.pl | flamegraph.pl > flame.svg
 
 
@@ -32,9 +34,9 @@ prepare_cts:
 	cd cts_build && cmake --build . -j 12
 
 good: build
-	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.compute.basic.*
-	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.info.*
-	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.shaders.builtin_var.*
-	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute
-	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.transform_feedback.*
-	cd cts_build/external/openglcts/modules && ./glcts -n dEQP-GLES3.functional.draw.draw_arrays.*
+	cd cts_build/external/openglcts/modules && ./glcts $(FAST) -n dEQP-GLES31.functional.compute.basic.*
+	cd cts_build/external/openglcts/modules && ./glcts $(FAST) -n dEQP-GLES31.info.*
+	cd cts_build/external/openglcts/modules && ./glcts $(FAST) -n dEQP-GLES31.functional.shaders.builtin_var.*
+	cd cts_build/external/openglcts/modules && ./glcts $(FAST) -n dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute
+	cd cts_build/external/openglcts/modules && ./glcts $(FAST) -n dEQP-GLES3.functional.transform_feedback.*
+	cd cts_build/external/openglcts/modules && ./glcts $(FAST) -n dEQP-GLES3.functional.draw.draw_arrays.*
