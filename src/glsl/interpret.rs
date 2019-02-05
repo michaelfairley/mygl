@@ -216,12 +216,14 @@ impl Value {
 }
 
 pub fn add(a: &Value, b: &Value) -> Value {
+  #[inline]
   fn add2(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
     [
       a[0] + b[0],
       a[1] + b[1],
     ]
   }
+  #[inline]
   fn add3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [
       a[0] + b[0],
@@ -229,6 +231,7 @@ pub fn add(a: &Value, b: &Value) -> Value {
       a[2] + b[2],
     ]
   }
+  #[inline]
   fn add4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     [
       a[0] + b[0],
@@ -295,12 +298,14 @@ pub fn add(a: &Value, b: &Value) -> Value {
 }
 
 pub fn mul(v: &Value, t: f32) -> Value {
+  #[inline]
   fn mul2(v: [f32; 2], t: f32) -> [f32; 2] {
     [
       v[0] * t,
       v[1] * t,
     ]
   }
+  #[inline]
   fn mul3(v: [f32; 3], t: f32) -> [f32; 3] {
     [
       v[0] * t,
@@ -308,6 +313,7 @@ pub fn mul(v: &Value, t: f32) -> Value {
       v[2] * t,
     ]
   }
+  #[inline]
   fn mul4(v: [f32; 4], t: f32) -> [f32; 4] {
     [
       v[0] * t,
@@ -886,6 +892,8 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
           match field.as_ref() {
             "xy" => Value::RefV22(v.as_mut_ptr().offset(0),
                                   v.as_mut_ptr().offset(1)),
+            "zw" => Value::RefV22(v.as_mut_ptr().offset(2),
+                                  v.as_mut_ptr().offset(3)),
             "rg" => Value::RefV22(v.as_mut_ptr().offset(0),
                                   v.as_mut_ptr().offset(1)),
             "rgb" => Value::RefV32(v.as_mut_ptr().offset(0),

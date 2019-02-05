@@ -11,7 +11,7 @@ use std::cell::{Ref};
 use string_cache::DefaultAtom as Atom;
 use std::collections::HashMap;
 use std::os::raw::*;
-use gl::{self,Context,Rect,parse_variable_name,ColorMask};
+use gl::{self,Context,Rect,parse_variable_name,ColorMask,fixed_to_float};
 
 
 pub enum Primitive<'a> {
@@ -344,6 +344,9 @@ pub fn glDrawArraysOneInstance(
           Float([GLfloat; 4]),
           Int([GLint; 4]),
           Uint([GLuint; 4]),
+          Short([GLshort; 4]),
+          Byte([GLbyte; 4]),
+          Fixed([GLfixed; 4]),
         }
 
         let attrib_value = match attrib.type_ {
@@ -380,6 +383,40 @@ pub fn glDrawArraysOneInstance(
             }};
             AttribValue::Uint(v)
           },
+          GL_SHORT => {
+            let p = p as *const GLshort;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0, 0, 1],
+              2 => [p.read(), p.add(1).read(), 0, 1],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::Short(v)
+          },
+          GL_BYTE => {
+            let p = p as *const GLbyte;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0, 0, 1],
+              2 => [p.read(), p.add(1).read(), 0, 1],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::Byte(v)
+          },
+          GL_FIXED => {
+            let p = p as *const GLfixed;
+            let one = 0x0001_0000;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0, 0, one],
+              2 => [p.read(), p.add(1).read(), 0, one],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::Fixed(v)
+          },
           x => unimplemented!("{:x}", x),
         };
 
@@ -396,6 +433,9 @@ pub fn glDrawArraysOneInstance(
           (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec2) => Value::UVec2([u[0], u[1]]),
           (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec3) => Value::UVec3([u[0], u[1], u[2]]),
           (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec4) => Value::UVec4([u[0], u[1], u[2], u[3]]),
+          (AttribValue::Short(s), &TypeSpecifierNonArray::Vec4) => Value::Vec4([s[0].into(), s[1].into(), s[2].into(), s[3].into()]),
+          (AttribValue::Byte(b), &TypeSpecifierNonArray::Vec4) => Value::Vec4([b[0].into(), b[1].into(), b[2].into(), b[3].into()]),
+          (AttribValue::Fixed(f), &TypeSpecifierNonArray::Vec4) => Value::Vec4([fixed_to_float(f[0]), fixed_to_float(f[1]), fixed_to_float(f[2]), fixed_to_float(f[3])]),
           (v, t) => unimplemented!("{:?} {:?}", v, t),
         }
       } else {
@@ -767,6 +807,11 @@ pub fn glDrawArraysOneInstance(
         y_lr += first_hop * slope_lr;
         y_lmr += first_hop * slope_lm;
 
+        if left[0] == middle[0] {
+          y_lmr = middle[1];
+        }
+
+        #[inline]
         fn barycentric(x: f32, y: f32, a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> (f32, f32, f32) {
           let [x1, y1, _] = a;
           let [x2, y2, _] = b;
@@ -783,12 +828,12 @@ pub fn glDrawArraysOneInstance(
           let mut vars = Vars::new();
 
           for var in frag_in_vars {
-            let a_val = a.get(&var.name).clone();
-            let b_val = b.get(&var.name).clone();
-            let c_val = c.get(&var.name).clone();
+            let a_val = a.get(&var.name);
+            let b_val = b.get(&var.name);
+            let c_val = c.get(&var.name);
 
             let val = if var.flat {
-              a_val
+              a_val.clone()
             } else {
               interpret::add(
                 &interpret::mul(&a_val, bary_a),

@@ -4228,3 +4228,8 @@ pub fn parse_variable_name(
 
   (base, indices)
 }
+
+#[inline]
+pub(crate) fn fixed_to_float(fixed: GLfixed) -> GLfloat {
+  fixed as f32 / 65536.0
+}
