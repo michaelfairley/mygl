@@ -24,4 +24,6 @@ debug = true
 codegen-units = 32
 
 [features]
+trace_egl = ["trace"]
+trace_gl = ["trace"]
 default = []

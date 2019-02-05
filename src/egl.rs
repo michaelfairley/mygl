@@ -2,7 +2,7 @@
 
 
 use std::os::raw::*;
-// use std::ffi;
+use std::fmt;
 use std::mem;
 use std::ptr;
 use std::cell::Cell;
@@ -10,8 +10,23 @@ use gl;
 use gl::Context;
 use types::*;
 
+#[cfg(feature = "trace_egl")]
+use trace::trace;
+#[cfg(feature = "trace_egl")]
+trace::init_depth_var!();
+
+
 #[repr(C)]
 pub struct AttribList(*const EGLint);
+
+impl fmt::Debug for AttribList {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let attribs = self.iter().map(|a| format!("({:x}, {:x})", a.0, a.1)).collect::<Vec<_>>();
+
+    write!(f, "AttribList({:?})", attribs)
+  }
+}
+
 
 impl AttribList {
   fn iter(&self) -> AttribListIterator {
@@ -79,6 +94,13 @@ pub type EGLint = i32;
 
 pub struct Display;
 static THE_DISPLAY: Display = Display;
+
+impl fmt::Debug for Display {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "Display")
+  }
+}
+
 
 #[derive(Clone,Copy,PartialEq,Debug)]
 pub enum ColorFormat {
@@ -210,7 +232,14 @@ pub struct Surface {
   pub width: EGLint,
   pub height: EGLint,
   multisample_resolve: EGLenum,
-  pub buffer: Vec<u8>,
+  pub color_buffer: Vec<u8>,
+  pub ds_buffer: Vec<u8>,
+}
+
+impl fmt::Debug for Surface {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "Surface({:?}, {}x{})", self.config, self.width, self.height)
+  }
 }
 
 impl Surface {
@@ -241,7 +270,7 @@ impl Surface {
     let encoded = color_format.encode(color);
 
     for i in 0..size {
-      self.buffer[loc + i] = encoded[i];
+      self.color_buffer[loc + i] = encoded[i];
     }
   }
 
@@ -253,11 +282,36 @@ impl Surface {
 
     let mut bytes: [u8; 4] = unsafe{ mem::uninitialized() };
     for i in 0..size {
-      bytes[i] = self.buffer[loc + i];
+      bytes[i] = self.color_buffer[loc + i];
     }
 
     color_format.decode(bytes)
   }
+
+  #[inline]
+  pub fn set_depth(&mut self,
+                   x: GLint,
+                   y: GLint,
+                   depth: GLfloat) {
+    let loc = (y as usize * self.width as usize + x as usize) * self.config.ds_bytes();
+    let size = self.config.depth_size as usize / 8;
+
+    let encoded = match size {
+      3 => {
+        let whole = (depth * 0xFFFFFF as f32) as u32;
+        let a = (whole >> 16) as u8;
+        let b = (whole >> 8 ) as u8;
+        let c = (whole >> 0 ) as u8;
+        [a, b, c, 0]
+      },
+      x => unimplemented!("{}", x),
+    };
+
+    for i in 0..size {
+      self.ds_buffer[loc + i] = encoded[i];
+    }
+  }
+
 }
 
 thread_local! {
@@ -279,6 +333,11 @@ impl Config {
   fn sample_buffers(&self) -> u8 {
     if self.samples == 0 { 0 } else { 1 }
   }
+
+  #[inline]
+  fn ds_bytes(&self) -> usize {
+    (self.depth_size + self.stencil_size) as usize / 8
+  }
 }
 
 lazy_static! {
@@ -290,8 +349,8 @@ lazy_static! {
       ColorFormat::RGB565,
       ColorFormat::RGB555A1,
     ];
-    let depth_sizes = &[0, 24];
-    let stencil_sizes = &[0, 8, 16];
+    let depth_sizes = &[24, 0];
+    let stencil_sizes = &[8, 0, 16];
 
     let samples = &[0, 4];
 
@@ -506,6 +565,7 @@ pub struct EGLClientPixmapHI {
 
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglBindAPI(api: EGLenum) -> EGLBoolean {
   if api != EGL_OPENGL_ES_API {
     return EGL_FALSE;
@@ -517,11 +577,13 @@ pub extern "C" fn eglBindAPI(api: EGLenum) -> EGLBoolean {
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglBindTexImage(dpy: EGLDisplay, surface: EGLSurface, buffer: EGLint) -> EGLBoolean {
   unimplemented!()
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub unsafe extern "C" fn eglChooseConfig(_dpy: EGLDisplay, attrib_list: AttribList, configs: *mut EGLConfig, config_size: EGLint, num_config: *mut EGLint) -> EGLBoolean {
   if num_config.is_null() {
     // TODO: set error
@@ -692,35 +754,41 @@ pub unsafe extern "C" fn eglChooseConfig(_dpy: EGLDisplay, attrib_list: AttribLi
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglClientWaitSync(dpy: EGLDisplay, sync: EGLSync, flags: EGLint, timeout: EGLTime) -> EGLint {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCopyBuffers(dpy: EGLDisplay, surface: EGLSurface, target: EGLNativePixmapType) -> EGLBoolean {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreateContext(dpy: EGLDisplay, config: EGLConfig, share_context: EGLContext, attrib_list: AttribList) -> Box<Context> {
   Box::new(Context::new(config))
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreateImage(dpy: EGLDisplay, ctx: EGLContext, target: EGLenum, buffer: EGLClientBuffer, attrib_list: AttribList) -> EGLImage {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreatePbufferFromClientBuffer(dpy: EGLDisplay, buftype: EGLenum, buffer: EGLClientBuffer, config: EGLConfig, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreatePbufferSurface(_dpy: EGLDisplay, config: EGLConfig, attrib_list: AttribList) -> EGLSurface {
   let mut width = 0;
   let mut height = 0;
@@ -735,15 +803,20 @@ pub extern "C" fn eglCreatePbufferSurface(_dpy: EGLDisplay, config: EGLConfig, a
     }
   }
 
-  let buffer_size = width as usize * height as usize * config.color_format.byte_size();
-  let mut buffer = Vec::with_capacity(buffer_size);
-  buffer.resize(buffer_size, 0);
+  let color_buffer_size = width as usize * height as usize * config.color_format.byte_size();
+  let mut color_buffer = Vec::with_capacity(color_buffer_size);
+  color_buffer.resize(color_buffer_size, 0);
+
+  let ds_buffer_size = width as usize * height as usize * config.ds_bytes();
+  let mut ds_buffer = Vec::with_capacity(ds_buffer_size);
+  ds_buffer.resize(ds_buffer_size, 0);
 
   let surface = Box::new(Surface{
     config,
     width,
     height,
-    buffer,
+    color_buffer,
+    ds_buffer,
     multisample_resolve: EGL_MULTISAMPLE_RESOLVE_DEFAULT,
   });
   Box::into_raw(surface)
@@ -751,58 +824,73 @@ pub extern "C" fn eglCreatePbufferSurface(_dpy: EGLDisplay, config: EGLConfig, a
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreatePixmapSurface(dpy: EGLDisplay, config: EGLConfig, pixmap: EGLNativePixmapType, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreatePlatformPixmapSurface(dpy: EGLDisplay, config: EGLConfig, native_pixmap: *mut c_void, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreatePlatformWindowSurface(dpy: EGLDisplay, config: EGLConfig, native_window: *mut c_void, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreateSync(dpy: EGLDisplay, type_: EGLenum, attrib_list: AttribList) -> EGLSync {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglCreateWindowSurface(dpy: EGLDisplay, config: EGLConfig, win: EGLNativeWindowType, attrib_list: AttribList) -> EGLSurface {
   unimplemented!()
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglDestroyContext(_dpy: EGLDisplay, _ctx: Box<Context>) -> EGLBoolean {
   EGL_TRUE
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglDestroyImage(dpy: EGLDisplay, image: EGLImage) -> EGLBoolean {
   unimplemented!()
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglDestroySurface(_dpy: EGLDisplay, _surface: Box<Surface>) -> EGLBoolean {
   EGL_TRUE
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglDestroySync(dpy: EGLDisplay, sync: EGLSync) -> EGLBoolean {
   unimplemented!()
 }
 
 #[no_mangle]
-pub extern "C" fn eglGetConfigAttrib(_dpy: EGLDisplay, config: &Config, attribute: EGLint, value: &mut EGLint) -> EGLBoolean {
+#[cfg_attr(feature = "trace_egl", trace)]
+pub extern "C" fn eglGetConfigAttrib(
+  _dpy: EGLDisplay,
+  config: &Config,
+  attribute: EGLint,
+  value: &mut EGLint,
+) -> EGLBoolean {
   let result = match attribute as EGLenum {
     EGL_CONFIG_ID => { config.id as EGLint },
     EGL_RENDERABLE_TYPE => {
@@ -852,6 +940,7 @@ pub extern "C" fn eglGetConfigAttrib(_dpy: EGLDisplay, config: &Config, attribut
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetConfigs(_dpy: EGLDisplay, configs: *mut EGLConfig, config_size: EGLint, num_config: Option<&mut EGLint>) -> EGLBoolean {
   if num_config.is_none() {
     // TODO: set error
@@ -879,16 +968,19 @@ pub extern "C" fn eglGetConfigs(_dpy: EGLDisplay, configs: *mut EGLConfig, confi
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetCurrentContext() -> EGLContext {
   CONTEXT.with(|c| c.get())
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetCurrentDisplay() -> EGLDisplay {
   &THE_DISPLAY
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetCurrentSurface(readdraw: EGLint) -> EGLSurface {
   let context = gl::current();
   match readdraw as EGLenum {
@@ -899,22 +991,26 @@ pub extern "C" fn eglGetCurrentSurface(readdraw: EGLint) -> EGLSurface {
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetDisplay(_display_id: EGLNativeDisplayType) -> EGLDisplay {
   &THE_DISPLAY as *const _
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetError() -> EGLint {
   EGL_SUCCESS as EGLint
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetPlatformDisplay(platform: EGLenum, native_display: *mut c_void, attrib_list: AttribList) -> EGLDisplay {
   unimplemented!()
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetProcAddress(procname: *const c_char) -> *const c_void {
   let cstr = unsafe{ ::std::ffi::CStr::from_ptr(procname) };
 
@@ -1301,11 +1397,13 @@ pub extern "C" fn eglGetProcAddress(procname: *const c_char) -> *const c_void {
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglGetSyncAttrib(dpy: EGLDisplay, sync: EGLSync, attribute: EGLint, value: *mut EGLAttrib) -> EGLBoolean {
   unimplemented!()
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglInitialize(_dpy: EGLDisplay, major: &mut EGLint, minor: &mut EGLint) -> EGLBoolean {
   *major = 1;
   *minor = 5;
@@ -1313,6 +1411,7 @@ pub extern "C" fn eglInitialize(_dpy: EGLDisplay, major: &mut EGLint, minor: &mu
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglMakeCurrent(_dpy: EGLDisplay, draw: EGLSurface, read: EGLSurface, ctx: EGLContext) -> EGLBoolean {
   CONTEXT.with(|c| c.set(ctx));
   let context = unsafe{ ctx.as_mut() };
@@ -1324,11 +1423,13 @@ pub extern "C" fn eglMakeCurrent(_dpy: EGLDisplay, draw: EGLSurface, read: EGLSu
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglQueryAPI() -> EGLenum {
   API.with(|a| a.get())
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglQueryContext(_dpy: EGLDisplay, ctx: &Context, attribute: EGLint, value: &mut EGLint) -> EGLBoolean {
   let result = match attribute as EGLenum {
     EGL_CONFIG_ID => ctx.config.id,
@@ -1345,6 +1446,7 @@ pub extern "C" fn eglQueryContext(_dpy: EGLDisplay, ctx: &Context, attribute: EG
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglQueryString(_dpy: EGLDisplay, name: EGLint) -> *const c_char {
   let result: &'static [u8] = match name as EGLenum {
     EGL_CLIENT_APIS => b"OpenGL_ES\0",
@@ -1362,6 +1464,7 @@ pub extern "C" fn eglQueryString(_dpy: EGLDisplay, name: EGLint) -> *const c_cha
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglQuerySurface(_dpy: EGLDisplay, surface: &Surface, attribute: EGLint, value: &mut EGLint) -> EGLBoolean {
 
   let result = match attribute as EGLenum {
@@ -1390,11 +1493,13 @@ pub extern "C" fn eglQuerySurface(_dpy: EGLDisplay, surface: &Surface, attribute
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglReleaseTexImage(dpy: EGLDisplay, surface: EGLSurface, buffer: EGLint) -> EGLBoolean {
   unimplemented!()
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglReleaseThread() -> EGLBoolean {
   eglMakeCurrent(&THE_DISPLAY, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
@@ -1403,6 +1508,7 @@ pub extern "C" fn eglReleaseThread() -> EGLBoolean {
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglSurfaceAttrib(dpy: EGLDisplay, surface: EGLSurface, attribute: EGLint, value: EGLint) -> EGLBoolean {
   match attribute as EGLenum {
     EGL_MIPMAP_LEVEL => {}, // TODO
@@ -1414,40 +1520,47 @@ pub extern "C" fn eglSurfaceAttrib(dpy: EGLDisplay, surface: EGLSurface, attribu
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglSwapBuffers(dpy: EGLDisplay, surface: EGLSurface) -> EGLBoolean {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglSwapInterval(dpy: EGLDisplay, interval: EGLint) -> EGLBoolean {
   unimplemented!()
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglTerminate(_dpy: EGLDisplay) -> EGLBoolean {
   EGL_TRUE // TODO
 }
 
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglWaitClient() -> EGLBoolean {
   EGL_TRUE // TODO
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglWaitGL() -> EGLBoolean {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglWaitNative(engine: EGLint) -> EGLBoolean {
   unimplemented!()
 }
 
 #[allow(unused_variables)]
 #[no_mangle]
+#[cfg_attr(feature = "trace_egl", trace)]
 pub extern "C" fn eglWaitSync(dpy: EGLDisplay, sync: EGLSync, flags: EGLint) -> EGLBoolean {
   unimplemented!()
 }
