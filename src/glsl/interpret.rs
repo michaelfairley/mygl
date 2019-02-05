@@ -402,7 +402,7 @@ impl PartialOrd for Value {
 
 unsafe impl Send for Value {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Vars {
   scopes: Vec<Vec<(Atom, Value)>>,
 }
@@ -432,6 +432,16 @@ impl Vars {
         if name == ident {
           return val;
         }
+      }
+    }
+
+    panic!("Didn't find {} in the vars", ident);
+  }
+
+  pub fn take(&mut self, ident: &Atom) -> Value {
+    for scope in self.scopes.iter_mut().rev() {
+      if let Some(i) = scope.iter().position(|(name, _)| name == ident) {
+        return scope.swap_remove(i).1;
       }
     }
 

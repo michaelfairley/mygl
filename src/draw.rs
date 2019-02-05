@@ -312,7 +312,6 @@ pub fn glDrawArraysOneInstance(
 
   let vertex_results = (first..(first+count)).map(|i| {
     let mut vars = Vars::new();
-    vars.push();
 
     for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
       let in_var = vert_in_vars.iter().find(|v| &v.name == name).unwrap();
@@ -553,7 +552,7 @@ pub fn glDrawArraysOneInstance(
 
     fn do_fragment(
       (x, y): (i32, i32),
-      vert_vars: &Vars,
+      mut vert_vars: Vars,
       frag_in_vars: &Vec<glsl::Variable>,
       frag_out_vars: &Vec<glsl::Variable>,
       frag_uniforms: &HashMap<Atom, Value>,
@@ -570,12 +569,11 @@ pub fn glDrawArraysOneInstance(
       let color;
       {
         let mut vars = Vars::new();
-        vars.push();
 
         init_out_vars(&mut vars, frag_out_vars);
 
         for var in frag_in_vars {
-          vars.insert(var.name.clone(), vert_vars.get(&var.name).clone());
+          vars.insert(var.name.clone(), vert_vars.take(&var.name));
         }
 
         for (ref name, ref data) in frag_uniforms {
@@ -606,7 +604,7 @@ pub fn glDrawArraysOneInstance(
 
         do_fragment(
           (x, y),
-          p,
+          p.clone(),
           &frag_in_vars,
           &frag_out_vars,
           &frag_uniforms,
@@ -633,7 +631,6 @@ pub fn glDrawArraysOneInstance(
 
         fn interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, t: f32) -> Vars {
           let mut vars = Vars::new();
-          vars.push();
 
           for var in frag_in_vars {
             let a_val = a.get(&var.name).clone();
@@ -661,7 +658,7 @@ pub fn glDrawArraysOneInstance(
 
               do_fragment(
                 (x.round() as i32, y.round() as i32),
-                &frag_vals,
+                frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
                 &frag_uniforms,
@@ -681,7 +678,7 @@ pub fn glDrawArraysOneInstance(
 
               do_fragment(
                 (x.round() as i32, y.round() as i32),
-                &frag_vals,
+                frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
                 &frag_uniforms,
@@ -706,7 +703,7 @@ pub fn glDrawArraysOneInstance(
 
               do_fragment(
                 (x.round() as i32, y.round() as i32),
-                &frag_vals,
+                frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
                 &frag_uniforms,
@@ -726,7 +723,7 @@ pub fn glDrawArraysOneInstance(
 
               do_fragment(
                 (x.round() as i32, y.round() as i32),
-                &frag_vals,
+                frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
                 &frag_uniforms,
@@ -784,7 +781,6 @@ pub fn glDrawArraysOneInstance(
 
         fn bary_interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, c: &Vars, (bary_a, bary_b, bary_c): (f32, f32, f32)) -> Vars {
           let mut vars = Vars::new();
-          vars.push();
 
           for var in frag_in_vars {
             let a_val = a.get(&var.name).clone();
@@ -820,7 +816,7 @@ pub fn glDrawArraysOneInstance(
 
             do_fragment(
               (x.floor() as i32, y.floor() as i32),
-              &frag_vals,
+              frag_vals,
               &frag_in_vars,
               &frag_out_vars,
               &frag_uniforms,
