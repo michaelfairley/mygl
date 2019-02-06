@@ -1497,11 +1497,15 @@ pub extern "C" fn glDrawBuffers(n: GLsizei, bufs: *const GLenum) -> () {
   assert_eq!(unsafe{ *bufs }, GL_BACK);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glDrawElements(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const c_void) -> () {
-  unimplemented!()
+pub extern "C" fn glDrawElements(
+  mode: GLenum,
+  count: GLsizei,
+  type_: GLenum,
+  indices: *const c_void,
+) -> () {
+  draw::glDrawElementsOneInstance(current(), mode, count, type_, indices, 0, 0, 0);
 }
 
 #[allow(unused_variables)]

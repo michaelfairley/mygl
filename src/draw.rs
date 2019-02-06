@@ -177,13 +177,95 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
 }
 
 #[allow(non_snake_case)]
-pub fn glDrawArraysOneInstance(
+pub(crate) fn glDrawElementsOneInstance(
+  current: &'static mut Context,
+  mode: GLenum,
+  count: GLsizei,
+  type_: GLenum,
+  indices: *const c_void,
+  instance: GLint,
+  basevertex: GLuint,
+  baseinstance: GLuint,
+) {
+  assert_eq!(instance, 0);
+  assert_eq!(baseinstance, 0);
+
+  let mut vertex_ids = vec![];
+
+  {
+    let buffers = &current.buffers;
+
+    let buffer_pointer = if current.element_array_buffer == 0 {
+      None
+    } else {
+      Some(buffers.get(&current.element_array_buffer).unwrap().as_ref().unwrap().as_ptr())
+    };
+
+    for i in 0..count {
+      let i = i as usize;
+
+      let pointer = if let Some(bp) = buffer_pointer {
+        unsafe{ bp.add(indices as usize) }
+      } else {
+        indices as *const u8
+      };
+
+      let vertex_id = match type_ {
+        GL_UNSIGNED_BYTE => {
+          let pointer = pointer as *const GLubyte;
+          unsafe{ *(pointer.add(i)) as i32 }
+        },
+        GL_UNSIGNED_SHORT => {
+          let pointer = pointer as *const GLushort;
+          unsafe{ *(pointer.add(i)) as i32 }
+        },
+        GL_UNSIGNED_INT => {
+          let pointer = pointer as *const GLuint;
+          unsafe{ *(pointer.add(i)) as i32 }
+        },
+        x => unimplemented!("{:x}", x),
+      };
+
+      let vertex_id = vertex_id + basevertex as i32;
+
+      vertex_ids.push(vertex_id);
+    }
+  }
+
+  draw_one(
+    current,
+    mode,
+    vertex_ids,
+    instance,
+    baseinstance,
+  );
+}
+
+
+#[allow(non_snake_case)]
+pub(crate) fn glDrawArraysOneInstance(
   current: &'static mut Context,
   mode: GLenum,
   first: GLint,
   count: GLsizei,
   instance: GLint,
-  _baseinstance: GLuint,
+  baseinstance: GLuint,
+) {
+  draw_one(
+    current,
+    mode,
+    (first..(first+count)).collect(),
+    instance,
+    baseinstance,
+  );
+}
+
+fn draw_one(
+  current: &'static mut Context,
+  mode: GLenum,
+  vertex_ids: Vec<GLint>,
+  instance: GLint,
+  baseinstance: GLuint,
 ) {
   use draw::*;
 
@@ -191,6 +273,8 @@ pub fn glDrawArraysOneInstance(
 
   use glsl::interpret::{self,Vars,Value};
   use glsl::{TypeSpecifierNonArray,Interface};
+
+  assert_eq!(baseinstance, 0);
 
   fn init_out_vars(vars: &mut Vars, out_vars: &[glsl::Variable]) {
     for var in out_vars {
@@ -310,7 +394,7 @@ pub fn glDrawArraysOneInstance(
 
   let buffers = &current.buffers;
 
-  let vertex_results = (first..(first+count)).map(|i| {
+  let vertex_results = vertex_ids.into_iter().map(|i| {
     let mut vars = Vars::new();
 
     for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
