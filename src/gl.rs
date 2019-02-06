@@ -62,6 +62,7 @@ pub struct Context {
   pub stencil_test: bool,
 
   pub depth_test: bool,
+  pub depth_func: DepthFunc,
 
   pub blend: bool,
 
@@ -156,6 +157,7 @@ impl Context {
       stencil_test: false,
 
       depth_test: false,
+      depth_func: DepthFunc::Less,
 
       blend: false,
 
@@ -470,7 +472,7 @@ impl BufferBinding{
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct TransformFeedback {
   pub offsets: [isize; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS],
 }
@@ -533,6 +535,33 @@ impl VertexBinding {
       buffer: 0,
       stride: 0,
       offset: 0,
+    }
+  }
+}
+
+#[derive(Debug,Copy,Clone)]
+pub enum DepthFunc {
+  LessEqual,
+  GreaterEqual,
+  Less,
+  Greater,
+  Equal,
+  NotEqual,
+  Always,
+  Never,
+}
+
+impl DepthFunc {
+  pub fn cmp(self, old: f32, new: f32) -> bool {
+    match self {
+      DepthFunc::LessEqual => new <= old,
+      DepthFunc::GreaterEqual => new >= old,
+      DepthFunc::Less => new < old,
+      DepthFunc::Greater => new > old,
+      DepthFunc::Equal => new == old,
+      DepthFunc::NotEqual => new != old,
+      DepthFunc::Always => true,
+      DepthFunc::Never => false,
     }
   }
 }
@@ -1248,7 +1277,19 @@ pub extern "C" fn glDeleteVertexArrays(n: GLsizei, arrays: *const GLuint) -> () 
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
 pub extern "C" fn glDepthFunc(func: GLenum) -> () {
-  assert_eq!(func, GL_LESS);
+  let func = match func {
+    GL_LESS => DepthFunc::Less,
+    GL_LEQUAL => DepthFunc::LessEqual,
+    GL_GREATER => DepthFunc::Greater,
+    GL_GEQUAL => DepthFunc::GreaterEqual,
+    GL_EQUAL => DepthFunc::Equal,
+    GL_NOTEQUAL => DepthFunc::NotEqual,
+    GL_ALWAYS => DepthFunc::Always,
+    GL_NEVER => DepthFunc::Never,
+    x => unimplemented!("{:?}", x),
+  };
+
+  current().depth_func = func;
 }
 
 #[no_mangle]
@@ -1849,12 +1890,12 @@ pub extern "C" fn glGetAttribLocation(
   name: *const GLchar,
 ) -> GLint {
   let current = current();
-  let program = current.programs.get(&program).unwrap();
+  let program = current.programs.get(&program).expect("No current program");
 
   let name = unsafe{ CStr::from_ptr(name) };
-  let name = name.to_str().unwrap();
+  let name = name.to_str().expect("Name couldn't convert to string");
 
-  program.attrib_locations.iter().position(|a| a.as_ref().map_or(false, |a| a == name)).unwrap() as GLint
+  program.attrib_locations.iter().position(|a| a.as_ref().map_or(false, |a| a == name)).map(|i| i as GLint).unwrap_or(-1)
 }
 
 #[allow(unused_variables)]

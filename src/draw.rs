@@ -2,7 +2,6 @@ use types::*;
 use consts::*;
 
 use std::mem;
-use egl::{Surface};
 
 use glsl::interpret::{Vars};
 use glsl;
@@ -11,7 +10,7 @@ use std::cell::{Ref};
 use string_cache::DefaultAtom as Atom;
 use std::collections::HashMap;
 use std::os::raw::*;
-use gl::{self,Context,Rect,parse_variable_name,ColorMask,fixed_to_float};
+use gl::{self,Context,Rect,parse_variable_name,fixed_to_float};
 
 
 pub enum Primitive<'a> {
@@ -568,7 +567,7 @@ fn draw_one(
       vec![unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _}]
     };
 
-    let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
+    let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap().clone();
 
     Some((ps, tf))
   } else { None };
@@ -675,19 +674,33 @@ fn draw_one(
     }
 
     fn do_fragment(
+      context: &Context,
       (x, y): (i32, i32),
+      z: f32,
       mut vert_vars: Vars,
       frag_in_vars: &Vec<glsl::Variable>,
       frag_out_vars: &Vec<glsl::Variable>,
       frag_uniforms: &HashMap<Atom, Value>,
       frag_compiled: &Arc<glsl::Shader>,
-      draw_framebuffer: GLuint,
-      draw_surface: &mut Surface,
-      color_mask: ColorMask,
     ) {
+      let mut draw_surface = unsafe{ context.draw_surface.as_mut() };
+      let draw_surface = draw_surface.as_mut().unwrap();
+
       // TODO: real clipping
       if x < 0 || x >= draw_surface.width || y < 0 || y >= draw_surface.height {
         return;
+      }
+
+      let draw_framebuffer = context.draw_framebuffer;
+      let color_mask = context.color_mask;
+
+
+      if context.depth_test {
+        let old_z = draw_surface.get_depth(x, y);
+
+        if !context.depth_func.cmp(old_z, z) {
+          return;
+        }
       }
 
       let color;
@@ -717,6 +730,7 @@ fn draw_one(
       assert_eq!(draw_framebuffer, 0);
 
       draw_surface.set_pixel(x, y, color, color_mask);
+      draw_surface.set_depth(x, y, z);
     }
 
     match prim {
@@ -727,15 +741,14 @@ fn draw_one(
         let y = window_coords[1] as i32;
 
         do_fragment(
+          current,
           (x, y),
+          window_coords[2],
           p.clone(),
           &frag_in_vars,
           &frag_out_vars,
           &frag_uniforms,
           &frag_compiled,
-          current.draw_framebuffer,
-          unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
-          current.color_mask,
         );
       },
       Primitive::Line(a, b) => {
@@ -771,6 +784,9 @@ fn draw_one(
 
           vars
         }
+        fn lerp(a: f32, b: f32, t: f32) -> f32 {
+          a * t + b * (1.0-t)
+        }
 
 
         if x_major {
@@ -779,17 +795,17 @@ fn draw_one(
           if p_a[0] < p_b[0] {
             while x < p_b[0] {
               let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+              let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
+                current,
                 (x.round() as i32, y.round() as i32),
+                z,
                 frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
                 &frag_uniforms,
                 &frag_compiled,
-                current.draw_framebuffer,
-                unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
-                current.color_mask,
               );
 
               y += slope;
@@ -799,17 +815,17 @@ fn draw_one(
           } else {
             while x > p_b[0] {
               let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+              let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
+                current,
                 (x.round() as i32, y.round() as i32),
+                z,
                 frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
                 &frag_uniforms,
                 &frag_compiled,
-                current.draw_framebuffer,
-                unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
-                current.color_mask,
               );
 
               y -= slope;
@@ -824,17 +840,17 @@ fn draw_one(
           if p_a[1] < p_b[1] {
             while y < p_b[1] {
               let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+              let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
+                current,
                 (x.round() as i32, y.round() as i32),
+                z,
                 frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
                 &frag_uniforms,
                 &frag_compiled,
-                current.draw_framebuffer,
-                unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
-                current.color_mask,
               );
 
               x += islope;
@@ -844,17 +860,17 @@ fn draw_one(
           } else {
             while y > p_b[1] {
               let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+              let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
+                current,
                 (x.round() as i32, y.round() as i32),
+                z,
                 frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
                 &frag_uniforms,
                 &frag_compiled,
-                current.draw_framebuffer,
-                unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
-                current.color_mask,
               );
 
               x -= islope;
@@ -943,16 +959,19 @@ fn draw_one(
 
             let frag_vals = bary_interp_vars(&frag_in_vars, a, b, c, barys);
 
+            let z = p_a[2] * barys.0
+              + p_b[2] * barys.1
+              + p_c[2] * barys.2;
+
             do_fragment(
+              current,
               (x.floor() as i32, y.floor() as i32),
+              z,
               frag_vals,
               &frag_in_vars,
               &frag_out_vars,
               &frag_uniforms,
               &frag_compiled,
-              current.draw_framebuffer,
-              unsafe{ current.draw_surface.as_mut() }.as_mut().unwrap(),
-              current.color_mask,
             );
             y += 1.0;
           }

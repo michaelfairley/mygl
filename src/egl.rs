@@ -298,7 +298,7 @@ impl Surface {
 
     let encoded = match size {
       3 => {
-        let whole = (depth * 0xFFFFFF as f32) as u32;
+        let whole = (depth * 0xFF_FF_FF as f32) as u32;
         let a = (whole >> 16) as u8;
         let b = (whole >> 8 ) as u8;
         let c = (whole >> 0 ) as u8;
@@ -309,6 +309,31 @@ impl Surface {
 
     for i in 0..size {
       self.ds_buffer[loc + i] = encoded[i];
+    }
+  }
+
+  #[inline]
+  pub fn get_depth(
+    &mut self,
+    x: GLint,
+    y: GLint,
+  ) -> GLfloat {
+    let loc = (y as usize * self.width as usize + x as usize) * self.config.ds_bytes();
+    let size = self.config.depth_size as usize / 8;
+
+    let mut bytes: [u8; 4] = unsafe{ mem::uninitialized() };
+    for i in 0..size {
+      bytes[i] = self.ds_buffer[loc + i];
+    }
+
+
+    match size {
+      3 => {
+        let w = ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | ((bytes[2] as u32) << 0);
+
+        w as f32 / 0xFF_FF_FF as f32
+      },
+      x => unimplemented!("{}", x),
     }
   }
 
