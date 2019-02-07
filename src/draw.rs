@@ -66,7 +66,7 @@ enum Mode {
   LineLoop(Option<Vars>, Option<Vars>, Option<Vars>),
   Triangles(Option<Vars>, Option<Vars>, Option<Vars>),
   TriangleFan(Option<Vars>, Option<Vars>, Option<Vars>),
-  TriangleStrip(Option<Vars>, Option<Vars>, Option<Vars>),
+  TriangleStrip(Option<Vars>, Option<Vars>, Option<Vars>, bool),
 }
 
 impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
@@ -81,7 +81,7 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
       GL_LINE_LOOP => Mode::LineLoop(None, None, None),
       GL_TRIANGLES => Mode::Triangles(None, None, None),
       GL_TRIANGLE_FAN => Mode::TriangleFan(None, None, None),
-      GL_TRIANGLE_STRIP => Mode::TriangleStrip(None, None, None),
+      GL_TRIANGLE_STRIP => Mode::TriangleStrip(None, None, None, true),
       x => unimplemented!("{:x}", x),
     };
 
@@ -158,13 +158,18 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
           Some(Primitive::Triangle(a, b, c))
         } else { None }
       },
-      Mode::TriangleStrip(ref mut a, ref mut b, ref mut c) => {
+      Mode::TriangleStrip(ref mut a, ref mut b, ref mut c, ref mut write_a) => {
         if a.is_none() {
           *a = self.vertex_iter.next();
           *b = self.vertex_iter.next();
           *c = self.vertex_iter.next();
         } else {
-          *a = mem::replace(b, mem::replace(c, self.vertex_iter.next()));
+          if *write_a {
+            *a = mem::replace(c, self.vertex_iter.next());
+          } else {
+            *b = mem::replace(c, self.vertex_iter.next());
+          }
+          *write_a = !*write_a;
         }
 
         if let (&mut Some(ref a), &mut Some(ref b), &mut Some(ref c)) = (a, b, c) {
@@ -884,6 +889,20 @@ fn draw_one(
         let p_a = window_coords(a, current.viewport, current.depth_range);
         let p_b = window_coords(b, current.viewport, current.depth_range);
         let p_c = window_coords(c, current.viewport, current.depth_range);
+
+        let front_facing: bool = [(&p_a, &p_b), (&p_b, &p_c), (&p_c, &p_a)].iter()
+          .map(|(i, j)| {
+            i[0] * j[1] - j[0] * i[1]
+          }).sum::<f32>() > 0.0;
+        let front_facing = front_facing ^ current.front_face_cw;
+
+        if current.culling {
+          if current.cull_face == GL_FRONT_AND_BACK
+            || (current.cull_face == GL_FRONT && front_facing)
+            || (current.cull_face == GL_BACK && !front_facing) {
+              continue;
+            }
+        }
 
         let (mut left, mut middle, mut right) = (p_a, p_b, p_c);
         if middle[0] < left[0] { mem::swap(&mut left, &mut middle) };

@@ -98,7 +98,7 @@ pub struct Context {
 
   pub culling: bool,
   pub cull_face: GLenum,
-  pub front_face: GLenum,
+  pub front_face_cw: bool,
 
   pub programs: HashMap<GLuint, Program>,
   pub shaders: HashMap<GLuint, Arc<Shader>>,
@@ -192,7 +192,7 @@ impl Context {
 
       culling: false,
       cull_face: GL_BACK,
-      front_face: GL_CCW,
+      front_face_cw: false,
 
       programs: HashMap::new(),
       shaders: HashMap::new(),
@@ -1131,7 +1131,9 @@ pub extern "C" fn glCreateShaderProgramv(type_: GLenum, count: GLsizei, strings:
 
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glCullFace(mode: GLenum) -> () {
+pub extern "C" fn glCullFace(
+  mode: GLenum,
+) -> () {
   current().cull_face = mode;
 }
 
@@ -1724,8 +1726,10 @@ pub extern "C" fn glFramebufferTextureLayer(target: GLenum, attachment: GLenum, 
 
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glFrontFace(mode: GLenum) -> () {
-  current().front_face = mode;
+pub extern "C" fn glFrontFace(
+  mode: GLenum,
+) -> () {
+  current().front_face_cw = mode == GL_CW;
 }
 
 #[no_mangle]
@@ -2038,6 +2042,7 @@ pub extern "C" fn glGetIntegerv(pname: GLenum, data: *mut GLint) -> () {
     GL_MAX_RENDERBUFFER_SIZE => MAX_RENDERBUFFER_SIZE as GLint,
     GL_MAX_ARRAY_TEXTURE_LAYERS => MAX_ARRAY_TEXTURE_LAYERS as GLint,
     GL_MAX_3D_TEXTURE_SIZE => MAX_3D_TEXTURE_SIZE as GLint,
+    GL_SUBPIXEL_BITS => 4, // TODO: figure out what this really means
     x => unimplemented!("{:x}", x),
   };
 
