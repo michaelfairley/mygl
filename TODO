@@ -1,11 +1,10 @@
+clipping
 RASTERIZER_DISCARD
-face culling
 EGL?
 draw elements
 depth, scissor, etc tests
 texture sampling during rendering
 
-clipping
 wide lines
 
 geom + tess
