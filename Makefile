@@ -12,6 +12,7 @@ dEQP-GLES31.functional.shaders.builtin_var.* \
 dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute \
 dEQP-GLES3.functional.draw.draw_arrays.* \
 dEQP-GLES3.functional.draw.draw_elements.* \
+dEQP-GLES3.functional.fragment_ops.depth.* \
 dEQP-GLES3.functional.transform_feedback.*
 
 export LD_LIBRARY_PATH=../../../../target/release
