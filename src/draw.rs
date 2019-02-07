@@ -553,7 +553,7 @@ fn draw_one(
   // TODO: tesselation
   // TODO: geometry
 
-  let mut tf = if Some(primitive) == current.transform_feedback_capture && !current.transform_feedback_paused {
+  let tf = if Some(primitive) == current.transform_feedback_capture && !current.transform_feedback_paused {
     let tfv = &program.transform_feedback.as_ref().unwrap();
 
     let separate = tfv.1;
@@ -572,15 +572,15 @@ fn draw_one(
       vec![unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _}]
     };
 
-    let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap().clone();
-
-    Some((ps, tf))
+    Some(ps)
   } else { None };
 
   let mut pump = PrimitivePump::new(vertex_results, mode);
 
   while let Some(prim) = pump.next() {
-    if let Some((ref ps, ref mut tf)) = tf {
+    if let Some(ref ps) = tf {
+      let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
+
       if let Some((id, target)) = current.query {
         if target == GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN {
           current.queries.get_mut(&id).unwrap().as_mut().unwrap().value += 1;
