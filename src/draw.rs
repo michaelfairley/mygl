@@ -2,6 +2,7 @@ use types::*;
 use consts::*;
 
 use std::mem;
+use std::cmp;
 
 use glsl::interpret::{Vars};
 use glsl;
@@ -699,14 +700,59 @@ fn draw_one(
       let draw_framebuffer = context.draw_framebuffer;
       let color_mask = context.color_mask;
 
+      let stencil_val = draw_surface.get_stencil(x, y);
+
+      // TODO: back faces
+      let (stencil_func, stencil_ref, stencil_mask) = context.stencil_func_front;
+      let stencil_max = draw_surface.stencil_max();
+      let stencil_ref = cmp::min(stencil_ref, stencil_max);
+      let stencil_mask = cmp::min(stencil_mask, stencil_max);
+      let (sfail, dpfail, dppass) = context.stencil_op_front;
+
+      fn set_stencil(
+        draw_surface: &mut ::egl::Surface,
+        (x, y): (i32, i32),
+        op: GLenum,
+        val: u32,
+        ref_: u32,
+        stencil_max: u32,
+      ) {
+          if op != GL_KEEP {
+            let new_val = match op {
+              GL_REPLACE => ref_,
+              GL_INCR => if val == stencil_max { val } else { val + 1 },
+              GL_DECR => if val == 0 { 0 } else { val - 1 },
+              GL_INCR_WRAP => val.wrapping_add(1) & stencil_max,
+              GL_DECR_WRAP => val.wrapping_sub(1) & stencil_max,
+              GL_ZERO => 0,
+              GL_INVERT => !val,
+              x => unimplemented!("{:x}", x),
+            };
+
+            draw_surface.set_stencil(x, y, new_val);
+          }
+
+      }
+
+      if context.stencil_test {
+        if !stencil_func.cmp_u32(stencil_val & stencil_mask, stencil_ref & stencil_mask) {
+          set_stencil(draw_surface, (x, y), sfail, stencil_val, stencil_ref, stencil_max);
+
+          return;
+        }
+      }
 
       if context.depth_test {
         let old_z = draw_surface.get_depth(x, y);
 
-        if !context.depth_func.cmp(old_z, z) {
+        if !context.depth_func.cmp_f32(old_z, z) {
+          set_stencil(draw_surface, (x, y), dpfail, stencil_val, stencil_ref, stencil_max);
+
           return;
         }
       }
+
+      set_stencil(draw_surface, (x, y), dppass, stencil_val, stencil_ref, stencil_max);
 
       let color;
       {

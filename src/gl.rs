@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc,Barrier,RwLock};
 use std::cell::{RefCell,Ref,Cell};
 use std::mem;
+use std::cmp;
 use string_cache::DefaultAtom as Atom;
 
 use types::*;
@@ -58,11 +59,17 @@ pub struct Context {
 
   pub color_mask: ColorMask,
   pub depth_mask: bool,
+  pub stencil_mask_front: u32,
+  pub stencil_mask_back: u32,
 
   pub stencil_test: bool,
+  pub stencil_func_front: (CmpFunc, GLuint, GLuint),
+  pub stencil_func_back: (CmpFunc, GLuint, GLuint),
+  pub stencil_op_front: (GLenum, GLenum, GLenum),
+  pub stencil_op_back: (GLenum, GLenum, GLenum),
 
   pub depth_test: bool,
-  pub depth_func: DepthFunc,
+  pub depth_func: CmpFunc,
 
   pub blend: bool,
 
@@ -71,7 +78,7 @@ pub struct Context {
 
   pub clear_color: (GLfloat, GLfloat, GLfloat, GLfloat),
   pub clear_depth: GLfloat,
-  pub clear_stencil: GLint,
+  pub clear_stencil: GLuint,
 
   // TODO: move to server?
   pub buffers: HashMap<GLuint, Option<Vec<u8>>>, // TODO: replace with pointer
@@ -153,11 +160,17 @@ impl Context {
 
       color_mask: (true, true, true, true),
       depth_mask: true,
+      stencil_mask_front: 0,
+      stencil_mask_back: 0,
 
       stencil_test: false,
+      stencil_func_front: (CmpFunc::Always, 0, GLuint::max_value()),
+      stencil_func_back: (CmpFunc::Always, 0, GLuint::max_value()),
+      stencil_op_front: (GL_KEEP, GL_KEEP, GL_KEEP),
+      stencil_op_back: (GL_KEEP, GL_KEEP, GL_KEEP),
 
       depth_test: false,
-      depth_func: DepthFunc::Less,
+      depth_func: CmpFunc::Less,
 
       blend: false,
 
@@ -345,10 +358,8 @@ impl Server {
           self.draw_surface = draw;
           self.read_surface = read;
         },
-        Command::Clear(color, depth, stencil, scissor, color_mask, depth_mask) => {
+        Command::Clear(color, depth, stencil, scissor, color_mask, depth_mask, stencil_mask) => {
           let (x, y, width, height) = scissor;
-
-          // if stencil.is_some() { unimplemented!() }
 
           if let Some(color) = color {
             let draw = self.draw_surface.as_mut().unwrap();
@@ -371,6 +382,17 @@ impl Server {
               }
             }
           }
+
+          if let Some(stencil) = stencil {
+            let draw = self.draw_surface.as_mut().unwrap();
+            let stencil_mask = if stencil_mask == 0 { u32::max_value() } else { stencil_mask };
+
+            for y in y..y+height {
+              for x in x..x+width {
+                draw.set_stencil(x, y, stencil & stencil_mask);
+              }
+            }
+          }
         },
         Command::Finish(tx) => {
           tx.send(()).unwrap();
@@ -385,7 +407,7 @@ impl Server {
 
 enum Command {
   SetSurfaces(Option<&'static mut Surface>, Option<&'static mut Surface>),
-  Clear(Option<(f32, f32, f32, f32)>, Option<f32>, Option<i32>, Rect, ColorMask, bool),
+  Clear(Option<(f32, f32, f32, f32)>, Option<f32>, Option<u32>, Rect, ColorMask, bool, u32),
   Finish(mpsc::Sender<()>),
   Flush(mpsc::Sender<()>),
 }
@@ -540,7 +562,7 @@ impl VertexBinding {
 }
 
 #[derive(Debug,Copy,Clone)]
-pub enum DepthFunc {
+pub enum CmpFunc {
   LessEqual,
   GreaterEqual,
   Less,
@@ -551,17 +573,46 @@ pub enum DepthFunc {
   Never,
 }
 
-impl DepthFunc {
-  pub fn cmp(self, old: f32, new: f32) -> bool {
+impl CmpFunc {
+  pub fn cmp_f32(self, old: f32, new: f32) -> bool {
     match self {
-      DepthFunc::LessEqual => new <= old,
-      DepthFunc::GreaterEqual => new >= old,
-      DepthFunc::Less => new < old,
-      DepthFunc::Greater => new > old,
-      DepthFunc::Equal => new == old,
-      DepthFunc::NotEqual => new != old,
-      DepthFunc::Always => true,
-      DepthFunc::Never => false,
+      CmpFunc::LessEqual => new <= old,
+      CmpFunc::GreaterEqual => new >= old,
+      CmpFunc::Less => new < old,
+      CmpFunc::Greater => new > old,
+      CmpFunc::Equal => new == old,
+      CmpFunc::NotEqual => new != old,
+      CmpFunc::Always => true,
+      CmpFunc::Never => false,
+    }
+  }
+
+  pub fn cmp_u32(self, old: u32, new: u32) -> bool {
+    match self {
+      CmpFunc::LessEqual => new <= old,
+      CmpFunc::GreaterEqual => new >= old,
+      CmpFunc::Less => new < old,
+      CmpFunc::Greater => new > old,
+      CmpFunc::Equal => new == old,
+      CmpFunc::NotEqual => new != old,
+      CmpFunc::Always => true,
+      CmpFunc::Never => false,
+    }
+  }
+}
+
+impl From<GLenum> for CmpFunc {
+  fn from(func: GLenum) -> Self {
+    match func {
+      GL_LESS => CmpFunc::Less,
+      GL_LEQUAL => CmpFunc::LessEqual,
+      GL_GREATER => CmpFunc::Greater,
+      GL_GEQUAL => CmpFunc::GreaterEqual,
+      GL_EQUAL => CmpFunc::Equal,
+      GL_NOTEQUAL => CmpFunc::NotEqual,
+      GL_ALWAYS => CmpFunc::Always,
+      GL_NEVER => CmpFunc::Never,
+      x => unimplemented!("{:?}", x),
     }
   }
 }
@@ -942,6 +993,7 @@ pub extern "system" fn glClear(mask: GLbitfield) -> () {
     scissor,
     current.color_mask,
     current.depth_mask,
+    current.stencil_mask_front,
   )).unwrap();
 }
 
@@ -997,7 +1049,7 @@ pub extern "C" fn glClearDepthf(
 pub extern "C" fn glClearStencil(
   s: GLint,
 ) -> () {
-  current().clear_stencil = s;
+  current().clear_stencil = s as GLuint;
 }
 
 #[allow(unused_variables)]
@@ -1279,19 +1331,7 @@ pub extern "C" fn glDeleteVertexArrays(n: GLsizei, arrays: *const GLuint) -> () 
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
 pub extern "C" fn glDepthFunc(func: GLenum) -> () {
-  let func = match func {
-    GL_LESS => DepthFunc::Less,
-    GL_LEQUAL => DepthFunc::LessEqual,
-    GL_GREATER => DepthFunc::Greater,
-    GL_GEQUAL => DepthFunc::GreaterEqual,
-    GL_EQUAL => DepthFunc::Equal,
-    GL_NOTEQUAL => DepthFunc::NotEqual,
-    GL_ALWAYS => DepthFunc::Always,
-    GL_NEVER => DepthFunc::Never,
-    x => unimplemented!("{:?}", x),
-  };
-
-  current().depth_func = func;
+  current().depth_func = CmpFunc::from(func);
 }
 
 #[no_mangle]
@@ -3467,17 +3507,34 @@ pub extern "C" fn glShaderSource(shader: GLuint, count: GLsizei, string: *const 
 
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glStencilFunc(func: GLenum, ref_: GLint, mask: GLuint) -> () {
-  assert_eq!(func, GL_ALWAYS);
-  assert_eq!(ref_, 0);
-  assert_eq!(mask, 0xFFFF_FFFF);
+pub extern "C" fn glStencilFunc(
+  func: GLenum,
+  ref_: GLint,
+  mask: GLuint,
+) -> () {
+  glStencilFuncSeparate(GL_FRONT_AND_BACK, func, ref_, mask);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glStencilFuncSeparate(face: GLenum, func: GLenum, ref_: GLint, mask: GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glStencilFuncSeparate(
+  face: GLenum,
+  func: GLenum,
+  ref_: GLint,
+  mask: GLuint,
+) -> () {
+  let current = current();
+
+  let ref_ = cmp::max(ref_, 0);
+
+  let func = (CmpFunc::from(func), ref_ as GLuint, mask);
+
+  if face == GL_FRONT_AND_BACK || face == GL_FRONT {
+    current.stencil_func_front = func;
+  }
+  if face == GL_FRONT_AND_BACK || face == GL_BACK {
+    current.stencil_func_back = func;
+  }
 }
 
 #[allow(unused_variables)]
@@ -3496,17 +3553,32 @@ pub extern "C" fn glStencilMaskSeparate(face: GLenum, mask: GLuint) -> () {
 
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glStencilOp(fail: GLenum, zfail: GLenum, zpass: GLenum) -> () {
-  assert_eq!(fail, GL_KEEP);
-  assert_eq!(zfail, GL_KEEP);
-  assert_eq!(zpass, GL_KEEP);
+pub extern "C" fn glStencilOp(
+  fail: GLenum,
+  zfail: GLenum,
+  zpass: GLenum,
+) -> () {
+  glStencilOpSeparate(GL_FRONT_AND_BACK, fail, zfail, zpass);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glStencilOpSeparate(face: GLenum, sfail: GLenum, dpfail: GLenum, dppass: GLenum) -> () {
-  unimplemented!()
+pub extern "C" fn glStencilOpSeparate(
+  face: GLenum,
+  sfail: GLenum,
+  dpfail: GLenum,
+  dppass: GLenum,
+) -> () {
+  let current = current();
+
+  let op = (sfail, dpfail, dppass);
+
+  if face == GL_FRONT_AND_BACK || face == GL_FRONT {
+    current.stencil_op_front = op;
+  }
+  if face == GL_FRONT_AND_BACK || face == GL_BACK {
+    current.stencil_op_back = op;
+  }
 }
 
 #[allow(unused_variables)]

@@ -14,6 +14,7 @@ dEQP-GLES3.functional.rasterization.culling.* \
 dEQP-GLES3.functional.draw.draw_arrays.* \
 dEQP-GLES3.functional.draw.draw_elements.* \
 dEQP-GLES3.functional.fragment_ops.depth.* \
+dEQP-GLES3.functional.fragment_ops.stencil.* \
 dEQP-GLES3.functional.transform_feedback.*
 
 export LD_LIBRARY_PATH=../../../../target/release

@@ -299,6 +299,7 @@ impl Surface {
     let encoded = match size {
       3 => {
         let whole = (depth * 0xFF_FF_FF as f32) as u32;
+        // TODO: can this just be replaced with a cast
         let a = (whole >> 16) as u8;
         let b = (whole >> 8 ) as u8;
         let c = (whole >> 0 ) as u8;
@@ -337,6 +338,55 @@ impl Surface {
     }
   }
 
+
+  #[inline]
+  pub fn set_stencil(&mut self,
+                   x: GLint,
+                   y: GLint,
+                   stencil: GLuint) {
+    let loc = (y as usize * self.width as usize + x as usize) * self.config.ds_bytes();
+    let depth_size = self.config.depth_size as usize / 8;
+    let size = self.config.stencil_size as usize / 8;
+
+    let encoded = match size {
+      1 => {
+        [stencil as u8, 0, 0, 0]
+      },
+      x => unimplemented!("{}", x),
+    };
+
+    for i in 0..size {
+      self.ds_buffer[loc + depth_size + i] = encoded[i];
+    }
+  }
+
+  #[inline]
+  pub fn get_stencil(
+    &mut self,
+    x: GLint,
+    y: GLint,
+  ) -> GLuint {
+    let loc = (y as usize * self.width as usize + x as usize) * self.config.ds_bytes();
+    let depth_size = self.config.depth_size as usize / 8;
+    let size = self.config.stencil_size as usize / 8;
+
+    let mut bytes: [u8; 4] = unsafe{ mem::uninitialized() };
+    for i in 0..size {
+      bytes[i] = self.ds_buffer[loc + depth_size + i];
+    }
+
+    match size {
+      1 => {
+        bytes[0] as GLuint
+      },
+      x => unimplemented!("{}", x),
+    }
+  }
+
+  #[inline]
+  pub fn stencil_max(&self) -> u32 {
+    2u32.pow(self.config.stencil_size.into()) - 1
+  }
 }
 
 thread_local! {
