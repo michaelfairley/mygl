@@ -1,11 +1,19 @@
 clipping
+blending
+fbos + renderbuffers
+instancing
 RASTERIZER_DISCARD
 EGL?
-draw elements
-depth, scissor, etc tests
+scissor
 texture sampling during rendering
+queries
+
 
 wide lines
 
 geom + tess
 
+thread
+
+
+run tests in parallel?
