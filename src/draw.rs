@@ -683,6 +683,7 @@ fn draw_one(
       context: &Context,
       (x, y): (i32, i32),
       z: f32,
+      front_face: bool,
       mut vert_vars: Vars,
       frag_in_vars: &Vec<glsl::Variable>,
       frag_out_vars: &Vec<glsl::Variable>,
@@ -702,12 +703,13 @@ fn draw_one(
 
       let stencil_val = draw_surface.get_stencil(x, y);
 
-      // TODO: back faces
-      let (stencil_func, stencil_ref, stencil_mask) = context.stencil_func_front;
+      let (stencil_func, stencil_ref, stencil_mask) = if front_face { context.stencil_func_front } else { context.stencil_func_back };
+      let (sfail, dpfail, dppass) = if front_face { context.stencil_op_front } else { context.stencil_op_back };
+      let stencil_write_mask = if front_face { context.stencil_mask_front } else { context.stencil_mask_back };
+
       let stencil_max = draw_surface.stencil_max();
       let stencil_ref = cmp::min(stencil_ref, stencil_max);
-      let stencil_mask = cmp::min(stencil_mask, stencil_max);
-      let (sfail, dpfail, dppass) = context.stencil_op_front;
+      let stencil_mask = stencil_mask & stencil_max;
 
       fn set_stencil(
         draw_surface: &mut ::egl::Surface,
@@ -716,6 +718,7 @@ fn draw_one(
         val: u32,
         ref_: u32,
         stencil_max: u32,
+        stencil_write_mask: u32,
       ) {
           if op != GL_KEEP {
             let new_val = match op {
@@ -729,14 +732,14 @@ fn draw_one(
               x => unimplemented!("{:x}", x),
             };
 
-            draw_surface.set_stencil(x, y, new_val);
+            draw_surface.set_stencil(x, y, new_val, stencil_write_mask);
           }
 
       }
 
       if context.stencil_test {
-        if !stencil_func.cmp_u32(stencil_val & stencil_mask, stencil_ref & stencil_mask) {
-          set_stencil(draw_surface, (x, y), sfail, stencil_val, stencil_ref, stencil_max);
+        if !stencil_func.cmp(stencil_val & stencil_mask, stencil_ref & stencil_mask) {
+          set_stencil(draw_surface, (x, y), sfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
 
           return;
         }
@@ -745,14 +748,25 @@ fn draw_one(
       if context.depth_test {
         let old_z = draw_surface.get_depth(x, y);
 
-        if !context.depth_func.cmp_f32(old_z, z) {
-          set_stencil(draw_surface, (x, y), dpfail, stencil_val, stencil_ref, stencil_max);
+        let z = draw_surface.encode_depth(z);
+
+        if !context.depth_func.cmp(old_z, z) {
+          if context.stencil_test {
+            set_stencil(draw_surface, (x, y), dpfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+          }
 
           return;
         }
+
+        if context.depth_mask {
+          draw_surface.set_depth(x, y, z);
+        }
       }
 
-      set_stencil(draw_surface, (x, y), dppass, stencil_val, stencil_ref, stencil_max);
+      if context.stencil_test {
+        set_stencil(draw_surface, (x, y), dppass, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+      }
+
 
       let color;
       {
@@ -781,7 +795,6 @@ fn draw_one(
       assert_eq!(draw_framebuffer, 0);
 
       draw_surface.set_pixel(x, y, color, color_mask);
-      draw_surface.set_depth(x, y, z);
     }
 
     match prim {
@@ -795,6 +808,7 @@ fn draw_one(
           current,
           (x, y),
           window_coords[2],
+          true,
           p.clone(),
           &frag_in_vars,
           &frag_out_vars,
@@ -852,6 +866,7 @@ fn draw_one(
                 current,
                 (x.round() as i32, y.round() as i32),
                 z,
+                true,
                 frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
@@ -872,6 +887,7 @@ fn draw_one(
                 current,
                 (x.round() as i32, y.round() as i32),
                 z,
+                true,
                 frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
@@ -897,6 +913,7 @@ fn draw_one(
                 current,
                 (x.round() as i32, y.round() as i32),
                 z,
+                true,
                 frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
@@ -917,6 +934,7 @@ fn draw_one(
                 current,
                 (x.round() as i32, y.round() as i32),
                 z,
+                true,
                 frag_vals,
                 &frag_in_vars,
                 &frag_out_vars,
@@ -982,10 +1000,17 @@ fn draw_one(
           let [x2, y2, _] = b;
           let [x3, y3, _] = c;
 
-          // From https://en.wikipedia.org/wiki/Barycentric_coordinate_system#Conversion_between_barycentric_and_Cartesian_coordinates
-          let bary_a = ((y2 - y3)*(x - x3) + (x3 - x2)*(y - y3)) / ((y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3));
-          let bary_b = ((y3 - y1)*(x - x3) + (x1 - x3)*(y - y3)) / ((y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3));
+          let denom = (y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3);
+
+          let mut bary_a = ((y2 - y3)*(x - x3) + (x3 - x2)*(y - y3)) / denom;
+          let bary_b = ((y3 - y1)*(x - x3) + (x1 - x3)*(y - y3)) / denom;
           let bary_c = 1.0 - bary_a - bary_b;
+
+          // TODO: figure out a better way to deal with this precicion issue
+          if (bary_a + bary_b + bary_c) != 1.0 {
+            bary_a = 1.0 - bary_b - bary_c;
+          }
+
           (bary_a, bary_b, bary_c)
         }
 
@@ -1032,6 +1057,7 @@ fn draw_one(
               current,
               (x.floor() as i32, y.floor() as i32),
               z,
+              front_facing,
               frag_vals,
               &frag_in_vars,
               &frag_out_vars,

@@ -160,8 +160,8 @@ impl Context {
 
       color_mask: (true, true, true, true),
       depth_mask: true,
-      stencil_mask_front: 0,
-      stencil_mask_back: 0,
+      stencil_mask_front: u32::max_value(),
+      stencil_mask_back: u32::max_value(),
 
       stencil_test: false,
       stencil_func_front: (CmpFunc::Always, 0, GLuint::max_value()),
@@ -374,6 +374,7 @@ impl Server {
           if let Some(depth) = depth {
             if depth_mask {
               let draw = self.draw_surface.as_mut().unwrap();
+              let depth = draw.encode_depth(depth);
 
               for y in y..y+height {
                 for x in x..x+width {
@@ -385,11 +386,10 @@ impl Server {
 
           if let Some(stencil) = stencil {
             let draw = self.draw_surface.as_mut().unwrap();
-            let stencil_mask = if stencil_mask == 0 { u32::max_value() } else { stencil_mask };
 
             for y in y..y+height {
               for x in x..x+width {
-                draw.set_stencil(x, y, stencil & stencil_mask);
+                draw.set_stencil(x, y, stencil, stencil_mask);
               }
             }
           }
@@ -574,20 +574,7 @@ pub enum CmpFunc {
 }
 
 impl CmpFunc {
-  pub fn cmp_f32(self, old: f32, new: f32) -> bool {
-    match self {
-      CmpFunc::LessEqual => new <= old,
-      CmpFunc::GreaterEqual => new >= old,
-      CmpFunc::Less => new < old,
-      CmpFunc::Greater => new > old,
-      CmpFunc::Equal => new == old,
-      CmpFunc::NotEqual => new != old,
-      CmpFunc::Always => true,
-      CmpFunc::Never => false,
-    }
-  }
-
-  pub fn cmp_u32(self, old: u32, new: u32) -> bool {
+  pub fn cmp(self, old: u32, new: u32) -> bool {
     match self {
       CmpFunc::LessEqual => new <= old,
       CmpFunc::GreaterEqual => new >= old,
@@ -3537,18 +3524,28 @@ pub extern "C" fn glStencilFuncSeparate(
   }
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glStencilMask(mask: GLuint) -> () {
-  assert_eq!(mask, 0xFFFF_FFFF);
+pub extern "C" fn glStencilMask(
+  mask: GLuint,
+) -> () {
+  glStencilMaskSeparate(GL_FRONT_AND_BACK, mask);
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glStencilMaskSeparate(face: GLenum, mask: GLuint) -> () {
-  unimplemented!()
+pub extern "C" fn glStencilMaskSeparate(
+  face: GLenum,
+  mask: GLuint,
+) -> () {
+  let current = current();
+
+  if face == GL_FRONT_AND_BACK || face == GL_FRONT {
+    current.stencil_mask_front = mask;
+  }
+  if face == GL_FRONT_AND_BACK || face == GL_BACK {
+    current.stencil_mask_back = mask;
+  }
 }
 
 #[no_mangle]

@@ -292,13 +292,14 @@ impl Surface {
   pub fn set_depth(&mut self,
                    x: GLint,
                    y: GLint,
-                   depth: GLfloat) {
+                   depth: u32,
+  ) {
     let loc = (y as usize * self.width as usize + x as usize) * self.config.ds_bytes();
     let size = self.config.depth_size as usize / 8;
 
     let encoded = match size {
       3 => {
-        let whole = (depth * 0xFF_FF_FF as f32) as u32;
+        let whole = depth;
         // TODO: can this just be replaced with a cast
         let a = (whole >> 16) as u8;
         let b = (whole >> 8 ) as u8;
@@ -314,11 +315,25 @@ impl Surface {
   }
 
   #[inline]
+  pub fn encode_depth(&mut self,
+                   depth: GLfloat,
+  ) -> u32 {
+    let size = self.config.depth_size as usize / 8;
+
+    match size {
+      3 => {
+        (depth * 0xFF_FF_FF as f32) as u32
+      },
+      x => unimplemented!("{}", x),
+    }
+  }
+
+  #[inline]
   pub fn get_depth(
     &mut self,
     x: GLint,
     y: GLint,
-  ) -> GLfloat {
+  ) -> u32 {
     let loc = (y as usize * self.width as usize + x as usize) * self.config.ds_bytes();
     let size = self.config.depth_size as usize / 8;
 
@@ -330,9 +345,7 @@ impl Surface {
 
     match size {
       3 => {
-        let w = ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | ((bytes[2] as u32) << 0);
-
-        w as f32 / 0xFF_FF_FF as f32
+        ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | ((bytes[2] as u32) << 0)
       },
       x => unimplemented!("{}", x),
     }
@@ -341,16 +354,22 @@ impl Surface {
 
   #[inline]
   pub fn set_stencil(&mut self,
-                   x: GLint,
-                   y: GLint,
-                   stencil: GLuint) {
+                     x: GLint,
+                     y: GLint,
+                     stencil: GLuint,
+                     mask: GLuint,
+  ) {
     let loc = (y as usize * self.width as usize + x as usize) * self.config.ds_bytes();
     let depth_size = self.config.depth_size as usize / 8;
     let size = self.config.stencil_size as usize / 8;
 
+    let old = self.get_stencil(x, y);
+
+    let new = (stencil & mask) | (old & !mask);
+
     let encoded = match size {
       1 => {
-        [stencil as u8, 0, 0, 0]
+        [new as u8, 0, 0, 0]
       },
       x => unimplemented!("{}", x),
     };
