@@ -16,6 +16,7 @@ dEQP-GLES3.functional.draw.draw_elements.* \
 dEQP-GLES3.functional.fragment_ops.depth.* \
 dEQP-GLES3.functional.fragment_ops.stencil.* \
 dEQP-GLES3.functional.fragment_ops.depth_stencil.* \
+dEQP-GLES3.functional.clipping.point.point_* \
 dEQP-GLES3.functional.transform_feedback.*
 
 export LD_LIBRARY_PATH=../../../../target/release

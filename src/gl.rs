@@ -4112,11 +4112,13 @@ pub extern "C" fn glValidateProgramPipeline(pipeline: GLuint) -> () {
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glVertexAttrib1f(index: GLuint, x: GLfloat) -> () {
-  unimplemented!()
+pub extern "C" fn glVertexAttrib1f(
+  index: GLuint,
+  x: GLfloat,
+) -> () {
+  glVertexAttrib4f(index, x, 0.0, 0.0, 1.0)
 }
 
 #[allow(unused_variables)]

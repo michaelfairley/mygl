@@ -656,14 +656,16 @@ fn draw_one(
 
     // RASTERIZATION
 
-    fn window_coords(vars: &Vars, viewport: Rect, depth_range: (GLfloat, GLfloat)) -> [f32; 3] {
-        let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".into()) {
-          v
-        } else { unreachable!() };
-        let ndc = [clip_coords[0] / clip_coords[3],
-                   clip_coords[1] / clip_coords[3],
-                   clip_coords[2] / clip_coords[3]];
+    fn ndc(vars: &Vars) -> [f32; 3] {
+      let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".into()) {
+        v
+      } else { unreachable!() };
+      [clip_coords[0] / clip_coords[3],
+       clip_coords[1] / clip_coords[3],
+       clip_coords[2] / clip_coords[3]]
+    }
 
+    fn window_coords(ndc: [f32; 3], viewport: Rect, depth_range: (GLfloat, GLfloat)) -> [f32; 3] {
         let px = viewport.2 as f32;
         let py = viewport.3 as f32;
         let ox = viewport.0 as f32 + px / 2.0;
@@ -799,7 +801,15 @@ fn draw_one(
 
     match prim {
       Primitive::Point(p) => {
-        let window_coords = window_coords(p, current.viewport, current.depth_range);
+        let ndc = ndc(p);
+
+        if ndc[0] < -1.0 || ndc[0] > 1.0
+          || ndc[1] < -1.0 || ndc[1] > 1.0
+          || ndc[2] < -1.0 || ndc[2] > 1.0 {
+            continue;
+          }
+
+        let window_coords = window_coords(ndc, current.viewport, current.depth_range);
 
         let x = window_coords[0] as i32;
         let y = window_coords[1] as i32;
@@ -817,8 +827,10 @@ fn draw_one(
         );
       },
       Primitive::Line(a, b) => {
-        let p_a = window_coords(a, current.viewport, current.depth_range);
-        let p_b = window_coords(b, current.viewport, current.depth_range);
+        let ndc_a = ndc(a);
+        let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
+        let ndc_b = ndc(b);
+        let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
 
         let delta_x = p_b[0]-p_a[0];
         let delta_y = p_b[1]-p_a[1];
@@ -950,9 +962,12 @@ fn draw_one(
         }
       },
       Primitive::Triangle(a, b, c) => {
-        let p_a = window_coords(a, current.viewport, current.depth_range);
-        let p_b = window_coords(b, current.viewport, current.depth_range);
-        let p_c = window_coords(c, current.viewport, current.depth_range);
+        let ndc_a = ndc(a);
+        let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
+        let ndc_b = ndc(b);
+        let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
+        let ndc_c = ndc(c);
+        let p_c = window_coords(ndc_c, current.viewport, current.depth_range);
 
         let front_facing: bool = [(&p_a, &p_b), (&p_b, &p_c), (&p_c, &p_a)].iter()
           .map(|(i, j)| {
