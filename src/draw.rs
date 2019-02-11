@@ -898,13 +898,18 @@ fn draw_one(
           let idx = 1.0 / delta_x.abs();
 
           if p_a[0] < p_b[0] {
+            let first_hop = 1.0 - (x + 0.5).fract();
+            y += slope * first_hop;
+            x += first_hop;
+            t -= idx * first_hop;
+
             while x < p_b[0] {
               let frag_vals = interp_vars(&frag_in_vars, a, b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
                 current,
-                (x.round() as i32, y.round() as i32),
+                (x.floor() as i32, y.floor() as i32),
                 z,
                 true,
                 frag_vals,
@@ -919,13 +924,18 @@ fn draw_one(
               t -= idx;
             }
           } else {
+            let first_hop = 1.0 - (x - 0.5).fract();
+            y -= slope * first_hop;
+            x -= first_hop;
+            t -= idx * first_hop;
+
             while x > p_b[0] {
               let frag_vals = interp_vars(&frag_in_vars, a, b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
                 current,
-                (x.round() as i32, y.round() as i32),
+                (x.floor() as i32, y.floor() as i32),
                 z,
                 true,
                 frag_vals,
@@ -945,13 +955,18 @@ fn draw_one(
           let islope = delta_x / delta_y;
 
           if p_a[1] < p_b[1] {
+            let first_hop = 1.0 - (y + 0.5).fract();
+            x += islope * first_hop;
+            y += first_hop;
+            t -= idy * first_hop;
+
             while y < p_b[1] {
               let frag_vals = interp_vars(&frag_in_vars, a, b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
                 current,
-                (x.round() as i32, y.round() as i32),
+                (x.floor() as i32, y.floor() as i32),
                 z,
                 true,
                 frag_vals,
@@ -966,13 +981,18 @@ fn draw_one(
               t -= idy;
             }
           } else {
+            let first_hop = 1.0 - (y - 0.5).fract();
+            x -= islope * first_hop;
+            y -= first_hop;
+            t -= idy * first_hop;
+
             while y > p_b[1] {
               let frag_vals = interp_vars(&frag_in_vars, a, b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
                 current,
-                (x.round() as i32, y.round() as i32),
+                (x.floor() as i32, y.floor() as i32),
                 z,
                 true,
                 frag_vals,
