@@ -14,14 +14,14 @@ use std::os::raw::*;
 use gl::{self,Context,Rect,parse_variable_name,fixed_to_float};
 
 
-pub enum Primitive<'a> {
-  Point(&'a Vars),
-  Line(&'a Vars, &'a Vars),
-  Triangle(&'a Vars, &'a Vars, &'a Vars),
+pub enum Primitive {
+  Point(Vars),
+  Line(Vars, Vars),
+  Triangle(Vars, Vars, Vars),
 }
 
-impl<'a> Primitive<'a> {
-  pub fn iter(&'a self) -> VertIter<'a> {
+impl Primitive {
+  pub fn iter(&self) -> VertIter {
     VertIter{
       primitive: self,
       i: 0,
@@ -30,7 +30,7 @@ impl<'a> Primitive<'a> {
 }
 
 pub struct VertIter<'a> {
-  primitive: &'a Primitive<'a>,
+  primitive: &'a Primitive,
   i: usize,
 }
 
@@ -61,13 +61,13 @@ pub struct PrimitivePump<I: Iterator<Item=Vars>> {
 }
 
 enum Mode {
-  Points(Option<Vars>),
-  Lines(Option<Vars>, Option<Vars>),
-  LineStrip(Option<Vars>, Option<Vars>),
-  LineLoop(Option<Vars>, Option<Vars>, Option<Vars>),
-  Triangles(Option<Vars>, Option<Vars>, Option<Vars>),
-  TriangleFan(Option<Vars>, Option<Vars>, Option<Vars>),
-  TriangleStrip(Option<Vars>, Option<Vars>, Option<Vars>, bool),
+  Points,
+  Lines,
+  LineStrip(Option<Vars>),
+  LineLoop(Option<Vars>, Option<Vars>),
+  Triangles,
+  TriangleFan(Option<Vars>, Option<Vars>),
+  TriangleStrip(Option<Vars>, Option<Vars>, bool),
 }
 
 impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
@@ -76,13 +76,13 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
     mode: GLenum,
   ) -> Self {
     let mode = match mode {
-      GL_POINTS => Mode::Points(None),
-      GL_LINES => Mode::Lines(None, None),
-      GL_LINE_STRIP => Mode::LineStrip(None, None),
-      GL_LINE_LOOP => Mode::LineLoop(None, None, None),
-      GL_TRIANGLES => Mode::Triangles(None, None, None),
-      GL_TRIANGLE_FAN => Mode::TriangleFan(None, None, None),
-      GL_TRIANGLE_STRIP => Mode::TriangleStrip(None, None, None, true),
+      GL_POINTS => Mode::Points,
+      GL_LINES => Mode::Lines,
+      GL_LINE_STRIP => Mode::LineStrip(None),
+      GL_LINE_LOOP => Mode::LineLoop(None, None),
+      GL_TRIANGLES => Mode::Triangles,
+      GL_TRIANGLE_FAN => Mode::TriangleFan(None, None),
+      GL_TRIANGLE_STRIP => Mode::TriangleStrip(None, None, true),
       x => unimplemented!("{:x}", x),
     };
 
@@ -92,88 +92,96 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
     }
   }
 
-  pub fn next<'a>(&'a mut self) -> Option<Primitive<'a>> {
+  pub fn next(&mut self) -> Option<Primitive> {
     match self.mode {
-      Mode::Points(ref mut a) => {
-        *a = self.vertex_iter.next();
-
-        a.as_ref().map(|a| Primitive::Point(a))
+      Mode::Points => {
+        if let Some(p) = self.vertex_iter.next() {
+          Some(Primitive::Point(p))
+        } else { None }
       },
-      Mode::Lines(ref mut a, ref mut b) => {
-        *a = self.vertex_iter.next();
-        *b = self.vertex_iter.next();
+      Mode::Lines => {
+        let a = self.vertex_iter.next();
+        let b = self.vertex_iter.next();
 
-        if let (&mut Some(ref a), &mut Some(ref b)) = (a, b) {
+        if let (Some(a), Some(b)) = (a, b) {
           Some(Primitive::Line(a, b))
         } else { None }
       },
-      Mode::LineStrip(ref mut a, ref mut b) => {
-        if a.is_none() {
-          *a = self.vertex_iter.next();
-          *b = self.vertex_iter.next();
-        } else {
-          *a = mem::replace(b, self.vertex_iter.next());
+      Mode::LineStrip(ref mut prev) => {
+        if prev.is_none() {
+          *prev = self.vertex_iter.next();
         }
+        if let (&mut Some(ref mut prev), Some(ref new)) = (prev, self.vertex_iter.next()) {
+          let b = new.clone();
+          let a = mem::replace(prev, new.clone());
 
-        if let (&mut Some(ref a), &mut Some(ref b)) = (a, b) {
           Some(Primitive::Line(a, b))
         } else { None }
       },
-      Mode::LineLoop(ref mut first, ref mut a, ref mut b) => {
-        if a.is_none() {
-          *a = self.vertex_iter.next();
-          *b = self.vertex_iter.next();
-        } else {
-          if first.is_none() {
-            *first = mem::replace(a, mem::replace(b, self.vertex_iter.next()));
-          } else {
-            *a = mem::replace(b, self.vertex_iter.next());
-          }
+      Mode::LineLoop(ref mut first, ref mut prev) => {
+        if prev.is_none() {
+          *prev = self.vertex_iter.next();
+        }
+        if first.is_none() {
+          *first = prev.clone();
         }
 
-        match (first, a, b) {
-          (_, &mut Some(ref a), &mut Some(ref b)) => Some(Primitive::Line(a, b)),
-          (&mut Some(ref first), &mut Some(ref a), None) => Some(Primitive::Line(a, first)),
+        match (first, prev, self.vertex_iter.next()) {
+          (_, &mut Some(ref mut prev), Some(ref new)) => {
+            let b = new.clone();
+            let a = mem::replace(prev, new.clone());
+
+            Some(Primitive::Line(a, b))
+          },
+          (&mut Some(ref first), &mut Some(ref mut new), None) => {
+            // let a = mem::replace(new, None);
+            // let b = mem::replace(first, None);
+            let a = new.clone();
+            let b = first.clone();
+
+            Some(Primitive::Line(a, b))
+          },
           _ => None,
         }
       },
-      Mode::Triangles(ref mut a, ref mut b, ref mut c) => {
-        *a = self.vertex_iter.next();
-        *b = self.vertex_iter.next();
-        *c = self.vertex_iter.next();
+      Mode::Triangles => {
+        let a = self.vertex_iter.next();
+        let b = self.vertex_iter.next();
+        let c = self.vertex_iter.next();
 
-        if let (&mut Some(ref a), &mut Some(ref b), &mut Some(ref c)) = (a, b, c) {
+        if let (Some(a), Some(b), Some(c)) = (a, b, c) {
           Some(Primitive::Triangle(a, b, c))
         } else { None }
       },
-      Mode::TriangleFan(ref mut a, ref mut b, ref mut c) => {
-        if a.is_none() {
-          *a = self.vertex_iter.next();
-          *b = self.vertex_iter.next();
-          *c = self.vertex_iter.next();
-        } else {
-          *b = mem::replace(c, self.vertex_iter.next());
+      Mode::TriangleFan(ref mut first, ref mut prev) => {
+        if first.is_none() {
+          *first = self.vertex_iter.next();
+          *prev = self.vertex_iter.next();
         }
 
-        if let (&mut Some(ref a), &mut Some(ref b), &mut Some(ref c)) = (a, b, c) {
+        if let (&mut Some(ref mut first), &mut Some(ref mut prev), Some(ref new)) = (first, prev, self.vertex_iter.next()) {
+          let a = first.clone();
+          let c = new.clone();
+          let b = mem::replace(prev, new.clone());
+
           Some(Primitive::Triangle(a, b, c))
         } else { None }
       },
-      Mode::TriangleStrip(ref mut a, ref mut b, ref mut c, ref mut write_a) => {
-        if a.is_none() {
-          *a = self.vertex_iter.next();
-          *b = self.vertex_iter.next();
-          *c = self.vertex_iter.next();
-        } else {
-          if *write_a {
-            *a = mem::replace(c, self.vertex_iter.next());
+      Mode::TriangleStrip(ref mut prev1, ref mut prev2, ref mut write_1) => {
+        if prev1.is_none() {
+          *prev1 = self.vertex_iter.next();
+          *prev2 = self.vertex_iter.next();
+        }
+
+        if let (&mut Some(ref mut prev1), &mut Some(ref mut prev2), Some(ref new)) = (prev1, prev2, self.vertex_iter.next()) {
+          let c = new.clone();
+          let (a, b) = if *write_1 {
+            (mem::replace(prev1, new.clone()), prev2.clone())
           } else {
-            *b = mem::replace(c, self.vertex_iter.next());
-          }
-          *write_a = !*write_a;
-        }
+            (prev1.clone(), mem::replace(prev2, new.clone()))
+          };
+          *write_1 = !*write_1;
 
-        if let (&mut Some(ref a), &mut Some(ref b), &mut Some(ref c)) = (a, b, c) {
           Some(Primitive::Triangle(a, b, c))
         } else { None }
       },
@@ -811,7 +819,7 @@ fn draw_one(
 
     match prim {
       Primitive::Point(p) => {
-        let ndc = ndc(p);
+        let ndc = ndc(&p);
 
         if ndc[2] < -1.0 || ndc[2] > 1.0 {
           continue;
@@ -855,9 +863,9 @@ fn draw_one(
         }
       },
       Primitive::Line(a, b) => {
-        let ndc_a = ndc(a);
+        let ndc_a = ndc(&a);
         let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
-        let ndc_b = ndc(b);
+        let ndc_b = ndc(&b);
         let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
 
         let delta_x = p_b[0]-p_a[0];
@@ -904,7 +912,7 @@ fn draw_one(
             t -= idx * first_hop;
 
             while x < p_b[0] {
-              let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+              let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
@@ -930,7 +938,7 @@ fn draw_one(
             t -= idx * first_hop;
 
             while x > p_b[0] {
-              let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+              let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
@@ -961,7 +969,7 @@ fn draw_one(
             t -= idy * first_hop;
 
             while y < p_b[1] {
-              let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+              let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
@@ -987,7 +995,7 @@ fn draw_one(
             t -= idy * first_hop;
 
             while y > p_b[1] {
-              let frag_vals = interp_vars(&frag_in_vars, a, b, t);
+              let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
               do_fragment(
@@ -1010,11 +1018,11 @@ fn draw_one(
         }
       },
       Primitive::Triangle(a, b, c) => {
-        let ndc_a = ndc(a);
+        let ndc_a = ndc(&a);
         let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
-        let ndc_b = ndc(b);
+        let ndc_b = ndc(&b);
         let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
-        let ndc_c = ndc(c);
+        let ndc_c = ndc(&c);
         let p_c = window_coords(ndc_c, current.viewport, current.depth_range);
 
         let front_facing: bool = [(&p_a, &p_b), (&p_b, &p_c), (&p_c, &p_a)].iter()
@@ -1110,7 +1118,7 @@ fn draw_one(
           while y < top.round() {
             let barys = barycentric(x, y, p_a, p_b, p_c);
 
-            let frag_vals = bary_interp_vars(&frag_in_vars, a, b, c, barys);
+            let frag_vals = bary_interp_vars(&frag_in_vars, &a, &b, &c, barys);
 
             let z = p_a[2] * barys.0
               + p_b[2] * barys.1
