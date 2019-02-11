@@ -1992,9 +1992,9 @@ pub extern "C" fn glGetFloatv(
   let result = match pname {
     GL_ALIASED_POINT_SIZE_RANGE => {
       unsafe{ ptr::write(data, 1.0) };
-      unsafe{ ptr::write(data.add(1), 1.0) };
+      unsafe{ ptr::write(data.add(1), 8.0) };
       return
-    }
+    },
     x => unimplemented!("{:x}", x),
   };
 

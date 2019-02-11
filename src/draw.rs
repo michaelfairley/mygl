@@ -530,8 +530,15 @@ fn draw_one(
       } else {
         let attrib = current_vertex_attrib[loc as usize];
 
-        // TODO: non-float types
-        Value::Vec4(attrib)
+        let val = match type_ {
+          TypeSpecifierNonArray::Float => Value::Float(attrib[0]),
+          TypeSpecifierNonArray::Vec2 => Value::Vec2([attrib[0], attrib[1]]),
+          TypeSpecifierNonArray::Vec3 => Value::Vec3([attrib[0], attrib[1], attrib[2]]),
+          TypeSpecifierNonArray::Vec4 => Value::Vec4([attrib[0], attrib[1], attrib[2], attrib[3]]),
+          t => unimplemented!("{:?}", t),
+        };
+
+        val
       };
 
       vars.insert(name.clone(), value);
@@ -696,9 +703,12 @@ fn draw_one(
       let draw_surface = draw_surface.as_mut().unwrap();
 
       // TODO: real clipping
-      if x < 0 || x >= draw_surface.width || y < 0 || y >= draw_surface.height {
-        return;
-      }
+      if x < context.viewport.0
+        || x >= context.viewport.0+context.viewport.2
+        || y < context.viewport.1
+        || y >= context.viewport.1+context.viewport.3 {
+          return;
+        }
 
       let draw_framebuffer = context.draw_framebuffer;
       let color_mask = context.color_mask;
@@ -803,28 +813,46 @@ fn draw_one(
       Primitive::Point(p) => {
         let ndc = ndc(p);
 
-        if ndc[0] < -1.0 || ndc[0] > 1.0
-          || ndc[1] < -1.0 || ndc[1] > 1.0
-          || ndc[2] < -1.0 || ndc[2] > 1.0 {
-            continue;
-          }
+        if ndc[2] < -1.0 || ndc[2] > 1.0 {
+          continue;
+        }
 
         let window_coords = window_coords(ndc, current.viewport, current.depth_range);
 
-        let x = window_coords[0] as i32;
-        let y = window_coords[1] as i32;
+        let point_size = if let &Value::Float(f) = p.get(&"gl_PointSize".into()) {
+          f
+        } else { unreachable!() };
+        let point_size = if point_size <= 0.0 { 1.0 } else { point_size };
 
-        do_fragment(
-          current,
-          (x, y),
-          window_coords[2],
-          true,
-          p.clone(),
-          &frag_in_vars,
-          &frag_out_vars,
-          &frag_uniforms,
-          &frag_compiled,
-        );
+        let min_x = window_coords[0] - point_size / 2.0;
+        let max_x = window_coords[0] + point_size / 2.0;
+        let min_y = window_coords[1] - point_size / 2.0;
+        let max_y = window_coords[1] + point_size / 2.0;
+
+        let mut x = (min_x + 0.5).ceil() - 0.5;
+        let first_y = (min_y + 0.5).ceil() - 0.5;
+
+        while x < max_x {
+          let mut y = first_y;
+
+          while y < max_y {
+            do_fragment(
+              current,
+              (x as i32, y as i32),
+              window_coords[2],
+              true,
+              p.clone(),
+              &frag_in_vars,
+              &frag_out_vars,
+              &frag_uniforms,
+              &frag_compiled,
+            );
+
+            y += 1.0;
+          }
+
+          x += 1.0;
+        }
       },
       Primitive::Line(a, b) => {
         let ndc_a = ndc(a);
