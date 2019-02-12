@@ -1989,7 +1989,7 @@ pub extern "C" fn glGetFloatv(
   pname: GLenum,
   data: *mut GLfloat,
 ) -> () {
-  let result = match pname {
+  let _result = match pname {
     GL_ALIASED_POINT_SIZE_RANGE => {
       unsafe{ ptr::write(data, 1.0) };
       unsafe{ ptr::write(data.add(1), 8.0) };
@@ -1998,7 +1998,7 @@ pub extern "C" fn glGetFloatv(
     x => unimplemented!("{:x}", x),
   };
 
-  unsafe{ ptr::write(data, result) };
+  // unsafe{ ptr::write(data, result) };
 }
 
 #[allow(unused_variables)]
