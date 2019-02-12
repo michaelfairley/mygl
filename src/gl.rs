@@ -1553,11 +1553,17 @@ pub extern "C" fn glDrawArraysIndirect(mode: GLenum, indirect: *const c_void) ->
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glDrawArraysInstanced(mode: GLenum, first: GLint, count: GLsizei, instancecount: GLsizei) -> () {
-  unimplemented!()
+pub extern "C" fn glDrawArraysInstanced(
+  mode: GLenum,
+  first: GLint,
+  count: GLsizei,
+  instancecount: GLsizei,
+) -> () {
+  for i in 0..instancecount {
+    draw::glDrawArraysOneInstance(current(), mode, first, count, i, 0);
+  }
 }
 
 #[no_mangle]
@@ -1592,11 +1598,18 @@ pub extern "C" fn glDrawElementsIndirect(mode: GLenum, type_: GLenum, indirect: 
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glDrawElementsInstanced(mode: GLenum, count: GLsizei, type_: GLenum, indices: *const c_void, instancecount: GLsizei) -> () {
-  unimplemented!()
+pub extern "C" fn glDrawElementsInstanced(
+  mode: GLenum,
+  count: GLsizei,
+  type_: GLenum,
+  indices: *const c_void,
+  instancecount: GLsizei,
+) -> () {
+  for i in 0..instancecount {
+    draw::glDrawElementsOneInstance(current(), mode, count, type_, indices, i, 0, 0);
+  }
 }
 
 #[allow(unused_variables)]

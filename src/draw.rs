@@ -214,7 +214,6 @@ pub(crate) fn glDrawElementsOneInstance(
   basevertex: GLuint,
   baseinstance: GLuint,
 ) {
-  assert_eq!(instance, 0);
   assert_eq!(baseinstance, 0);
 
   let mut vertex_ids = vec![];
