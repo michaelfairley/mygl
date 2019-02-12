@@ -1619,11 +1619,17 @@ pub extern "C" fn glDrawElementsInstancedBaseVertex(mode: GLenum, count: GLsizei
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glDrawRangeElements(mode: GLenum, start: GLuint, end: GLuint, count: GLsizei, type_: GLenum, indices: *const c_void) -> () {
-  unimplemented!()
+pub extern "C" fn glDrawRangeElements(
+  mode: GLenum,
+  _start: GLuint,
+  _end: GLuint,
+  count: GLsizei,
+  type_: GLenum,
+  indices: *const c_void,
+) -> () {
+  glDrawElements(mode, count, type_, indices);
 }
 
 #[allow(unused_variables)]
