@@ -4388,6 +4388,16 @@ pub fn size_of(typ: GLenum) -> usize {
     GL_FLOAT_VEC2 => mem::size_of::<GLfloat>() * 2,
     GL_FLOAT_VEC3 => mem::size_of::<GLfloat>() * 3,
     GL_FLOAT_VEC4 => mem::size_of::<GLfloat>() * 4,
+    GL_INT => mem::size_of::<GLint>(),
+    GL_INT_VEC2 => mem::size_of::<GLint>() * 2,
+    GL_INT_VEC3 => mem::size_of::<GLint>() * 3,
+    GL_INT_VEC4 => mem::size_of::<GLint>() * 4,
+    GL_FIXED => mem::size_of::<GLfixed>(),
+    GL_SHORT => mem::size_of::<GLshort>(),
+    GL_UNSIGNED_SHORT => mem::size_of::<GLshort>(),
+    GL_BYTE => mem::size_of::<GLbyte>(),
+    GL_UNSIGNED_BYTE => mem::size_of::<GLubyte>(),
+    GL_HALF_FLOAT => mem::size_of::<GLhalf>(),
     x => unimplemented!("{:x}", x),
   }
 }
@@ -4419,9 +4429,4 @@ pub fn parse_variable_name(
   }
 
   (base, indices)
-}
-
-#[inline]
-pub(crate) fn fixed_to_float(fixed: GLfixed) -> GLfloat {
-  fixed as f32 / 65536.0
 }

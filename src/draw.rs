@@ -1,5 +1,6 @@
 use types::*;
 use consts::*;
+use conversions::*;
 
 use std::mem;
 use std::cmp;
@@ -11,7 +12,7 @@ use std::cell::{Ref};
 use string_cache::DefaultAtom as Atom;
 use std::collections::HashMap;
 use std::os::raw::*;
-use gl::{self,Context,Rect,parse_variable_name,fixed_to_float};
+use gl::{self,Context,Rect,parse_variable_name};
 
 
 pub enum Primitive {
@@ -455,8 +456,11 @@ fn draw_one(
           Int([GLint; 4]),
           Uint([GLuint; 4]),
           Short([GLshort; 4]),
+          Ushort([GLushort; 4]),
           Byte([GLbyte; 4]),
+          Ubyte([GLubyte; 4]),
           Fixed([GLfixed; 4]),
+          HalfFloat([GLhalf; 4]),
         }
 
         let attrib_value = match attrib.type_ {
@@ -472,52 +476,88 @@ fn draw_one(
             AttribValue::Float(v)
           },
           GL_INT => {
+            let one = if attrib.normalized { 0x7F_FF_FF_FF } else { 1 };
+
             let p = p as *const GLint;
             let v = unsafe { match attrib.size {
-              1 => [p.read(), 0, 0, 1],
-              2 => [p.read(), p.add(1).read(), 0, 1],
-              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              1 => [p.read(), 0, 0, one],
+              2 => [p.read(), p.add(1).read(), 0, one],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
               4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
               x => unimplemented!("{}", x),
             }};
             AttribValue::Int(v)
           },
           GL_UNSIGNED_INT => {
+            let one = if attrib.normalized { 0x7F_FF_FF_FFu32 } else { 1 };
+
             let p = p as *const GLuint;
             let v = unsafe { match attrib.size {
-              1 => [p.read(), 0, 0, 1],
-              2 => [p.read(), p.add(1).read(), 0, 1],
-              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              1 => [p.read(), 0, 0, one],
+              2 => [p.read(), p.add(1).read(), 0, one],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
               4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
               x => unimplemented!("{}", x),
             }};
             AttribValue::Uint(v)
           },
           GL_SHORT => {
+            let one = if attrib.normalized { 0x7F_FF } else { 1 };
+
             let p = p as *const GLshort;
             let v = unsafe { match attrib.size {
-              1 => [p.read(), 0, 0, 1],
-              2 => [p.read(), p.add(1).read(), 0, 1],
-              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              1 => [p.read(), 0, 0, one],
+              2 => [p.read(), p.add(1).read(), 0, one],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
               4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
               x => unimplemented!("{}", x),
             }};
             AttribValue::Short(v)
           },
+          GL_UNSIGNED_SHORT => {
+            let one = if attrib.normalized { 0xFF_FF } else { 1 };
+
+            let p = p as *const GLushort;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0, 0, one],
+              2 => [p.read(), p.add(1).read(), 0, one],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::Ushort(v)
+          },
           GL_BYTE => {
+            let one = if attrib.normalized { 0x7F } else { 1 };
+
             let p = p as *const GLbyte;
             let v = unsafe { match attrib.size {
-              1 => [p.read(), 0, 0, 1],
-              2 => [p.read(), p.add(1).read(), 0, 1],
-              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              1 => [p.read(), 0, 0, one],
+              2 => [p.read(), p.add(1).read(), 0, one],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
               4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
               x => unimplemented!("{}", x),
             }};
             AttribValue::Byte(v)
           },
+          GL_UNSIGNED_BYTE => {
+            let one = if attrib.normalized { 0xFF } else { 1 };
+
+            let p = p as *const GLubyte;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0, 0, one],
+              2 => [p.read(), p.add(1).read(), 0, one],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::Ubyte(v)
+          },
           GL_FIXED => {
+            // let one = if attrib.normalized { 0x7F_FFFF } else { 0x0001_0000 } ;
+            let one =  0x0001_0000;
+
             let p = p as *const GLfixed;
-            let one = 0x0001_0000;
             let v = unsafe { match attrib.size {
               1 => [p.read(), 0, 0, one],
               2 => [p.read(), p.add(1).read(), 0, one],
@@ -527,26 +567,78 @@ fn draw_one(
             }};
             AttribValue::Fixed(v)
           },
+          GL_HALF_FLOAT => {
+            let p = p as *const GLhalf;
+            let v = unsafe { match attrib.size {
+              1 => [p.read(), 0, 0, 1],
+              2 => [p.read(), p.add(1).read(), 0, 1],
+              3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+              4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+              x => unimplemented!("{}", x),
+            }};
+            AttribValue::HalfFloat(v)
+          },
           x => unimplemented!("{:x}", x),
         };
 
-        match (attrib_value, type_) {
-          (AttribValue::Float(f), &TypeSpecifierNonArray::Float) => Value::Float(f[0]),
-          (AttribValue::Float(f), &TypeSpecifierNonArray::Vec2) => Value::Vec2([f[0], f[1]]),
-          (AttribValue::Float(f), &TypeSpecifierNonArray::Vec3) => Value::Vec3([f[0], f[1], f[2]]),
-          (AttribValue::Float(f), &TypeSpecifierNonArray::Vec4) => Value::Vec4([f[0], f[1], f[2], f[3]]),
-          (AttribValue::Int(i), &TypeSpecifierNonArray::Int) => Value::Int(i[0]),
-          (AttribValue::Int(i), &TypeSpecifierNonArray::IVec2) => Value::IVec2([i[0], i[1]]),
-          (AttribValue::Int(i), &TypeSpecifierNonArray::IVec3) => Value::IVec3([i[0], i[1], i[2]]),
-          (AttribValue::Int(i), &TypeSpecifierNonArray::IVec4) => Value::IVec4([i[0], i[1], i[2], i[3]]),
-          (AttribValue::Uint(u), &TypeSpecifierNonArray::Uint) => Value::Uint(u[0]),
-          (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec2) => Value::UVec2([u[0], u[1]]),
-          (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec3) => Value::UVec3([u[0], u[1], u[2]]),
-          (AttribValue::Uint(u), &TypeSpecifierNonArray::UVec4) => Value::UVec4([u[0], u[1], u[2], u[3]]),
-          (AttribValue::Short(s), &TypeSpecifierNonArray::Vec4) => Value::Vec4([s[0].into(), s[1].into(), s[2].into(), s[3].into()]),
-          (AttribValue::Byte(b), &TypeSpecifierNonArray::Vec4) => Value::Vec4([b[0].into(), b[1].into(), b[2].into(), b[3].into()]),
-          (AttribValue::Fixed(f), &TypeSpecifierNonArray::Vec4) => Value::Vec4([fixed_to_float(f[0]), fixed_to_float(f[1]), fixed_to_float(f[2]), fixed_to_float(f[3])]),
-          (v, t) => unimplemented!("{:?} {:?}", v, t),
+        let target_type = match type_ {
+          TypeSpecifierNonArray::Float | TypeSpecifierNonArray::Vec2 | TypeSpecifierNonArray::Vec3 | TypeSpecifierNonArray::Vec4 => TypeSpecifierNonArray::Vec4,
+          TypeSpecifierNonArray::Int | TypeSpecifierNonArray::IVec2 | TypeSpecifierNonArray::IVec3 | TypeSpecifierNonArray::IVec4 => TypeSpecifierNonArray::IVec4,
+          TypeSpecifierNonArray::Uint | TypeSpecifierNonArray::UVec2 | TypeSpecifierNonArray::UVec3 | TypeSpecifierNonArray::UVec4 => TypeSpecifierNonArray::UVec4,
+          x => unimplemented!("{:?}", x),
+        };
+
+        fn map4<A: Copy, B>(a: [A; 4], f: impl Fn(A) -> B) -> [B; 4] {
+          [
+            f(a[0]),
+            f(a[1]),
+            f(a[2]),
+            f(a[3]),
+          ]
+        }
+
+        let intermediate = match (attrib_value, target_type, attrib.normalized) {
+          (AttribValue::Float(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(f),
+          (AttribValue::Int(i), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(i),
+          (AttribValue::Uint(u), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(u),
+
+          (AttribValue::Int(i), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(i, |i| i as _)),
+          (AttribValue::Int(i), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(i, normalize_i32)),
+
+          (AttribValue::Uint(u), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(u, |u| u as _)),
+          (AttribValue::Uint(u), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(u, normalize_u32)),
+          (AttribValue::HalfFloat(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(map4(f, f16_to_f32)),
+          (AttribValue::Fixed(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(map4(f, fixed_to_float)),
+          (AttribValue::Short(s), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(s, |s| s as _)),
+          (AttribValue::Short(s), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(s, normalize_i16)),
+          (AttribValue::Short(s), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(map4(s, |s| s as _)),
+          (AttribValue::Short(s), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(s, |s| s as _)),
+          (AttribValue::Ushort(s), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(s, |s| s as _)),
+          (AttribValue::Ushort(s), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(s, normalize_u16)),
+          (AttribValue::Ushort(s), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(s, |s| s as _)),
+          (AttribValue::Byte(b), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(map4(b, |b| b as _)),
+          (AttribValue::Byte(b), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(b, |b| b as _)),
+          (AttribValue::Byte(b), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(b, normalize_i8)),
+          (AttribValue::Ubyte(b), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(b, |b| b as _)),
+          (AttribValue::Ubyte(b), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(b, normalize_u8)),
+          (AttribValue::Ubyte(b), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(b, |b| b as _)),
+          (v, t, n) => unimplemented!("{:?} {:?} {}", v, t, n),
+        };
+
+        match (intermediate, type_) {
+          (Value::Vec4(f), TypeSpecifierNonArray::Float) => Value::Float(f[0]),
+          (Value::Vec4(f), TypeSpecifierNonArray::Vec2) => Value::Vec2([f[0], f[1]]),
+          (Value::Vec4(f), TypeSpecifierNonArray::Vec3) => Value::Vec3([f[0], f[1], f[2]]),
+          (Value::Vec4(f), TypeSpecifierNonArray::Vec4) => Value::Vec4([f[0], f[1], f[2], f[3]]),
+          (Value::IVec4(i), TypeSpecifierNonArray::Int) => Value::Int(i[0]),
+          (Value::IVec4(i), TypeSpecifierNonArray::IVec2) => Value::IVec2([i[0], i[1]]),
+          (Value::IVec4(i), TypeSpecifierNonArray::IVec3) => Value::IVec3([i[0], i[1], i[2]]),
+          (Value::IVec4(i), TypeSpecifierNonArray::IVec4) => Value::IVec4([i[0], i[1], i[2], i[3]]),
+          (Value::UVec4(u), TypeSpecifierNonArray::Uint) => Value::Uint(u[0]),
+          (Value::UVec4(u), TypeSpecifierNonArray::UVec2) => Value::UVec2([u[0], u[1]]),
+          (Value::UVec4(u), TypeSpecifierNonArray::UVec3) => Value::UVec3([u[0], u[1], u[2]]),
+          (Value::UVec4(u), TypeSpecifierNonArray::UVec4) => Value::UVec4([u[0], u[1], u[2], u[3]]),
+          (i, t) => unimplemented!("{:?} {:?}", i, t),
         }
       } else {
         let attrib = current_vertex_attrib[loc as usize];
