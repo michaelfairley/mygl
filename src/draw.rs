@@ -4,7 +4,7 @@ use consts::*;
 use std::mem;
 use std::cmp;
 
-use glsl::interpret::{Vars};
+use glsl::interpret::{Vars,self};
 use glsl;
 use std::sync::Arc;
 use std::cell::{Ref};
@@ -1076,62 +1076,26 @@ fn draw_one(
         let mut y_lr = left[1];
         let mut y_lmr = left[1];
 
-        let first_hop = 1.0 - (x + 0.5).fract();
 
-        x += first_hop;
-        y_lr += first_hop * slope_lr;
-        y_lmr += first_hop * slope_lm;
+        let first_hop = 1.0 - ((x + 0.5).fract() + 1.0).fract();
 
-        if left[0] == middle[0] {
+        if x == middle[0] {
           y_lmr = middle[1];
         }
 
-        #[inline]
-        fn barycentric(x: f32, y: f32, a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> (f32, f32, f32) {
-          let [x1, y1, _] = a;
-          let [x2, y2, _] = b;
-          let [x3, y3, _] = c;
-
-          let denom = (y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3);
-
-          let mut bary_a = ((y2 - y3)*(x - x3) + (x3 - x2)*(y - y3)) / denom;
-          let bary_b = ((y3 - y1)*(x - x3) + (x1 - x3)*(y - y3)) / denom;
-          let bary_c = 1.0 - bary_a - bary_b;
-
-          // TODO: figure out a better way to deal with this precicion issue
-          if (bary_a + bary_b + bary_c) != 1.0 {
-            bary_a = 1.0 - bary_b - bary_c;
+        if x + first_hop > middle[0] {
+          let hop_to_mid = middle[0] - x;
+          let hop_from_mid = first_hop - hop_to_mid;
+          if slope_lm.is_infinite() {
+            y_lmr += slope_mr * hop_from_mid;
+          } else {
+            y_lmr += slope_lm * hop_to_mid + slope_mr * hop_from_mid;
           }
-
-          (bary_a, bary_b, bary_c)
+        } else {
+          y_lmr += first_hop * slope_lm;
         }
-
-        fn bary_interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, c: &Vars, (bary_a, bary_b, bary_c): (f32, f32, f32)) -> Vars {
-          let mut vars = Vars::new();
-
-          for var in frag_in_vars {
-            let a_val = a.get(&var.name);
-            let b_val = b.get(&var.name);
-            let c_val = c.get(&var.name);
-
-            let val = if var.flat {
-              a_val.clone()
-            } else {
-              interpret::add(
-                &interpret::mul(&a_val, bary_a),
-                &interpret::add(
-                  &interpret::mul(&b_val, bary_b),
-                  &interpret::mul(&c_val, bary_c),
-                )
-              )
-            };
-
-            vars.insert(var.name.clone(), val);
-          }
-
-          vars
-        }
-
+        x += first_hop;
+        y_lr += first_hop * slope_lr;
 
         while x < right[0] {
           let (bottom, top) = if lr_top { (y_lmr, y_lr) } else { (y_lr, y_lmr) };
@@ -1177,4 +1141,50 @@ fn draw_one(
     }
 
   }
+}
+
+#[inline]
+fn barycentric(x: f32, y: f32, a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> (f32, f32, f32) {
+  let [x1, y1, _] = a;
+  let [x2, y2, _] = b;
+  let [x3, y3, _] = c;
+
+  let denom = (y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3);
+
+  let mut bary_a = ((y2 - y3)*(x - x3) + (x3 - x2)*(y - y3)) / denom;
+  let bary_b = ((y3 - y1)*(x - x3) + (x1 - x3)*(y - y3)) / denom;
+  let bary_c = 1.0 - bary_a - bary_b;
+
+  // TODO: figure out a better way to deal with this precicion issue
+  if (bary_a + bary_b + bary_c) != 1.0 {
+    bary_a = 1.0 - bary_b - bary_c;
+  }
+
+  (bary_a, bary_b, bary_c)
+}
+
+fn bary_interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, c: &Vars, (bary_a, bary_b, bary_c): (f32, f32, f32)) -> Vars {
+  let mut vars = Vars::new();
+
+  for var in frag_in_vars {
+    let a_val = a.get(&var.name);
+    let b_val = b.get(&var.name);
+    let c_val = c.get(&var.name);
+
+    let val = if var.flat {
+      a_val.clone()
+    } else {
+      interpret::add(
+        &interpret::mul(&a_val, bary_a),
+        &interpret::add(
+          &interpret::mul(&b_val, bary_b),
+          &interpret::mul(&c_val, bary_c),
+        )
+      )
+    };
+
+    vars.insert(var.name.clone(), val);
+  }
+
+  vars
 }
