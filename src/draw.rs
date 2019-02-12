@@ -114,8 +114,12 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
       mode,
     }
   }
+}
 
-  pub fn next(&mut self) -> Option<Primitive> {
+impl<I: Iterator<Item=Vars>> Iterator for PrimitivePump<I> {
+  type Item = Primitive;
+
+  fn next(&mut self) -> Option<Primitive> {
     match self.mode {
       Mode::Empty => None,
       Mode::Points => {
