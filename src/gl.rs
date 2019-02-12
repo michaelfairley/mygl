@@ -1995,6 +1995,11 @@ pub extern "C" fn glGetFloatv(
       unsafe{ ptr::write(data.add(1), 8.0) };
       return
     },
+    GL_ALIASED_LINE_WIDTH_RANGE => {
+      unsafe{ ptr::write(data, 1.0) };
+      unsafe{ ptr::write(data.add(1), 8.0) };
+      return
+    },
     x => unimplemented!("{:x}", x),
   };
 
