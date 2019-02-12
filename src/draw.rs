@@ -63,26 +63,49 @@ pub struct PrimitivePump<I: Iterator<Item=Vars>> {
 enum Mode {
   Points,
   Lines,
-  LineStrip(Option<Vars>),
-  LineLoop(Option<Vars>, Option<Vars>),
+  LineStrip(Vars),
+  LineLoop(Vars, Vars, LineLoopState),
   Triangles,
-  TriangleFan(Option<Vars>, Option<Vars>),
-  TriangleStrip(Option<Vars>, Option<Vars>, bool),
+  TriangleFan(Vars, Vars),
+  TriangleStrip(Vars, Vars, bool),
+  Empty,
+}
+
+enum LineLoopState {
+  Pre,
+  Running,
+  Done,
 }
 
 impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
   pub fn new(
-    vertex_iter: I,
+    mut vertex_iter: I,
     mode: GLenum,
   ) -> Self {
     let mode = match mode {
       GL_POINTS => Mode::Points,
       GL_LINES => Mode::Lines,
-      GL_LINE_STRIP => Mode::LineStrip(None),
-      GL_LINE_LOOP => Mode::LineLoop(None, None),
+      GL_LINE_STRIP => if let Some(prev) = vertex_iter.next() {
+        Mode::LineStrip(prev)
+      } else {
+        Mode::Empty
+      },
+      GL_LINE_LOOP => if let (Some(first), Some(prev)) = (vertex_iter.next(), vertex_iter.next()) {
+        Mode::LineLoop(first, prev, LineLoopState::Pre)
+      } else {
+        Mode::Empty
+      },
       GL_TRIANGLES => Mode::Triangles,
-      GL_TRIANGLE_FAN => Mode::TriangleFan(None, None),
-      GL_TRIANGLE_STRIP => Mode::TriangleStrip(None, None, true),
+      GL_TRIANGLE_FAN => if let (Some(first), Some(prev)) = (vertex_iter.next(), vertex_iter.next()) {
+        Mode::TriangleFan(first, prev)
+      } else {
+        Mode::Empty
+      },
+      GL_TRIANGLE_STRIP => if let (Some(prev1), Some(prev2)) = (vertex_iter.next(), vertex_iter.next()) {
+        Mode::TriangleStrip(prev1, prev2, true)
+      } else {
+        Mode::Empty
+      },
       x => unimplemented!("{:x}", x),
     };
 
@@ -94,6 +117,7 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
 
   pub fn next(&mut self) -> Option<Primitive> {
     match self.mode {
+      Mode::Empty => None,
       Mode::Points => {
         if let Some(p) = self.vertex_iter.next() {
           Some(Primitive::Point(p))
@@ -108,40 +132,36 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
         } else { None }
       },
       Mode::LineStrip(ref mut prev) => {
-        if prev.is_none() {
-          *prev = self.vertex_iter.next();
-        }
-        if let (&mut Some(ref mut prev), Some(ref new)) = (prev, self.vertex_iter.next()) {
+        if let Some(new) = self.vertex_iter.next() {
           let b = new.clone();
-          let a = mem::replace(prev, new.clone());
+          let a = mem::replace(prev, new);
 
           Some(Primitive::Line(a, b))
         } else { None }
       },
-      Mode::LineLoop(ref mut first, ref mut prev) => {
-        if prev.is_none() {
-          *prev = self.vertex_iter.next();
-        }
-        if first.is_none() {
-          *first = prev.clone();
-        }
+      Mode::LineLoop(ref first, ref mut prev, ref mut state) => {
+        match *state {
+          LineLoopState::Pre => {
+            *state = LineLoopState::Running;
 
-        match (first, prev, self.vertex_iter.next()) {
-          (_, &mut Some(ref mut prev), Some(ref new)) => {
-            let b = new.clone();
-            let a = mem::replace(prev, new.clone());
-
-            Some(Primitive::Line(a, b))
+            Some(Primitive::Line(first.clone(), prev.clone()))
           },
-          (&mut Some(ref first), &mut Some(ref mut new), None) => {
-            // let a = mem::replace(new, None);
-            // let b = mem::replace(first, None);
-            let a = new.clone();
-            let b = first.clone();
+          LineLoopState::Running => {
+            if let Some(new) = self.vertex_iter.next() {
+              let b = new.clone();
+              let a = mem::replace(prev, new);
 
-            Some(Primitive::Line(a, b))
+              Some(Primitive::Line(a, b))
+            } else {
+              let a = prev.clone();
+              let b = first.clone();
+
+              *state = LineLoopState::Done;
+
+              Some(Primitive::Line(a, b))
+            }
           },
-          _ => None,
+          LineLoopState::Done => { None }
         }
       },
       Mode::Triangles => {
@@ -154,31 +174,21 @@ impl<I: Iterator<Item=Vars>> PrimitivePump<I> {
         } else { None }
       },
       Mode::TriangleFan(ref mut first, ref mut prev) => {
-        if first.is_none() {
-          *first = self.vertex_iter.next();
-          *prev = self.vertex_iter.next();
-        }
-
-        if let (&mut Some(ref mut first), &mut Some(ref mut prev), Some(ref new)) = (first, prev, self.vertex_iter.next()) {
+        if let Some(new) = self.vertex_iter.next() {
           let a = first.clone();
           let c = new.clone();
-          let b = mem::replace(prev, new.clone());
+          let b = mem::replace(prev, new);
 
           Some(Primitive::Triangle(a, b, c))
         } else { None }
       },
       Mode::TriangleStrip(ref mut prev1, ref mut prev2, ref mut write_1) => {
-        if prev1.is_none() {
-          *prev1 = self.vertex_iter.next();
-          *prev2 = self.vertex_iter.next();
-        }
-
-        if let (&mut Some(ref mut prev1), &mut Some(ref mut prev2), Some(ref new)) = (prev1, prev2, self.vertex_iter.next()) {
+        if let Some(new) = self.vertex_iter.next() {
           let c = new.clone();
           let (a, b) = if *write_1 {
-            (mem::replace(prev1, new.clone()), prev2.clone())
+            (mem::replace(prev1, new), prev2.clone())
           } else {
-            (prev1.clone(), mem::replace(prev2, new.clone()))
+            (prev1.clone(), mem::replace(prev2, new))
           };
           *write_1 = !*write_1;
 
