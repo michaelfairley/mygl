@@ -553,6 +553,14 @@ fn draw_one(
           TypeSpecifierNonArray::Vec2 => Value::Vec2([attrib[0], attrib[1]]),
           TypeSpecifierNonArray::Vec3 => Value::Vec3([attrib[0], attrib[1], attrib[2]]),
           TypeSpecifierNonArray::Vec4 => Value::Vec4([attrib[0], attrib[1], attrib[2], attrib[3]]),
+          TypeSpecifierNonArray::Int => Value::Int(attrib[0] as _),
+          TypeSpecifierNonArray::IVec2 => Value::IVec2([attrib[0] as _, attrib[1] as _]),
+          TypeSpecifierNonArray::IVec3 => Value::IVec3([attrib[0] as _, attrib[1] as _, attrib[2] as _]),
+          TypeSpecifierNonArray::IVec4 => Value::IVec4([attrib[0] as _, attrib[1] as _, attrib[2] as _, attrib[3] as _]),
+          TypeSpecifierNonArray::Uint => Value::Uint(attrib[0] as _),
+          TypeSpecifierNonArray::UVec2 => Value::UVec2([attrib[0] as _, attrib[1] as _]),
+          TypeSpecifierNonArray::UVec3 => Value::UVec3([attrib[0] as _, attrib[1] as _, attrib[2] as _]),
+          TypeSpecifierNonArray::UVec4 => Value::UVec4([attrib[0] as _, attrib[1] as _, attrib[2] as _, attrib[3] as _]),
           t => unimplemented!("{:?}", t),
         };
 
