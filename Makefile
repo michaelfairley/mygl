@@ -10,9 +10,12 @@ dEQP-GLES31.functional.compute.basic.* \
 dEQP-GLES31.info.* \
 dEQP-GLES31.functional.shaders.builtin_var.* \
 dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute \
+dEQP-GLES3.functional.rasterization.primitives.* \
 dEQP-GLES3.functional.rasterization.culling.* \
 dEQP-GLES3.functional.draw.draw_arrays.* \
 dEQP-GLES3.functional.draw.draw_elements.* \
+dEQP-GLES3.functional.draw.draw_arrays_instanced.* \
+dEQP-GLES3.functional.draw.draw_elements_instanced.* \
 dEQP-GLES3.functional.fragment_ops.depth.* \
 dEQP-GLES3.functional.fragment_ops.stencil.* \
 dEQP-GLES3.functional.fragment_ops.depth_stencil.* \
