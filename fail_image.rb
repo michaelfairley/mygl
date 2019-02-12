@@ -13,7 +13,7 @@ cases.each do |c|
   doc = REXML::Document.new(c[0])
 
   REXML::XPath.each(doc, "//ImageSet") do |imageset|
-    if imageset.elements.size == 3
+    if imageset.elements.size > 1
 
       imageset.elements.each do |image|
         name = image.attributes.fetch("Name")
