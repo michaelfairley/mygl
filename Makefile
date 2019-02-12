@@ -35,6 +35,7 @@ ifeq ($(FILTER),)
 else
 	cd cts_build/external/openglcts/modules && ./glcts -n $(FILTER)
 endif
+	ruby fail_image.rb
 
 tests:
 	cargo test
