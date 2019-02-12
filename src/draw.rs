@@ -895,6 +895,10 @@ fn draw_one(
 
         let x_major = slope >= -1.0 && slope <= 1.0;
 
+        let width = current.line_width.round().max(1.0);
+        let offset = (width - 1.0) / 2.0;
+        let width = width as i32;
+
         let mut x = p_a[0];
         let mut y = p_a[1];
         let mut t = 1.0;
@@ -926,6 +930,8 @@ fn draw_one(
         if x_major {
           let idx = 1.0 / delta_x.abs();
 
+          y -= offset;
+
           if p_a[0] < p_b[0] {
             let first_hop = 1.0 - (x + 0.5).fract();
             y += slope * first_hop;
@@ -936,17 +942,19 @@ fn draw_one(
               let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
-              do_fragment(
-                current,
-                (x.floor() as i32, y.floor() as i32),
-                z,
-                true,
-                frag_vals,
-                &frag_in_vars,
-                &frag_out_vars,
-                &frag_uniforms,
-                &frag_compiled,
-              );
+              for dy in 0..width {
+                do_fragment(
+                  current,
+                  (x.floor() as i32, y.floor() as i32 + dy),
+                  z,
+                  true,
+                  frag_vals.clone(),
+                  &frag_in_vars,
+                  &frag_out_vars,
+                  &frag_uniforms,
+                  &frag_compiled,
+                );
+              }
 
               y += slope;
               x += 1.0;
@@ -962,17 +970,19 @@ fn draw_one(
               let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
-              do_fragment(
-                current,
-                (x.floor() as i32, y.floor() as i32),
-                z,
-                true,
-                frag_vals,
-                &frag_in_vars,
-                &frag_out_vars,
-                &frag_uniforms,
-                &frag_compiled,
-              );
+              for dy in 0..width {
+                do_fragment(
+                  current,
+                  (x.floor() as i32, y.floor() as i32 + dy),
+                  z,
+                  true,
+                  frag_vals.clone(),
+                  &frag_in_vars,
+                  &frag_out_vars,
+                  &frag_uniforms,
+                  &frag_compiled,
+                );
+              }
 
               y -= slope;
               x -= 1.0;
@@ -980,6 +990,8 @@ fn draw_one(
             }
           }
         } else {
+          x -= offset;
+
           let idy = 1.0 / delta_y.abs();
           let islope = delta_x / delta_y;
 
@@ -993,17 +1005,19 @@ fn draw_one(
               let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
-              do_fragment(
-                current,
-                (x.floor() as i32, y.floor() as i32),
-                z,
-                true,
-                frag_vals,
-                &frag_in_vars,
-                &frag_out_vars,
-                &frag_uniforms,
-                &frag_compiled,
-              );
+              for dx in 0..width {
+                do_fragment(
+                  current,
+                  (x.floor() as i32 + dx, y.floor() as i32),
+                  z,
+                  true,
+                  frag_vals.clone(),
+                  &frag_in_vars,
+                  &frag_out_vars,
+                  &frag_uniforms,
+                  &frag_compiled,
+                );
+              }
 
               x += islope;
               y += 1.0;
@@ -1019,17 +1033,19 @@ fn draw_one(
               let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
               let z = lerp(p_a[2], p_b[2], t);
 
-              do_fragment(
-                current,
-                (x.floor() as i32, y.floor() as i32),
-                z,
-                true,
-                frag_vals,
-                &frag_in_vars,
-                &frag_out_vars,
-                &frag_uniforms,
-                &frag_compiled,
-              );
+              for dx in 0..width {
+                do_fragment(
+                  current,
+                  (x.floor() as i32 + dx, y.floor() as i32),
+                  z,
+                  true,
+                  frag_vals.clone(),
+                  &frag_in_vars,
+                  &frag_out_vars,
+                  &frag_uniforms,
+                  &frag_compiled,
+                );
+              }
 
               x -= islope;
               y -= 1.0;
