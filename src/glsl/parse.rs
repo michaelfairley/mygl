@@ -353,6 +353,9 @@ impl<'a> Parser<'a> {
     if self.consume(Token::Tilde)? {
       let a = self.parse_expression()?;
       Ok(Expression::BinaryNot(Box::new(a)))
+    } else if self.consume(Token::Dash)? {
+      let a = self.parse_expression()?;
+      Ok(Expression::Negative(Box::new(a)))
     } else {
       self.parse_postfix_expression()
     }
@@ -804,6 +807,7 @@ pub enum Expression {
   Assignment(Box<Expression>, Box<Expression>),
   AddAssign(Box<Expression>, Box<Expression>),
   BinaryNot(Box<Expression>),
+  Negative(Box<Expression>),
 }
 
 #[derive(Debug,PartialEq,Clone)]

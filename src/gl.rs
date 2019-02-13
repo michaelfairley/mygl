@@ -3832,11 +3832,16 @@ pub extern "C" fn glUniform1fv(location: GLint, count: GLsizei, value: *const GL
   unimplemented!()
 }
 
-#[allow(unused_variables)]
 #[no_mangle]
 #[cfg_attr(feature = "trace_gl", trace)]
-pub extern "C" fn glUniform1i(location: GLint, v0: GLint) -> () {
-  unimplemented!()
+pub extern "C" fn glUniform1i(
+  location: GLint,
+  v0: GLint,
+) -> () {
+  let current = current();
+  let program = current.programs.get_mut(&current.program).unwrap();
+
+  program.uniform_values[location as usize] = glsl::interpret::Value::Int(v0);
 }
 
 #[allow(unused_variables)]

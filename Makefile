@@ -9,7 +9,6 @@ dEQP-GLES3.functional.color_clear.* \
 dEQP-GLES31.functional.compute.basic.* \
 dEQP-GLES31.info.* \
 dEQP-GLES31.functional.shaders.builtin_var.* \
-dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute \
 dEQP-GLES3.functional.rasterization.primitives.* \
 dEQP-GLES3.functional.rasterization.culling.* \
 dEQP-GLES3.functional.draw.draw_arrays.* \
@@ -21,6 +20,7 @@ dEQP-GLES3.functional.fragment_ops.stencil.* \
 dEQP-GLES3.functional.fragment_ops.depth_stencil.* \
 dEQP-GLES3.functional.clipping.point.point_* \
 dEQP-GLES3.functional.transform_feedback.*
+# dEQP-GLES31.functional.shaders.builtin_functions.*.*.*_compute \
 
 export LD_LIBRARY_PATH=../../../../target/release
 export DYLD_LIBRARY_PATH=../../../../target/release
