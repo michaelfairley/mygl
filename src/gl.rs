@@ -1561,6 +1561,7 @@ pub extern "C" fn glDrawArraysInstanced(
   count: GLsizei,
   instancecount: GLsizei,
 ) -> () {
+  // TODO: real instancing
   for i in 0..instancecount {
     draw::glDrawArraysOneInstance(current(), mode, first, count, i, 0);
   }
@@ -1607,6 +1608,7 @@ pub extern "C" fn glDrawElementsInstanced(
   indices: *const c_void,
   instancecount: GLsizei,
 ) -> () {
+  // TODO: real instancing
   for i in 0..instancecount {
     draw::glDrawElementsOneInstance(current(), mode, count, type_, indices, i, 0, 0);
   }
