@@ -445,7 +445,7 @@ fn draw_one(
         };
 
         let p = if let Some(abp) = buffer_pointer {
-          unsafe{ abp.offset(attrib.pointer as isize).offset((binding.stride * attrib_index) as isize + binding.offset) as *const c_void }
+          unsafe{ abp.offset(binding.offset as isize).offset((binding.stride * attrib_index) as isize) as *const c_void }
         } else {
           unsafe{ attrib.pointer.offset((binding.stride * attrib_index) as isize) }
         };
