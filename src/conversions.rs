@@ -61,8 +61,6 @@ pub(crate) fn normalize_u16(b: u16) -> f32 {
 
 #[inline(always)]
 pub(crate) fn normalize_i32(b: i32) -> f32 {
-  println!("{:32b}", b);
-
   (b as f32 / 0x7F_FF_FF_FF as f32).max(-1.0)
 }
 
