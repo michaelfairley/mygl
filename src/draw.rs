@@ -554,8 +554,7 @@ fn draw_one(
             AttribValue::Ubyte(v)
           },
           GL_FIXED => {
-            // let one = if attrib.normalized { 0x7F_FFFF } else { 0x0001_0000 } ;
-            let one =  0x0001_0000;
+            let one = 0x0001_0000;
 
             let p = p as *const GLfixed;
             let v = unsafe { match attrib.size {
