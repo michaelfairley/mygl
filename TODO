@@ -2,6 +2,7 @@ clipping
 blending
 fbos + renderbuffers
 instancing
+primitive restart
 RASTERIZER_DISCARD
 EGL?
 scissor
