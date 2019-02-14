@@ -461,6 +461,8 @@ fn draw_one(
           Ubyte([GLubyte; 4]),
           Fixed([GLfixed; 4]),
           HalfFloat([GLhalf; 4]),
+          I2_10_10_10([i32; 4]),
+          U2_10_10_10([u32; 4]),
         }
 
         let attrib_value = match attrib.type_ {
@@ -577,6 +579,30 @@ fn draw_one(
             }};
             AttribValue::HalfFloat(v)
           },
+          GL_INT_2_10_10_10_REV => {
+            assert_eq!(attrib.size, 4);
+            let p = p as *const i32;
+            let raw = unsafe{ p.read() };
+
+            let w = raw >> 30;
+            let z = (raw << 2) >> 22;
+            let y = (raw << 12) >> 22;
+            let x = (raw << 22) >> 22;
+
+            AttribValue::I2_10_10_10([x, y, z, w])
+          },
+          GL_UNSIGNED_INT_2_10_10_10_REV => {
+            assert_eq!(attrib.size, 4);
+            let p = p as *const u32;
+            let raw = unsafe{ p.read() };
+
+            let w = raw >> 30;
+            let z = (raw >> 20) & 0x3_FF;
+            let y = (raw >> 10) & 0x3_FF;
+            let x = (raw >>  0) & 0x3_FF;
+
+            AttribValue::U2_10_10_10([x, y, z, w])
+          },
           x => unimplemented!("{:x}", x),
         };
 
@@ -621,6 +647,19 @@ fn draw_one(
           (AttribValue::Ubyte(b), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(b, |b| b as _)),
           (AttribValue::Ubyte(b), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(b, normalize_u8)),
           (AttribValue::Ubyte(b), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(b, |b| b as _)),
+          (AttribValue::I2_10_10_10(i), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(i, |i| i as _)),
+          (AttribValue::I2_10_10_10(i), TypeSpecifierNonArray::Vec4, true) => Value::Vec4([
+            normalize_i10(i[0]),
+            normalize_i10(i[1]),
+            normalize_i10(i[2]),
+            normalize_i2(i[3]),
+          ]),
+          (AttribValue::U2_10_10_10(u), TypeSpecifierNonArray::Vec4, true) => Value::Vec4([
+            normalize_u10(u[0]),
+            normalize_u10(u[1]),
+            normalize_u10(u[2]),
+            normalize_u2(u[3]),
+          ]),
           (v, t, n) => unimplemented!("{:?} {:?} {}", v, t, n),
         };
 

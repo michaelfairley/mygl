@@ -68,3 +68,23 @@ pub(crate) fn normalize_i32(b: i32) -> f32 {
 pub(crate) fn normalize_u32(b: u32) -> f32 {
   b as f32 / 0xFF_FF_FF_FFu32 as f32
 }
+
+#[inline(always)]
+pub(crate) fn normalize_i2(b: i32) -> f32 {
+  (b as f32).max(-1.0)
+}
+
+#[inline(always)]
+pub(crate) fn normalize_u2(b: u32) -> f32 {
+  b as f32 / 3.0
+}
+
+#[inline(always)]
+pub(crate) fn normalize_i10(b: i32) -> f32 {
+  (b as f32 / 0x1_FF as f32).max(-1.0)
+}
+
+#[inline(always)]
+pub(crate) fn normalize_u10(b: u32) -> f32 {
+  b as f32 / 0x3_FF as f32
+}

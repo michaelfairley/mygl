@@ -4299,7 +4299,12 @@ fn glBindVertexBufferFromVertexAttribPointer(
   };
 
   let effective_stride = if stride == 0 {
-    size_of(type_) as i32 * size
+    if type_ == GL_INT_2_10_10_10_REV || type_ == GL_UNSIGNED_INT_2_10_10_10_REV {
+      assert_eq!(size, 4);
+      4
+    } else {
+      size_of(type_) as i32 * size
+    }
   } else { stride };
 
   glBindVertexBuffer(index, buffer, offset, effective_stride);
