@@ -50,17 +50,23 @@ pub enum Value {
   Barrier(Arc<Barrier>),
 
   Ref(*mut Value),
+
   RefV2(*mut [f32; 2]),
   RefV3(*mut [f32; 3]),
   RefV4(*mut [f32; 4]),
 
-  RefV22(*mut f32, *mut f32),
-  RefV32(*mut f32, *mut f32, *mut f32),
-  RefV42(*mut f32, *mut f32, *mut f32, *mut f32),
-  RefIV22(*mut i32, *mut i32),
-  RefIV32(*mut i32, *mut i32, *mut i32),
-
-  // RefI(*mut Value, usize),
+  RefF1(*mut f32),
+  RefF2(*mut f32, *mut f32),
+  RefF3(*mut f32, *mut f32, *mut f32),
+  RefF4(*mut f32, *mut f32, *mut f32, *mut f32),
+  RefI1(*mut i32),
+  RefI2(*mut i32, *mut i32),
+  RefI3(*mut i32, *mut i32, *mut i32),
+  RefI4(*mut i32, *mut i32, *mut i32, *mut i32),
+  RefU1(*mut u32),
+  RefU2(*mut u32, *mut u32),
+  RefU3(*mut u32, *mut u32, *mut u32),
+  RefU4(*mut u32, *mut u32, *mut u32, *mut u32),
 }
 
 impl Value {
@@ -75,7 +81,24 @@ impl Value {
           unsafe{ *v = *t; }
         } else { unreachable!() }
       },
-      &mut Value::RefV22(a, b) => {
+      &mut Value::RefV3(v) => {
+        if let Value::Vec3(ref t) = val {
+          unsafe{ *v = *t; }
+        } else { unreachable!() }
+      },
+      &mut Value::RefV4(v) => {
+        if let Value::Vec4(ref t) = val {
+          unsafe{ *v = *t; }
+        } else { unreachable!() }
+      },
+      &mut Value::RefF1(a) => {
+        if let Value::Float(t) = val {
+          unsafe {
+            *a = t;
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefF2(a, b) => {
         if let Value::Vec2(ref t) = val {
           unsafe {
             *a = t[0];
@@ -83,7 +106,7 @@ impl Value {
           }
         } else { unreachable!() }
       },
-      &mut Value::RefV32(a, b, c) => {
+      &mut Value::RefF3(a, b, c) => {
         if let Value::Vec3(ref t) = val {
           unsafe {
             *a = t[0];
@@ -92,7 +115,7 @@ impl Value {
           }
         } else { unreachable!() }
       },
-      &mut Value::RefV42(a, b, c, d) => {
+      &mut Value::RefF4(a, b, c, d) => {
         if let Value::Vec4(ref t) = val {
           unsafe {
             *a = t[0];
@@ -102,7 +125,14 @@ impl Value {
           }
         } else { unreachable!() }
       },
-      &mut Value::RefIV22(a, b) => {
+      &mut Value::RefI1(a) => {
+        if let Value::Int(t) = val {
+          unsafe {
+            *a = t;
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefI2(a, b) => {
         if let Value::IVec2(ref t) = val {
           unsafe {
             *a = t[0];
@@ -110,7 +140,7 @@ impl Value {
           }
         } else { unreachable!() }
       },
-      &mut Value::RefIV32(a, b, c) => {
+      &mut Value::RefI3(a, b, c) => {
         if let Value::IVec3(ref t) = val {
           unsafe {
             *a = t[0];
@@ -119,14 +149,48 @@ impl Value {
           }
         } else { unreachable!() }
       },
-      &mut Value::RefV3(v) => {
-        if let Value::Vec3(ref t) = val {
-          unsafe{ *v = *t; }
+      &mut Value::RefI4(a, b, c, d) => {
+        if let Value::IVec4(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+            *c = t[2];
+            *d = t[3];
+          }
         } else { unreachable!() }
       },
-      &mut Value::RefV4(v) => {
-        if let Value::Vec4(ref t) = val {
-          unsafe{ *v = *t; }
+      &mut Value::RefU1(a) => {
+        if let Value::Uint(t) = val {
+          unsafe {
+            *a = t;
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefU2(a, b) => {
+        if let Value::UVec2(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefU3(a, b, c) => {
+        if let Value::UVec3(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+            *c = t[2];
+          }
+        } else { unreachable!() }
+      },
+      &mut Value::RefU4(a, b, c, d) => {
+        if let Value::UVec4(ref t) = val {
+          unsafe {
+            *a = t[0];
+            *b = t[1];
+            *c = t[2];
+            *d = t[3];
+          }
         } else { unreachable!() }
       },
       &mut Value::Buffer(ref typ, ptr, _) => {
@@ -169,20 +233,41 @@ impl Value {
       &Value::RefV4(p) => {
         Value::Vec4(unsafe{ *p })
       },
-      &Value::RefV22(a, b) => {
+      &Value::RefF1(a) => {
+        Value::Float(unsafe{ *a })
+      },
+      &Value::RefF2(a, b) => {
         Value::Vec2(unsafe{ [*a, *b] })
       },
-      &Value::RefV32(a, b, c) => {
+      &Value::RefF3(a, b, c) => {
         Value::Vec3(unsafe{ [*a, *b, *c] })
       },
-      &Value::RefV42(a, b, c, d) => {
+      &Value::RefF4(a, b, c, d) => {
         Value::Vec4(unsafe{ [*a, *b, *c, *d] })
       },
-      &Value::RefIV22(a, b) => {
+      &Value::RefI1(a) => {
+        Value::Int(unsafe{ *a })
+      },
+      &Value::RefI2(a, b) => {
         Value::IVec2(unsafe{ [*a, *b] })
       },
-      &Value::RefIV32(a, b, c) => {
+      &Value::RefI3(a, b, c) => {
         Value::IVec3(unsafe{ [*a, *b, *c] })
+      },
+      &Value::RefI4(a, b, c, d) => {
+        Value::IVec4(unsafe{ [*a, *b, *c, *d] })
+      },
+      &Value::RefU1(a) => {
+        Value::Uint(unsafe{ *a })
+      },
+      &Value::RefU2(a, b) => {
+        Value::UVec2(unsafe{ [*a, *b] })
+      },
+      &Value::RefU3(a, b, c) => {
+        Value::UVec3(unsafe{ [*a, *b, *c] })
+      },
+      &Value::RefU4(a, b, c, d) => {
+        Value::UVec4(unsafe{ [*a, *b, *c, *d] })
       },
       &Value::Buffer(ref typ, ptr, size) => {
         match typ {
@@ -821,89 +906,32 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
 
           Value::Buffer(field.type_.clone(), unsafe{ p.offset(field.offset as isize) }, length)
         },
-        // TODO: unhardcoded version of these
-        &mut Value::UVec3(ref mut v) => {
-          match field.as_ref() {
-            "x" => Value::Uint(v[0]),
-            "y" => Value::Uint(v[1]),
-            "z" => Value::Uint(v[2]),
-            "xy" => Value::UVec2([v[0], v[1]]),
-            x => unimplemented!("{}", x),
-          }
+        &mut Value::Vec2(ref mut v) => {
+          swizzle(v, field.as_ref())
+        },
+        &mut Value::Vec3(ref mut v) => {
+          swizzle(v, field.as_ref())
+        },
+        &mut Value::Vec4(ref mut v) => {
+          swizzle(v, field.as_ref())
+        },
+        &mut Value::IVec2(ref mut v) => {
+          iswizzle(v, field.as_ref())
+        },
+        &mut Value::IVec3(ref mut v) => {
+          iswizzle(v, field.as_ref())
+        },
+        &mut Value::IVec4(ref mut v) => {
+          iswizzle(v, field.as_ref())
         },
         &mut Value::UVec2(ref mut v) => {
-          match field.as_ref() {
-            "x" => Value::Uint(v[0]),
-            "y" => Value::Uint(v[1]),
-            "xy" => Value::UVec2([v[0], v[1]]),
-            x => unimplemented!("{}", x),
-          }
+          uswizzle(v, field.as_ref())
+        },
+        &mut Value::UVec3(ref mut v) => {
+          uswizzle(v, field.as_ref())
         },
         &mut Value::UVec4(ref mut v) => {
-          match field.as_ref() {
-            "x" => Value::Uint(v[0]),
-            x => unimplemented!("{}", x),
-          }
-        },
-        &mut Value::Vec2(ref mut v) => {
-          match field.as_ref() {
-            "x" => Value::Float(v[0]),
-            "y" => Value::Float(v[1]),
-            "xy" => Value::Vec2([v[0], v[1]]),
-            "xxyy" => Value::Vec4([v[0], v[0], v[1], v[1]]),
-            x => unimplemented!("{}", x),
-          }
-        },
-        &mut Value::Vec3(ref mut v) => unsafe {
-          match field.as_ref() {
-            "xy" => Value::RefV22(v.as_mut_ptr().offset(0),
-                                  v.as_mut_ptr().offset(1)),
-            "rg" => Value::RefV22(v.as_mut_ptr().offset(0),
-                                  v.as_mut_ptr().offset(1)),
-            "rgb" => Value::RefV32(v.as_mut_ptr().offset(0),
-                                   v.as_mut_ptr().offset(1),
-                                   v.as_mut_ptr().offset(2)),
-            "xyz" => Value::RefV32(v.as_mut_ptr().offset(0),
-                                   v.as_mut_ptr().offset(1),
-                                   v.as_mut_ptr().offset(2)),
-            "xyzx" => Value::RefV42(v.as_mut_ptr().offset(0),
-                                    v.as_mut_ptr().offset(1),
-                                    v.as_mut_ptr().offset(2),
-                                    v.as_mut_ptr().offset(0)),
-            x => unimplemented!("{}", x),
-          }
-        },
-        &mut Value::IVec3(ref mut v) => unsafe {
-          match field.as_ref() {
-            "xy" => Value::RefIV22(v.as_mut_ptr().offset(0),
-                                   v.as_mut_ptr().offset(1)),
-            "rg" => Value::RefIV22(v.as_mut_ptr().offset(0),
-                                   v.as_mut_ptr().offset(1)),
-            "rgb" => Value::RefIV32(v.as_mut_ptr().offset(0),
-                                    v.as_mut_ptr().offset(1),
-                                    v.as_mut_ptr().offset(2)),
-            "xyz" => Value::RefIV32(v.as_mut_ptr().offset(0),
-                                    v.as_mut_ptr().offset(1),
-                                    v.as_mut_ptr().offset(2)),
-            x => unimplemented!("{}", x),
-          }
-        },
-        &mut Value::Vec4(ref mut v) => unsafe {
-          match field.as_ref() {
-            "xy" => Value::RefV22(v.as_mut_ptr().offset(0),
-                                  v.as_mut_ptr().offset(1)),
-            "zw" => Value::RefV22(v.as_mut_ptr().offset(2),
-                                  v.as_mut_ptr().offset(3)),
-            "rg" => Value::RefV22(v.as_mut_ptr().offset(0),
-                                  v.as_mut_ptr().offset(1)),
-            "rgb" => Value::RefV32(v.as_mut_ptr().offset(0),
-                                   v.as_mut_ptr().offset(1),
-                                   v.as_mut_ptr().offset(2)),
-            "xyz" => Value::RefV32(v.as_mut_ptr().offset(0),
-                                   v.as_mut_ptr().offset(1),
-                                   v.as_mut_ptr().offset(2)),
-            x => unimplemented!("{}", x),
-          }
+          uswizzle(v, field.as_ref())
         },
         x => unimplemented!("{:?}", x),
       }
@@ -1037,6 +1065,56 @@ fn into_float(val: &Value) -> Vec<f32> {
     &Value::Vec2(ref v) => vec![v[0], v[1]],
     &Value::Vec3(ref v) => vec![v[0], v[1], v[2]],
     &Value::Vec4(ref v) => vec![v[0], v[1], v[2], v[3]],
+    x => unimplemented!("{:?}", x),
+  }
+}
+
+#[inline]
+fn swizzle_index(b: u8) -> usize {
+  match b {
+    b'x' | b'r' => 0,
+    b'y' | b'g' => 1,
+    b'z' | b'b' => 2,
+    b'w' | b'a' => 3,
+    x => unimplemented!("{}", x as char),
+  }
+}
+
+#[inline]
+fn swizzle_offset<T>(v: &mut [T], b: u8) -> *mut T {
+  let index = swizzle_index(b);
+  (&mut v[index]) as _
+}
+
+#[inline]
+fn swizzle(v: &mut [f32], field: &str) -> Value {
+  match field.as_bytes() {
+    &[a] => Value::RefF1(swizzle_offset(v, a)),
+    &[a, b] => Value::RefF2(swizzle_offset(v, a), swizzle_offset(v, b)),
+    &[a, b, c] => Value::RefF3(swizzle_offset(v, a), swizzle_offset(v, b), swizzle_offset(v, c)),
+    &[a, b, c, d] => Value::RefF4(swizzle_offset(v, a), swizzle_offset(v, b), swizzle_offset(v, c), swizzle_offset(v, d)),
+    x => unimplemented!("{:?}", x),
+  }
+}
+
+#[inline]
+fn iswizzle(v: &mut [i32], field: &str) -> Value {
+  match field.as_bytes() {
+    &[a] => Value::RefI1(swizzle_offset(v, a)),
+    &[a, b] => Value::RefI2(swizzle_offset(v, a), swizzle_offset(v, b)),
+    &[a, b, c] => Value::RefI3(swizzle_offset(v, a), swizzle_offset(v, b), swizzle_offset(v, c)),
+    &[a, b, c, d] => Value::RefI4(swizzle_offset(v, a), swizzle_offset(v, b), swizzle_offset(v, c), swizzle_offset(v, d)),
+    x => unimplemented!("{:?}", x),
+  }
+}
+
+#[inline]
+fn uswizzle(v: &mut [u32], field: &str) -> Value {
+  match field.as_bytes() {
+    &[a] => Value::RefU1(swizzle_offset(v, a)),
+    &[a, b] => Value::RefU2(swizzle_offset(v, a), swizzle_offset(v, b)),
+    &[a, b, c] => Value::RefU3(swizzle_offset(v, a), swizzle_offset(v, b), swizzle_offset(v, c)),
+    &[a, b, c, d] => Value::RefU4(swizzle_offset(v, a), swizzle_offset(v, b), swizzle_offset(v, c), swizzle_offset(v, d)),
     x => unimplemented!("{:?}", x),
   }
 }
