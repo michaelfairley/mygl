@@ -204,6 +204,49 @@ impl<I: Iterator<Item=Vars>> Iterator for PrimitivePump<I> {
   }
 }
 
+enum VertexIdGenerator {
+  Arrays(std::ops::Range<GLint>),
+  Elements{
+    count: GLsizei,
+    type_: GLenum,
+    buffer_pointer: *const u8,
+    basevertex: GLint,
+  },
+  Elements2(Vec<GLint>),
+}
+
+impl VertexIdGenerator {
+  fn iter<'a>(&'a self) -> Box<dyn Iterator<Item=GLint> + 'a> {
+    match self {
+      VertexIdGenerator::Arrays(range) => Box::new(range.clone()),
+      VertexIdGenerator::Elements2(v) => Box::new(v.iter().cloned()),
+      VertexIdGenerator::Elements{count, type_, buffer_pointer, basevertex} => {
+        Box::new((0..*count).map(move |i| {
+          let i = i as usize;
+
+          let vertex_id = match *type_ {
+            GL_UNSIGNED_BYTE => {
+              let pointer = *buffer_pointer as *const GLubyte;
+              unsafe{ *(pointer.add(i)) as i32 }
+            },
+            GL_UNSIGNED_SHORT => {
+              let pointer = *buffer_pointer as *const GLushort;
+              unsafe{ *(pointer.add(i)) as i32 }
+            },
+            GL_UNSIGNED_INT => {
+              let pointer = *buffer_pointer as *const GLuint;
+              unsafe{ *(pointer.add(i)) as i32 }
+            },
+            x => unimplemented!("{:x}", x),
+          };
+
+          vertex_id + *basevertex as i32
+        }))
+      }
+    }
+  }
+}
+
 #[allow(non_snake_case)]
 pub(crate) fn glDrawElementsOneInstance(
   current: &'static mut Context,
@@ -216,58 +259,45 @@ pub(crate) fn glDrawElementsOneInstance(
   baseinstance: GLuint,
 ) {
   assert_eq!(baseinstance, 0);
+  let basevertex = basevertex as GLint;
 
-  let mut vertex_ids = vec![];
-
-  {
-    let buffers = &current.buffers;
-
-    let buffer_pointer = if current.element_array_buffer == 0 {
-      None
-    } else {
-      Some(buffers.get(&current.element_array_buffer).unwrap().as_ref().unwrap().as_ptr())
+  let vidg = if current.element_array_buffer == 0 {
+    let count = count as usize;
+    let v = match type_ {
+      GL_UNSIGNED_BYTE => {
+        let s = unsafe{ std::slice::from_raw_parts(indices as *const GLubyte, count) };
+        s.iter().map(|&b| b as GLint + basevertex).collect::<Vec<_>>()
+      },
+      GL_UNSIGNED_SHORT => {
+        let s = unsafe{ std::slice::from_raw_parts(indices as *const GLushort, count) };
+        s.iter().map(|&s| s as GLint + basevertex).collect::<Vec<_>>()
+      },
+      GL_UNSIGNED_INT => {
+        let s = unsafe{ std::slice::from_raw_parts(indices as *const GLuint, count) };
+        s.iter().map(|&s| s as GLint + basevertex).collect::<Vec<_>>()
+      },
+      x => unimplemented!("{:x}", x),
     };
+    VertexIdGenerator::Elements2(v)
+  } else {
+    let buffer_pointer = unsafe{ current.buffers.get(&current.element_array_buffer).unwrap().as_ref().unwrap().as_ptr().add(indices as usize) };
 
-    for i in 0..count {
-      let i = i as usize;
-
-      let pointer = if let Some(bp) = buffer_pointer {
-        unsafe{ bp.add(indices as usize) }
-      } else {
-        indices as *const u8
-      };
-
-      let vertex_id = match type_ {
-        GL_UNSIGNED_BYTE => {
-          let pointer = pointer as *const GLubyte;
-          unsafe{ *(pointer.add(i)) as i32 }
-        },
-        GL_UNSIGNED_SHORT => {
-          let pointer = pointer as *const GLushort;
-          unsafe{ *(pointer.add(i)) as i32 }
-        },
-        GL_UNSIGNED_INT => {
-          let pointer = pointer as *const GLuint;
-          unsafe{ *(pointer.add(i)) as i32 }
-        },
-        x => unimplemented!("{:x}", x),
-      };
-
-      let vertex_id = vertex_id + basevertex as i32;
-
-      vertex_ids.push(vertex_id);
+    VertexIdGenerator::Elements{
+      count,
+      type_,
+      buffer_pointer,
+      basevertex,
     }
-  }
+  };
 
   draw_one(
     current,
     mode,
-    vertex_ids,
+    vidg,
     instance,
     baseinstance,
   );
 }
-
 
 #[allow(non_snake_case)]
 pub(crate) fn glDrawArraysOneInstance(
@@ -278,10 +308,12 @@ pub(crate) fn glDrawArraysOneInstance(
   instance: GLint,
   baseinstance: GLuint,
 ) {
+  let vidg = VertexIdGenerator::Arrays(first..first+count);
+
   draw_one(
     current,
     mode,
-    (first..(first+count)).collect(),
+    vidg,
     instance,
     baseinstance,
   );
@@ -290,7 +322,7 @@ pub(crate) fn glDrawArraysOneInstance(
 struct Draw {
   current: &'static mut Context,
   mode: GLenum,
-  vertex_ids: Vec<GLint>,
+  vertex_ids: VertexIdGenerator,
   instance: GLint,
   baseinstance: GLuint,
 }
@@ -298,7 +330,7 @@ struct Draw {
 fn draw_one(
   current: &'static mut Context,
   mode: GLenum,
-  vertex_ids: Vec<GLint>,
+  vertex_ids: VertexIdGenerator,
   instance: GLint,
   baseinstance: GLuint,
 ) {
@@ -447,7 +479,8 @@ impl Draw {
 
     let buffers = &current.buffers;
 
-    let vertex_results = vertex_ids.into_iter().map(|&i| {
+    // TODO: LRU cache with indexed drawing
+    let vertex_results = vertex_ids.iter().map(|i| {
       let mut vars = Vars::new();
 
       for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
