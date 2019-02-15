@@ -624,19 +624,130 @@ pub fn execute(statement: &Statement, vars: &mut Vars, shader: &Shader) -> Optio
   None
 }
 
+fn eval_lvalue(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
+  if DEBUG { println!("el: {:?}", expression); }
+
+  match *expression {
+    Expression::FieldSelection(ref container, ref field) => {
+      let mut container = eval_lvalue(container, vars, shader);
+      let mut container = &mut container;
+
+      while let &mut Value::Ref(p) = container {
+        container = unsafe{ &mut *p };
+      };
+
+      match container {
+        &mut Value::Buffer(ref typ, ref p, ref len) => {
+          if field == "length" {
+            return Value::Uint(len.unwrap())
+          }
+
+          let typ = if let &TypeSpecifierNonArray::Custom(ref t) = typ { t } else { unreachable!() };
+
+          let field = if let Some(custom_type) = shader.types.get(typ) {
+            custom_type.fields.iter().find(|v| &v.name == field).unwrap()
+          } else {
+            // TODO: maybe should use the types table for these as well?
+            let info = shader.interfaces.iter().filter_map(|iface| match iface {
+              &super::Interface::ShaderStorageBlock(ref info)
+                | &super::Interface::UniformBlock(ref info)
+                => if &info.name == typ { Some(info) } else { None },
+              &super::Interface::Uniform(_) => None,
+              x => unimplemented!("{:?}", x),
+            }).next().unwrap();
+
+            info.active_variables.iter().find(|v| &v.name == field).expect("2")
+          };
+
+          let length = Some(if super::array_size(&field.array) > 0 { super::array_size(&field.array) } else { len.unwrap() });
+
+          Value::Buffer(field.type_.clone(), unsafe{ p.offset(field.offset as isize) }, length)
+        },
+        &mut Value::Vec2(ref mut v) => {
+          swizzle_lvalue(v, field.as_ref())
+        },
+        &mut Value::Vec3(ref mut v) => {
+          swizzle_lvalue(v, field.as_ref())
+        },
+        &mut Value::Vec4(ref mut v) => {
+          swizzle_lvalue(v, field.as_ref())
+        },
+        &mut Value::IVec2(ref mut v) => {
+          iswizzle_lvalue(v, field.as_ref())
+        },
+        &mut Value::IVec3(ref mut v) => {
+          iswizzle_lvalue(v, field.as_ref())
+        },
+        &mut Value::IVec4(ref mut v) => {
+          iswizzle_lvalue(v, field.as_ref())
+        },
+        &mut Value::UVec2(ref mut v) => {
+          uswizzle_lvalue(v, field.as_ref())
+        },
+        &mut Value::UVec3(ref mut v) => {
+          uswizzle_lvalue(v, field.as_ref())
+        },
+        &mut Value::UVec4(ref mut v) => {
+          uswizzle_lvalue(v, field.as_ref())
+        },
+        x => unimplemented!("{:?}", x),
+      }
+    },
+    Expression::Index(ref container, ref index) => {
+      let mut container = eval_lvalue(container, vars, shader);
+      let mut container = &mut container;
+
+      while let &mut Value::Ref(p) = container {
+        container = unsafe{ &mut *p };
+      };
+
+
+      let index = eval(index, vars, shader).get();
+      let index = match index {
+        Value::Int(i) => i as isize,
+        Value::Uint(u) => u as isize,
+        x => unreachable!("{:?}", x),
+      };
+
+      match container {
+        &mut Value::Buffer(ref s, p, _len) => {
+          let stride = super::stride_of(s, Some(&shader.types));
+
+          Value::Buffer(s.clone(),
+                        unsafe{ p.offset(index * stride as isize) },
+                        None)
+        },
+        &mut Value::Mat2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat2x3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat2x4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat3x2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat3x4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat4x2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat4x3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Mat4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
+        &mut Value::Array(ref mut a) => a[index as usize].get_ref(),
+        x => unimplemented!("{:?}", x),
+      }
+    },
+    Expression::Variable(ref name) => { vars.get_mut(name).get_ref() },
+    ref x => unimplemented!("{:?}", x),
+  }
+}
+
 fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
   if DEBUG { println!("e: {:?}", expression); }
 
   match *expression {
     Expression::Assignment(ref lexpr, ref rexpr) => {
       let value = eval(rexpr, vars, shader).get();
-      let mut slot = eval(lexpr, vars, shader);
+      let mut slot = eval_lvalue(lexpr, vars, shader);
       slot.set(value.clone());
       value
     },
     Expression::AddAssign(ref lexpr, ref rexpr) => {
       let rhs = eval(rexpr, vars, shader).get();
-      let mut slot = eval(lexpr, vars, shader);
+      let mut slot = eval_lvalue(lexpr, vars, shader);
 
       let orig_value = slot.get();
 
@@ -660,6 +771,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       new_value
     },
     Expression::FunctionCall(ref name, ref args) => {
+      // TODO: eval_lvalue (in)out params instead of get()ing below
       let args = args.iter().map(|a| eval(a, vars, shader)).collect::<Vec<_>>();
 
       if name == "uint"
@@ -726,7 +838,7 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
 
       res
     },
-    Expression::Variable(ref name) => { vars.get_mut(name).get_ref() },
+    Expression::Variable(ref name) => { vars.get(name).clone() },
     Expression::FloatConstant(f) => { Value::Float(f) },
     Expression::IntConstant(i) => { Value::Int(i) },
     Expression::UintConstant(u) => { Value::Uint(u) },
@@ -835,52 +947,52 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
       }
     },
     Expression::Index(ref container, ref index) => {
-      let mut container = eval(container, vars, shader);
-      let mut container = &mut container;
+      let container = eval(container, vars, shader);
+      let mut container = &container;
 
-      while let &mut Value::Ref(p) = container {
-        container = unsafe{ &mut *p };
+      while let &Value::Ref(p) = container {
+        container = unsafe{ &*p };
       };
 
 
       let index = eval(index, vars, shader).get();
       let index = match index {
-        Value::Int(i) => i as isize,
-        Value::Uint(u) => u as isize,
+        Value::Int(i) => i as usize,
+        Value::Uint(u) => u as usize,
         x => unreachable!("{:?}", x),
       };
 
       match container {
-        &mut Value::Buffer(ref s, p, _len) => {
+        &Value::Buffer(ref s, p, _len) => {
           let stride = super::stride_of(s, Some(&shader.types));
 
           Value::Buffer(s.clone(),
-                        unsafe{ p.offset(index * stride as isize) },
+                        unsafe{ p.offset((index * stride) as isize) },
                         None)
         },
-        &mut Value::Mat2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Mat2x3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Mat2x4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Mat3x2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Mat3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Mat3x4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Mat4x2(ref mut v) => Value::RefV2(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Mat4x3(ref mut v) => Value::RefV3(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Mat4(ref mut v) => Value::RefV4(unsafe{ v.as_mut_ptr().offset(index) }),
-        &mut Value::Array(ref mut a) => a[index as usize].get_ref(),
+        &Value::Mat2(ref v) => Value::Vec2(v[index]),
+        &Value::Mat2x3(ref v) => Value::Vec3(v[index]),
+        &Value::Mat2x4(ref v) => Value::Vec4(v[index]),
+        &Value::Mat3x2(ref v) => Value::Vec2(v[index]),
+        &Value::Mat3(ref v) => Value::Vec3(v[index]),
+        &Value::Mat3x4(ref v) => Value::Vec4(v[index]),
+        &Value::Mat4x2(ref v) => Value::Vec2(v[index]),
+        &Value::Mat4x3(ref v) => Value::Vec3(v[index]),
+        &Value::Mat4(ref v) => Value::Vec4(v[index]),
+        &Value::Array(ref a) => a[index].clone(),
         x => unimplemented!("{:?}", x),
       }
     },
     Expression::FieldSelection(ref container, ref field) => {
-      let mut container = eval(container, vars, shader);
-      let mut container = &mut container;
+      let container = eval(container, vars, shader);
+      let mut container = &container;
 
-      while let &mut Value::Ref(p) = container {
-        container = unsafe{ &mut *p };
+      while let &Value::Ref(p) = container {
+        container = unsafe{ &*p };
       };
 
       match container {
-        &mut Value::Buffer(ref typ, ref p, ref len) => {
+        &Value::Buffer(ref typ, ref p, ref len) => {
           if field == "length" {
             return Value::Uint(len.unwrap())
           }
@@ -906,38 +1018,38 @@ fn eval(expression: &Expression, vars: &mut Vars, shader: &Shader) -> Value {
 
           Value::Buffer(field.type_.clone(), unsafe{ p.offset(field.offset as isize) }, length)
         },
-        &mut Value::Vec2(ref mut v) => {
+        &Value::Vec2(ref v) => {
           swizzle(v, field.as_ref())
         },
-        &mut Value::Vec3(ref mut v) => {
+        &Value::Vec3(ref v) => {
           swizzle(v, field.as_ref())
         },
-        &mut Value::Vec4(ref mut v) => {
+        &Value::Vec4(ref v) => {
           swizzle(v, field.as_ref())
         },
-        &mut Value::IVec2(ref mut v) => {
+        &Value::IVec2(ref v) => {
           iswizzle(v, field.as_ref())
         },
-        &mut Value::IVec3(ref mut v) => {
+        &Value::IVec3(ref v) => {
           iswizzle(v, field.as_ref())
         },
-        &mut Value::IVec4(ref mut v) => {
+        &Value::IVec4(ref v) => {
           iswizzle(v, field.as_ref())
         },
-        &mut Value::UVec2(ref mut v) => {
+        &Value::UVec2(ref v) => {
           uswizzle(v, field.as_ref())
         },
-        &mut Value::UVec3(ref mut v) => {
+        &Value::UVec3(ref v) => {
           uswizzle(v, field.as_ref())
         },
-        &mut Value::UVec4(ref mut v) => {
+        &Value::UVec4(ref v) => {
           uswizzle(v, field.as_ref())
         },
         x => unimplemented!("{:?}", x),
       }
     },
     Expression::PostInc(ref expr) => {
-      let mut lval = eval(expr, vars, shader);
+      let mut lval = eval_lvalue(expr, vars, shader);
       let result = lval.get();
 
       let incred = match result {
@@ -1072,10 +1184,10 @@ fn into_float(val: &Value) -> Vec<f32> {
 #[inline]
 fn swizzle_index(b: u8) -> usize {
   match b {
-    b'x' | b'r' => 0,
-    b'y' | b'g' => 1,
-    b'z' | b'b' => 2,
-    b'w' | b'a' => 3,
+    b'x' | b'r' | b's' => 0,
+    b'y' | b'g' | b't' => 1,
+    b'z' | b'b' | b'p' => 2,
+    b'w' | b'a' | b'q' => 3,
     x => unimplemented!("{}", x as char),
   }
 }
@@ -1087,7 +1199,18 @@ fn swizzle_offset<T>(v: &mut [T], b: u8) -> *mut T {
 }
 
 #[inline]
-fn swizzle(v: &mut [f32], field: &str) -> Value {
+fn swizzle(v: &[f32], field: &str) -> Value {
+  match field.as_bytes() {
+    &[a] => Value::Float(v[swizzle_index(a)]),
+    &[a, b] => Value::Vec2([v[swizzle_index(a)], v[swizzle_index(b)]]),
+    &[a, b, c] => Value::Vec3([v[swizzle_index(a)], v[swizzle_index(b)], v[swizzle_index(c)]]),
+    &[a, b, c, d] => Value::Vec4([v[swizzle_index(a)], v[swizzle_index(b)], v[swizzle_index(c)], v[swizzle_index(d)]]),
+    x => unimplemented!("{:?}", x),
+  }
+}
+
+#[inline]
+fn swizzle_lvalue(v: &mut [f32], field: &str) -> Value {
   match field.as_bytes() {
     &[a] => Value::RefF1(swizzle_offset(v, a)),
     &[a, b] => Value::RefF2(swizzle_offset(v, a), swizzle_offset(v, b)),
@@ -1098,7 +1221,18 @@ fn swizzle(v: &mut [f32], field: &str) -> Value {
 }
 
 #[inline]
-fn iswizzle(v: &mut [i32], field: &str) -> Value {
+fn iswizzle(v: &[i32], field: &str) -> Value {
+  match field.as_bytes() {
+    &[a] => Value::Int(v[swizzle_index(a)]),
+    &[a, b] => Value::IVec2([v[swizzle_index(a)], v[swizzle_index(b)]]),
+    &[a, b, c] => Value::IVec3([v[swizzle_index(a)], v[swizzle_index(b)], v[swizzle_index(c)]]),
+    &[a, b, c, d] => Value::IVec4([v[swizzle_index(a)], v[swizzle_index(b)], v[swizzle_index(c)], v[swizzle_index(d)]]),
+    x => unimplemented!("{:?}", x),
+  }
+}
+
+#[inline]
+fn iswizzle_lvalue(v: &mut [i32], field: &str) -> Value {
   match field.as_bytes() {
     &[a] => Value::RefI1(swizzle_offset(v, a)),
     &[a, b] => Value::RefI2(swizzle_offset(v, a), swizzle_offset(v, b)),
@@ -1109,7 +1243,18 @@ fn iswizzle(v: &mut [i32], field: &str) -> Value {
 }
 
 #[inline]
-fn uswizzle(v: &mut [u32], field: &str) -> Value {
+fn uswizzle(v: &[u32], field: &str) -> Value {
+  match field.as_bytes() {
+    &[a] => Value::Uint(v[swizzle_index(a)]),
+    &[a, b] => Value::UVec2([v[swizzle_index(a)], v[swizzle_index(b)]]),
+    &[a, b, c] => Value::UVec3([v[swizzle_index(a)], v[swizzle_index(b)], v[swizzle_index(c)]]),
+    &[a, b, c, d] => Value::UVec4([v[swizzle_index(a)], v[swizzle_index(b)], v[swizzle_index(c)], v[swizzle_index(d)]]),
+    x => unimplemented!("{:?}", x),
+  }
+}
+
+#[inline]
+fn uswizzle_lvalue(v: &mut [u32], field: &str) -> Value {
   match field.as_bytes() {
     &[a] => Value::RefU1(swizzle_offset(v, a)),
     &[a, b] => Value::RefU2(swizzle_offset(v, a), swizzle_offset(v, b)),
