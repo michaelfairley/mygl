@@ -1543,7 +1543,7 @@ pub extern "C" fn glDrawArrays(
   first: GLint,
   count: GLsizei,
 ) -> () {
-  draw::glDrawArraysOneInstance(current(), mode, first, count, 0, 0);
+  glDrawArraysInstanced(mode, first, count, 1);
 }
 
 #[allow(unused_variables)]
@@ -1561,10 +1561,13 @@ pub extern "C" fn glDrawArraysInstanced(
   count: GLsizei,
   instancecount: GLsizei,
 ) -> () {
-  // TODO: real instancing
-  for i in 0..instancecount {
-    draw::glDrawArraysOneInstance(current(), mode, first, count, i, 0);
-  }
+  draw::draw(
+    current(),
+    mode,
+    draw::VertexIdGenerator::Arrays(first..first+count),
+    instancecount,
+    0,
+  );
 }
 
 #[no_mangle]
@@ -1582,7 +1585,7 @@ pub extern "C" fn glDrawElements(
   type_: GLenum,
   indices: *const c_void,
 ) -> () {
-  draw::glDrawElementsOneInstance(current(), mode, count, type_, indices, 0, 0, 0);
+  glDrawElementsInstanced(mode, count, type_, indices, 1);
 }
 
 #[allow(unused_variables)]
@@ -1608,10 +1611,15 @@ pub extern "C" fn glDrawElementsInstanced(
   indices: *const c_void,
   instancecount: GLsizei,
 ) -> () {
-  // TODO: real instancing
-  for i in 0..instancecount {
-    draw::glDrawElementsOneInstance(current(), mode, count, type_, indices, i, 0, 0);
-  }
+  let vidg = draw::instanced_vidg(current(), count, type_, indices, 0);
+
+  draw::draw(
+    current(),
+    mode,
+    vidg,
+    instancecount,
+    0,
+  );
 }
 
 #[allow(unused_variables)]

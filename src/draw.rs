@@ -204,7 +204,7 @@ impl<I: Iterator<Item=Vars>> Iterator for PrimitivePump<I> {
   }
 }
 
-enum VertexIdGenerator {
+pub enum VertexIdGenerator {
   Arrays(std::ops::Range<GLint>),
   Elements{
     count: GLsizei,
@@ -247,21 +247,15 @@ impl VertexIdGenerator {
   }
 }
 
-#[allow(non_snake_case)]
-pub(crate) fn glDrawElementsOneInstance(
+pub(crate) fn instanced_vidg(
   current: &'static mut Context,
-  mode: GLenum,
   count: GLsizei,
   type_: GLenum,
   indices: *const c_void,
-  instance: GLint,
   basevertex: GLuint,
-  baseinstance: GLuint,
-) {
-  assert_eq!(baseinstance, 0);
+) -> VertexIdGenerator {
   let basevertex = basevertex as GLint;
-
-  let vidg = if current.element_array_buffer == 0 {
+  if current.element_array_buffer == 0 {
     let count = count as usize;
     let v = match type_ {
       GL_UNSIGNED_BYTE => {
@@ -288,57 +282,29 @@ pub(crate) fn glDrawElementsOneInstance(
       buffer_pointer,
       basevertex,
     }
-  };
-
-  draw_one(
-    current,
-    mode,
-    vidg,
-    instance,
-    baseinstance,
-  );
-}
-
-#[allow(non_snake_case)]
-pub(crate) fn glDrawArraysOneInstance(
-  current: &'static mut Context,
-  mode: GLenum,
-  first: GLint,
-  count: GLsizei,
-  instance: GLint,
-  baseinstance: GLuint,
-) {
-  let vidg = VertexIdGenerator::Arrays(first..first+count);
-
-  draw_one(
-    current,
-    mode,
-    vidg,
-    instance,
-    baseinstance,
-  );
+  }
 }
 
 struct Draw {
   current: &'static mut Context,
   mode: GLenum,
   vertex_ids: VertexIdGenerator,
-  instance: GLint,
+  instances: GLsizei,
   baseinstance: GLuint,
 }
 
-fn draw_one(
+pub fn draw(
   current: &'static mut Context,
   mode: GLenum,
   vertex_ids: VertexIdGenerator,
-  instance: GLint,
+  instances: GLsizei,
   baseinstance: GLuint,
 ) {
   Draw{
     current,
     mode,
     vertex_ids,
-    instance,
+    instances,
     baseinstance,
   }.draw()
 }
@@ -356,7 +322,6 @@ impl Draw {
     let current = &mut self.current;
     let mode = self.mode;
     let vertex_ids = &self.vertex_ids;
-    let instance = self.instance;
     let baseinstance = self.baseinstance;
 
     assert_eq!(baseinstance, 0);
@@ -479,872 +444,874 @@ impl Draw {
 
     let buffers = &current.buffers;
 
-    // TODO: LRU cache with indexed drawing
-    let vertex_results = vertex_ids.iter().map(|i| {
-      let mut vars = Vars::new();
+    for instance in 0..self.instances {
+      // TODO: LRU cache with indexed drawing
+      let vertex_results = vertex_ids.iter().map(|i| {
+        let mut vars = Vars::new();
 
-      for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
-        let in_var = vert_in_vars.iter().find(|v| &v.name == name).unwrap();
-        let type_ = &in_var.type_;
+        for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
+          let in_var = vert_in_vars.iter().find(|v| &v.name == name).unwrap();
+          let type_ = &in_var.type_;
 
-        let attrib = &vertex_array.attribs[loc as usize];
-        let binding = &vertex_array.bindings[loc as usize];
+          let attrib = &vertex_array.attribs[loc as usize];
+          let binding = &vertex_array.bindings[loc as usize];
 
-        let value = if attrib.enabled {
-          let buffer_pointer = if binding.buffer == 0 {
-            None
-          } else {
-            Some(buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr())
-          };
+          let value = if attrib.enabled {
+            let buffer_pointer = if binding.buffer == 0 {
+              None
+            } else {
+              Some(buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr())
+            };
 
-          let attrib_index = if binding.divisor == 0 {
-            i
-          } else {
-            instance / binding.divisor as i32
-          };
+            let attrib_index = if binding.divisor == 0 {
+              i
+            } else {
+              instance / binding.divisor as i32
+            };
 
-          let p = if let Some(abp) = buffer_pointer {
-            unsafe{ abp.offset(binding.offset as isize).offset((binding.stride * attrib_index) as isize) as *const c_void }
-          } else {
-            unsafe{ attrib.pointer.offset((binding.stride * attrib_index) as isize) }
-          };
+            let p = if let Some(abp) = buffer_pointer {
+              unsafe{ abp.offset(binding.offset as isize).offset((binding.stride * attrib_index) as isize) as *const c_void }
+            } else {
+              unsafe{ attrib.pointer.offset((binding.stride * attrib_index) as isize) }
+            };
 
-          #[derive(Debug)]
-          enum AttribValue {
-            Float([GLfloat; 4]),
-            Int([GLint; 4]),
-            Uint([GLuint; 4]),
-            Short([GLshort; 4]),
-            Ushort([GLushort; 4]),
-            Byte([GLbyte; 4]),
-            Ubyte([GLubyte; 4]),
-            Fixed([GLfixed; 4]),
-            HalfFloat([GLhalf; 4]),
-            I2_10_10_10([i32; 4]),
-            U2_10_10_10([u32; 4]),
-          }
-
-          let attrib_value = match attrib.type_ {
-            GL_FLOAT => {
-              let p = p as *const GLfloat;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0.0, 0.0, 1.0],
-                2 => [p.read(), p.add(1).read(), 0.0, 1.0],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), 1.0],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::Float(v)
-            },
-            GL_INT => {
-              let one = if attrib.normalized { 0x7F_FF_FF_FF } else { 1 };
-
-              let p = p as *const GLint;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0, 0, one],
-                2 => [p.read(), p.add(1).read(), 0, one],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::Int(v)
-            },
-            GL_UNSIGNED_INT => {
-              let one = if attrib.normalized { 0x7F_FF_FF_FFu32 } else { 1 };
-
-              let p = p as *const GLuint;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0, 0, one],
-                2 => [p.read(), p.add(1).read(), 0, one],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::Uint(v)
-            },
-            GL_SHORT => {
-              let one = if attrib.normalized { 0x7F_FF } else { 1 };
-
-              let p = p as *const GLshort;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0, 0, one],
-                2 => [p.read(), p.add(1).read(), 0, one],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::Short(v)
-            },
-            GL_UNSIGNED_SHORT => {
-              let one = if attrib.normalized { 0xFF_FF } else { 1 };
-
-              let p = p as *const GLushort;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0, 0, one],
-                2 => [p.read(), p.add(1).read(), 0, one],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::Ushort(v)
-            },
-            GL_BYTE => {
-              let one = if attrib.normalized { 0x7F } else { 1 };
-
-              let p = p as *const GLbyte;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0, 0, one],
-                2 => [p.read(), p.add(1).read(), 0, one],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::Byte(v)
-            },
-            GL_UNSIGNED_BYTE => {
-              let one = if attrib.normalized { 0xFF } else { 1 };
-
-              let p = p as *const GLubyte;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0, 0, one],
-                2 => [p.read(), p.add(1).read(), 0, one],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::Ubyte(v)
-            },
-            GL_FIXED => {
-              let one = 0x0001_0000;
-
-              let p = p as *const GLfixed;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0, 0, one],
-                2 => [p.read(), p.add(1).read(), 0, one],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::Fixed(v)
-            },
-            GL_HALF_FLOAT => {
-              let p = p as *const GLhalf;
-              let v = unsafe { match attrib.size {
-                1 => [p.read(), 0, 0, 1],
-                2 => [p.read(), p.add(1).read(), 0, 1],
-                3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
-                4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
-                x => unimplemented!("{}", x),
-              }};
-              AttribValue::HalfFloat(v)
-            },
-            GL_INT_2_10_10_10_REV => {
-              assert_eq!(attrib.size, 4);
-              let p = p as *const i32;
-              let raw = unsafe{ p.read() };
-
-              let w = raw >> 30;
-              let z = (raw << 2) >> 22;
-              let y = (raw << 12) >> 22;
-              let x = (raw << 22) >> 22;
-
-              AttribValue::I2_10_10_10([x, y, z, w])
-            },
-            GL_UNSIGNED_INT_2_10_10_10_REV => {
-              assert_eq!(attrib.size, 4);
-              let p = p as *const u32;
-              let raw = unsafe{ p.read() };
-
-              let w = raw >> 30;
-              let z = (raw >> 20) & 0x3_FF;
-              let y = (raw >> 10) & 0x3_FF;
-              let x = (raw >>  0) & 0x3_FF;
-
-              AttribValue::U2_10_10_10([x, y, z, w])
-            },
-            x => unimplemented!("{:x}", x),
-          };
-
-          let target_type = match type_ {
-            TypeSpecifierNonArray::Float | TypeSpecifierNonArray::Vec2 | TypeSpecifierNonArray::Vec3 | TypeSpecifierNonArray::Vec4 => TypeSpecifierNonArray::Vec4,
-            TypeSpecifierNonArray::Int | TypeSpecifierNonArray::IVec2 | TypeSpecifierNonArray::IVec3 | TypeSpecifierNonArray::IVec4 => TypeSpecifierNonArray::IVec4,
-            TypeSpecifierNonArray::Uint | TypeSpecifierNonArray::UVec2 | TypeSpecifierNonArray::UVec3 | TypeSpecifierNonArray::UVec4 => TypeSpecifierNonArray::UVec4,
-            x => unimplemented!("{:?}", x),
-          };
-
-          fn map4<A: Copy, B>(a: [A; 4], f: impl Fn(A) -> B) -> [B; 4] {
-            [
-              f(a[0]),
-              f(a[1]),
-              f(a[2]),
-              f(a[3]),
-            ]
-          }
-
-          let intermediate = match (attrib_value, target_type, attrib.normalized) {
-            (AttribValue::Float(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(f),
-            (AttribValue::Int(i), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(i),
-            (AttribValue::Uint(u), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(u),
-
-            (AttribValue::Int(i), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(i, |i| i as _)),
-            (AttribValue::Int(i), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(i, normalize_i32)),
-
-            (AttribValue::Uint(u), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(u, |u| u as _)),
-            (AttribValue::Uint(u), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(u, normalize_u32)),
-            (AttribValue::HalfFloat(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(map4(f, f16_to_f32)),
-            (AttribValue::Fixed(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(map4(f, fixed_to_float)),
-            (AttribValue::Short(s), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(s, |s| s as _)),
-            (AttribValue::Short(s), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(s, normalize_i16)),
-            (AttribValue::Short(s), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(map4(s, |s| s as _)),
-            (AttribValue::Short(s), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(s, |s| s as _)),
-            (AttribValue::Ushort(s), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(s, |s| s as _)),
-            (AttribValue::Ushort(s), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(s, normalize_u16)),
-            (AttribValue::Ushort(s), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(s, |s| s as _)),
-            (AttribValue::Byte(b), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(map4(b, |b| b as _)),
-            (AttribValue::Byte(b), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(b, |b| b as _)),
-            (AttribValue::Byte(b), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(b, normalize_i8)),
-            (AttribValue::Ubyte(b), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(b, |b| b as _)),
-            (AttribValue::Ubyte(b), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(b, normalize_u8)),
-            (AttribValue::Ubyte(b), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(b, |b| b as _)),
-            (AttribValue::I2_10_10_10(i), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(i, |i| i as _)),
-            (AttribValue::I2_10_10_10(i), TypeSpecifierNonArray::Vec4, true) => Value::Vec4([
-              normalize_i10(i[0]),
-              normalize_i10(i[1]),
-              normalize_i10(i[2]),
-              normalize_i2(i[3]),
-            ]),
-            (AttribValue::U2_10_10_10(u), TypeSpecifierNonArray::Vec4, true) => Value::Vec4([
-              normalize_u10(u[0]),
-              normalize_u10(u[1]),
-              normalize_u10(u[2]),
-              normalize_u2(u[3]),
-            ]),
-            (v, t, n) => unimplemented!("{:?} {:?} {}", v, t, n),
-          };
-
-          match (intermediate, type_) {
-            (Value::Vec4(f), TypeSpecifierNonArray::Float) => Value::Float(f[0]),
-            (Value::Vec4(f), TypeSpecifierNonArray::Vec2) => Value::Vec2([f[0], f[1]]),
-            (Value::Vec4(f), TypeSpecifierNonArray::Vec3) => Value::Vec3([f[0], f[1], f[2]]),
-            (Value::Vec4(f), TypeSpecifierNonArray::Vec4) => Value::Vec4([f[0], f[1], f[2], f[3]]),
-            (Value::IVec4(i), TypeSpecifierNonArray::Int) => Value::Int(i[0]),
-            (Value::IVec4(i), TypeSpecifierNonArray::IVec2) => Value::IVec2([i[0], i[1]]),
-            (Value::IVec4(i), TypeSpecifierNonArray::IVec3) => Value::IVec3([i[0], i[1], i[2]]),
-            (Value::IVec4(i), TypeSpecifierNonArray::IVec4) => Value::IVec4([i[0], i[1], i[2], i[3]]),
-            (Value::UVec4(u), TypeSpecifierNonArray::Uint) => Value::Uint(u[0]),
-            (Value::UVec4(u), TypeSpecifierNonArray::UVec2) => Value::UVec2([u[0], u[1]]),
-            (Value::UVec4(u), TypeSpecifierNonArray::UVec3) => Value::UVec3([u[0], u[1], u[2]]),
-            (Value::UVec4(u), TypeSpecifierNonArray::UVec4) => Value::UVec4([u[0], u[1], u[2], u[3]]),
-            (i, t) => unimplemented!("{:?} {:?}", i, t),
-          }
-        } else {
-          let attrib = current_vertex_attrib[loc as usize];
-
-          let val = match type_ {
-            TypeSpecifierNonArray::Float => Value::Float(attrib[0]),
-            TypeSpecifierNonArray::Vec2 => Value::Vec2([attrib[0], attrib[1]]),
-            TypeSpecifierNonArray::Vec3 => Value::Vec3([attrib[0], attrib[1], attrib[2]]),
-            TypeSpecifierNonArray::Vec4 => Value::Vec4([attrib[0], attrib[1], attrib[2], attrib[3]]),
-            TypeSpecifierNonArray::Int => Value::Int(attrib[0] as _),
-            TypeSpecifierNonArray::IVec2 => Value::IVec2([attrib[0] as _, attrib[1] as _]),
-            TypeSpecifierNonArray::IVec3 => Value::IVec3([attrib[0] as _, attrib[1] as _, attrib[2] as _]),
-            TypeSpecifierNonArray::IVec4 => Value::IVec4([attrib[0] as _, attrib[1] as _, attrib[2] as _, attrib[3] as _]),
-            TypeSpecifierNonArray::Uint => Value::Uint(attrib[0] as _),
-            TypeSpecifierNonArray::UVec2 => Value::UVec2([attrib[0] as _, attrib[1] as _]),
-            TypeSpecifierNonArray::UVec3 => Value::UVec3([attrib[0] as _, attrib[1] as _, attrib[2] as _]),
-            TypeSpecifierNonArray::UVec4 => Value::UVec4([attrib[0] as _, attrib[1] as _, attrib[2] as _, attrib[3] as _]),
-            t => unimplemented!("{:?}", t),
-          };
-
-          val
-        };
-
-        vars.insert(name.clone(), value);
-      }
-
-      init_out_vars(&mut vars, &vert_out_vars);
-
-      for (ref name, ref data) in &vert_uniforms {
-        vars.insert((*name).clone(), (*data).clone());
-      }
-
-      let main = &vert_compiled.functions[&"main".into()][0];
-
-      vars.push();
-      interpret::execute(&main.1, &mut vars, &vert_compiled);
-
-      vars
-    });
-
-    // TODO: tesselation
-    // TODO: geometry
-
-    let tf = if Some(primitive) == current.transform_feedback_capture && !current.transform_feedback_paused {
-      let tfv = &program.transform_feedback.as_ref().unwrap();
-
-      let separate = tfv.1;
-
-      let ps = if separate {
-        let mut ps = vec![];
-
-        for i in 0..tfv.0.len() {
-          let binding = &current.indexed_transform_feedback_buffer[i];
-          ps.push(unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _});
-        }
-
-        ps
-      } else {
-        let binding = &current.indexed_transform_feedback_buffer[0];
-        vec![unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _}]
-      };
-
-      Some(ps)
-    } else { None };
-
-    let mut pump = PrimitivePump::new(vertex_results, mode);
-
-    while let Some(prim) = pump.next() {
-      if let Some(ref ps) = tf {
-        let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
-
-        if let Some((id, target)) = current.query {
-          if target == GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN {
-            current.queries.get_mut(&id).unwrap().as_mut().unwrap().value += 1;
-          }
-        }
-        let tfv = &program.transform_feedback.as_ref().unwrap();
-
-        let tf_vars = &tfv.0;
-        let separate = tfv.1;
-
-        for vert in prim.iter() {
-          for (i, var) in tf_vars.iter().enumerate() {
-            let index = if separate { i } else { 0 };
-
-            let p = ps[index];
-            let offset = &mut tf.offsets[index];
-
-            fn push<T: Copy>(v: &T, p: *mut u8, offset: &mut isize) {
-              unsafe {
-                *(p.offset(*offset) as *mut T) = *v;
-              }
-              *offset += mem::size_of::<T>() as isize;
+            #[derive(Debug)]
+            enum AttribValue {
+              Float([GLfloat; 4]),
+              Int([GLint; 4]),
+              Uint([GLuint; 4]),
+              Short([GLshort; 4]),
+              Ushort([GLushort; 4]),
+              Byte([GLbyte; 4]),
+              Ubyte([GLubyte; 4]),
+              Fixed([GLfixed; 4]),
+              HalfFloat([GLhalf; 4]),
+              I2_10_10_10([i32; 4]),
+              U2_10_10_10([u32; 4]),
             }
 
-            fn push_all(value: &Value, p: *mut u8, offset: &mut isize) {
-              match value {
-                &Value::Float(ref f) => push(f, p, offset),
-                &Value::Vec2(ref v) => push(v, p, offset),
-                &Value::Vec3(ref v) => push(v, p, offset),
-                &Value::Vec4(ref v) => push(v, p, offset),
-                &Value::Mat2(ref v) => push(v, p, offset),
-                &Value::Mat2x3(ref v) => push(v, p, offset),
-                &Value::Mat2x4(ref v) => push(v, p, offset),
-                &Value::Mat3x2(ref v) => push(v, p, offset),
-                &Value::Mat3(ref v) => push(v, p, offset),
-                &Value::Mat3x4(ref v) => push(v, p, offset),
-                &Value::Mat4x2(ref v) => push(v, p, offset),
-                &Value::Mat4x3(ref v) => push(v, p, offset),
-                &Value::Mat4(ref v) => push(v, p, offset),
-                &Value::Int(ref i) => push(i, p, offset),
-                &Value::IVec2(ref i) => push(i, p, offset),
-                &Value::IVec3(ref i) => push(i, p, offset),
-                &Value::IVec4(ref i) => push(i, p, offset),
-                &Value::Uint(ref u) => push(u, p, offset),
-                &Value::UVec2(ref u) => push(u, p, offset),
-                &Value::UVec3(ref u) => push(u, p, offset),
-                &Value::UVec4(ref u) => push(u, p, offset),
+            let attrib_value = match attrib.type_ {
+              GL_FLOAT => {
+                let p = p as *const GLfloat;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0.0, 0.0, 1.0],
+                  2 => [p.read(), p.add(1).read(), 0.0, 1.0],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), 1.0],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::Float(v)
+              },
+              GL_INT => {
+                let one = if attrib.normalized { 0x7F_FF_FF_FF } else { 1 };
 
-                &Value::Array(ref a) => for i in a {
-                  push_all(i, p, offset);
-                },
+                let p = p as *const GLint;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0, 0, one],
+                  2 => [p.read(), p.add(1).read(), 0, one],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::Int(v)
+              },
+              GL_UNSIGNED_INT => {
+                let one = if attrib.normalized { 0x7F_FF_FF_FFu32 } else { 1 };
 
-                x => unimplemented!("{:?}", x),
-              }
-            }
+                let p = p as *const GLuint;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0, 0, one],
+                  2 => [p.read(), p.add(1).read(), 0, one],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::Uint(v)
+              },
+              GL_SHORT => {
+                let one = if attrib.normalized { 0x7F_FF } else { 1 };
 
-            let (name, array_indices) = parse_variable_name(var);
+                let p = p as *const GLshort;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0, 0, one],
+                  2 => [p.read(), p.add(1).read(), 0, one],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::Short(v)
+              },
+              GL_UNSIGNED_SHORT => {
+                let one = if attrib.normalized { 0xFF_FF } else { 1 };
 
-            let value = vert.get(&name.into());
-            let value = array_indices.iter().fold(value, |v, &i| {
-              if let &Value::Array(ref a) = v {
-                &a[i as usize]
-              } else { unreachable!() }
-            });
+                let p = p as *const GLushort;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0, 0, one],
+                  2 => [p.read(), p.add(1).read(), 0, one],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::Ushort(v)
+              },
+              GL_BYTE => {
+                let one = if attrib.normalized { 0x7F } else { 1 };
 
+                let p = p as *const GLbyte;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0, 0, one],
+                  2 => [p.read(), p.add(1).read(), 0, one],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::Byte(v)
+              },
+              GL_UNSIGNED_BYTE => {
+                let one = if attrib.normalized { 0xFF } else { 1 };
 
-            push_all(&value, p, offset);
+                let p = p as *const GLubyte;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0, 0, one],
+                  2 => [p.read(), p.add(1).read(), 0, one],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::Ubyte(v)
+              },
+              GL_FIXED => {
+                let one = 0x0001_0000;
 
-          }
-        }
-      } // transform feedback
+                let p = p as *const GLfixed;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0, 0, one],
+                  2 => [p.read(), p.add(1).read(), 0, one],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), one],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::Fixed(v)
+              },
+              GL_HALF_FLOAT => {
+                let p = p as *const GLhalf;
+                let v = unsafe { match attrib.size {
+                  1 => [p.read(), 0, 0, 1],
+                  2 => [p.read(), p.add(1).read(), 0, 1],
+                  3 => [p.read(), p.add(1).read(), p.add(2).read(), 1],
+                  4 => [p.read(), p.add(1).read(), p.add(2).read(), p.add(3).read()],
+                  x => unimplemented!("{}", x),
+                }};
+                AttribValue::HalfFloat(v)
+              },
+              GL_INT_2_10_10_10_REV => {
+                assert_eq!(attrib.size, 4);
+                let p = p as *const i32;
+                let raw = unsafe{ p.read() };
 
-      // RASTERIZATION
+                let w = raw >> 30;
+                let z = (raw << 2) >> 22;
+                let y = (raw << 12) >> 22;
+                let x = (raw << 22) >> 22;
 
-      fn ndc(vars: &Vars) -> [f32; 3] {
-        let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".into()) {
-          v
-        } else { unreachable!() };
-        [clip_coords[0] / clip_coords[3],
-         clip_coords[1] / clip_coords[3],
-         clip_coords[2] / clip_coords[3]]
-      }
+                AttribValue::I2_10_10_10([x, y, z, w])
+              },
+              GL_UNSIGNED_INT_2_10_10_10_REV => {
+                assert_eq!(attrib.size, 4);
+                let p = p as *const u32;
+                let raw = unsafe{ p.read() };
 
-      fn window_coords(ndc: [f32; 3], viewport: Rect, depth_range: (GLfloat, GLfloat)) -> [f32; 3] {
-        let px = viewport.2 as f32;
-        let py = viewport.3 as f32;
-        let ox = viewport.0 as f32 + px / 2.0;
-        let oy = viewport.1 as f32 + py / 2.0;
-        let (n, f) = depth_range;
+                let w = raw >> 30;
+                let z = (raw >> 20) & 0x3_FF;
+                let y = (raw >> 10) & 0x3_FF;
+                let x = (raw >>  0) & 0x3_FF;
 
-        let window_coords = [
-          px / 2.0 * ndc[0] + ox,
-          py / 2.0 * ndc[1] + oy,
-          (f-n) / 2.0 * ndc[2] + (n+f) / 2.0,
-        ];
-
-        window_coords
-      }
-
-      fn do_fragment(
-        context: &Context,
-        (x, y): (i32, i32),
-        z: f32,
-        front_face: bool,
-        mut vert_vars: Vars,
-        frag_in_vars: &Vec<glsl::Variable>,
-        frag_out_vars: &Vec<glsl::Variable>,
-        frag_uniforms: &HashMap<Atom, Value>,
-        frag_compiled: &Arc<glsl::Shader>,
-      ) {
-        let mut draw_surface = unsafe{ context.draw_surface.as_mut() };
-        let draw_surface = draw_surface.as_mut().unwrap();
-
-        // TODO: real clipping
-        if x < context.viewport.0
-          || x >= context.viewport.0+context.viewport.2
-          || y < context.viewport.1
-          || y >= context.viewport.1+context.viewport.3 {
-            return;
-          }
-
-        let draw_framebuffer = context.draw_framebuffer;
-        let color_mask = context.color_mask;
-
-        let stencil_val = draw_surface.get_stencil(x, y);
-
-        let (stencil_func, stencil_ref, stencil_mask) = if front_face { context.stencil_func_front } else { context.stencil_func_back };
-        let (sfail, dpfail, dppass) = if front_face { context.stencil_op_front } else { context.stencil_op_back };
-        let stencil_write_mask = if front_face { context.stencil_mask_front } else { context.stencil_mask_back };
-
-        let stencil_max = draw_surface.stencil_max();
-        let stencil_ref = cmp::min(stencil_ref, stencil_max);
-        let stencil_mask = stencil_mask & stencil_max;
-
-        fn set_stencil(
-          draw_surface: &mut ::egl::Surface,
-          (x, y): (i32, i32),
-          op: GLenum,
-          val: u32,
-          ref_: u32,
-          stencil_max: u32,
-          stencil_write_mask: u32,
-        ) {
-          if op != GL_KEEP {
-            let new_val = match op {
-              GL_REPLACE => ref_,
-              GL_INCR => if val == stencil_max { val } else { val + 1 },
-              GL_DECR => if val == 0 { 0 } else { val - 1 },
-              GL_INCR_WRAP => val.wrapping_add(1) & stencil_max,
-              GL_DECR_WRAP => val.wrapping_sub(1) & stencil_max,
-              GL_ZERO => 0,
-              GL_INVERT => !val,
+                AttribValue::U2_10_10_10([x, y, z, w])
+              },
               x => unimplemented!("{:x}", x),
             };
 
-            draw_surface.set_stencil(x, y, new_val, stencil_write_mask);
-          }
+            let target_type = match type_ {
+              TypeSpecifierNonArray::Float | TypeSpecifierNonArray::Vec2 | TypeSpecifierNonArray::Vec3 | TypeSpecifierNonArray::Vec4 => TypeSpecifierNonArray::Vec4,
+              TypeSpecifierNonArray::Int | TypeSpecifierNonArray::IVec2 | TypeSpecifierNonArray::IVec3 | TypeSpecifierNonArray::IVec4 => TypeSpecifierNonArray::IVec4,
+              TypeSpecifierNonArray::Uint | TypeSpecifierNonArray::UVec2 | TypeSpecifierNonArray::UVec3 | TypeSpecifierNonArray::UVec4 => TypeSpecifierNonArray::UVec4,
+              x => unimplemented!("{:?}", x),
+            };
 
-        }
-
-        if context.stencil_test {
-          if !stencil_func.cmp(stencil_val & stencil_mask, stencil_ref & stencil_mask) {
-            set_stencil(draw_surface, (x, y), sfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
-
-            return;
-          }
-        }
-
-        if context.depth_test {
-          let old_z = draw_surface.get_depth(x, y);
-
-          let z = draw_surface.encode_depth(z);
-
-          if !context.depth_func.cmp(old_z, z) {
-            if context.stencil_test {
-              set_stencil(draw_surface, (x, y), dpfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+            fn map4<A: Copy, B>(a: [A; 4], f: impl Fn(A) -> B) -> [B; 4] {
+              [
+                f(a[0]),
+                f(a[1]),
+                f(a[2]),
+                f(a[3]),
+              ]
             }
 
-            return;
-          }
+            let intermediate = match (attrib_value, target_type, attrib.normalized) {
+              (AttribValue::Float(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(f),
+              (AttribValue::Int(i), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(i),
+              (AttribValue::Uint(u), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(u),
 
-          if context.depth_mask {
-            draw_surface.set_depth(x, y, z);
-          }
+              (AttribValue::Int(i), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(i, |i| i as _)),
+              (AttribValue::Int(i), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(i, normalize_i32)),
+
+              (AttribValue::Uint(u), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(u, |u| u as _)),
+              (AttribValue::Uint(u), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(u, normalize_u32)),
+              (AttribValue::HalfFloat(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(map4(f, f16_to_f32)),
+              (AttribValue::Fixed(f), TypeSpecifierNonArray::Vec4, _) => Value::Vec4(map4(f, fixed_to_float)),
+              (AttribValue::Short(s), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(s, |s| s as _)),
+              (AttribValue::Short(s), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(s, normalize_i16)),
+              (AttribValue::Short(s), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(map4(s, |s| s as _)),
+              (AttribValue::Short(s), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(s, |s| s as _)),
+              (AttribValue::Ushort(s), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(s, |s| s as _)),
+              (AttribValue::Ushort(s), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(s, normalize_u16)),
+              (AttribValue::Ushort(s), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(s, |s| s as _)),
+              (AttribValue::Byte(b), TypeSpecifierNonArray::IVec4, _) => Value::IVec4(map4(b, |b| b as _)),
+              (AttribValue::Byte(b), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(b, |b| b as _)),
+              (AttribValue::Byte(b), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(b, normalize_i8)),
+              (AttribValue::Ubyte(b), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(b, |b| b as _)),
+              (AttribValue::Ubyte(b), TypeSpecifierNonArray::Vec4, true) => Value::Vec4(map4(b, normalize_u8)),
+              (AttribValue::Ubyte(b), TypeSpecifierNonArray::UVec4, _) => Value::UVec4(map4(b, |b| b as _)),
+              (AttribValue::I2_10_10_10(i), TypeSpecifierNonArray::Vec4, false) => Value::Vec4(map4(i, |i| i as _)),
+              (AttribValue::I2_10_10_10(i), TypeSpecifierNonArray::Vec4, true) => Value::Vec4([
+                normalize_i10(i[0]),
+                normalize_i10(i[1]),
+                normalize_i10(i[2]),
+                normalize_i2(i[3]),
+              ]),
+              (AttribValue::U2_10_10_10(u), TypeSpecifierNonArray::Vec4, true) => Value::Vec4([
+                normalize_u10(u[0]),
+                normalize_u10(u[1]),
+                normalize_u10(u[2]),
+                normalize_u2(u[3]),
+              ]),
+              (v, t, n) => unimplemented!("{:?} {:?} {}", v, t, n),
+            };
+
+            match (intermediate, type_) {
+              (Value::Vec4(f), TypeSpecifierNonArray::Float) => Value::Float(f[0]),
+              (Value::Vec4(f), TypeSpecifierNonArray::Vec2) => Value::Vec2([f[0], f[1]]),
+              (Value::Vec4(f), TypeSpecifierNonArray::Vec3) => Value::Vec3([f[0], f[1], f[2]]),
+              (Value::Vec4(f), TypeSpecifierNonArray::Vec4) => Value::Vec4([f[0], f[1], f[2], f[3]]),
+              (Value::IVec4(i), TypeSpecifierNonArray::Int) => Value::Int(i[0]),
+              (Value::IVec4(i), TypeSpecifierNonArray::IVec2) => Value::IVec2([i[0], i[1]]),
+              (Value::IVec4(i), TypeSpecifierNonArray::IVec3) => Value::IVec3([i[0], i[1], i[2]]),
+              (Value::IVec4(i), TypeSpecifierNonArray::IVec4) => Value::IVec4([i[0], i[1], i[2], i[3]]),
+              (Value::UVec4(u), TypeSpecifierNonArray::Uint) => Value::Uint(u[0]),
+              (Value::UVec4(u), TypeSpecifierNonArray::UVec2) => Value::UVec2([u[0], u[1]]),
+              (Value::UVec4(u), TypeSpecifierNonArray::UVec3) => Value::UVec3([u[0], u[1], u[2]]),
+              (Value::UVec4(u), TypeSpecifierNonArray::UVec4) => Value::UVec4([u[0], u[1], u[2], u[3]]),
+              (i, t) => unimplemented!("{:?} {:?}", i, t),
+            }
+          } else {
+            let attrib = current_vertex_attrib[loc as usize];
+
+            let val = match type_ {
+              TypeSpecifierNonArray::Float => Value::Float(attrib[0]),
+              TypeSpecifierNonArray::Vec2 => Value::Vec2([attrib[0], attrib[1]]),
+              TypeSpecifierNonArray::Vec3 => Value::Vec3([attrib[0], attrib[1], attrib[2]]),
+              TypeSpecifierNonArray::Vec4 => Value::Vec4([attrib[0], attrib[1], attrib[2], attrib[3]]),
+              TypeSpecifierNonArray::Int => Value::Int(attrib[0] as _),
+              TypeSpecifierNonArray::IVec2 => Value::IVec2([attrib[0] as _, attrib[1] as _]),
+              TypeSpecifierNonArray::IVec3 => Value::IVec3([attrib[0] as _, attrib[1] as _, attrib[2] as _]),
+              TypeSpecifierNonArray::IVec4 => Value::IVec4([attrib[0] as _, attrib[1] as _, attrib[2] as _, attrib[3] as _]),
+              TypeSpecifierNonArray::Uint => Value::Uint(attrib[0] as _),
+              TypeSpecifierNonArray::UVec2 => Value::UVec2([attrib[0] as _, attrib[1] as _]),
+              TypeSpecifierNonArray::UVec3 => Value::UVec3([attrib[0] as _, attrib[1] as _, attrib[2] as _]),
+              TypeSpecifierNonArray::UVec4 => Value::UVec4([attrib[0] as _, attrib[1] as _, attrib[2] as _, attrib[3] as _]),
+              t => unimplemented!("{:?}", t),
+            };
+
+            val
+          };
+
+          vars.insert(name.clone(), value);
         }
 
-        if context.stencil_test {
-          set_stencil(draw_surface, (x, y), dppass, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+        init_out_vars(&mut vars, &vert_out_vars);
+
+        for (ref name, ref data) in &vert_uniforms {
+          vars.insert((*name).clone(), (*data).clone());
         }
 
+        let main = &vert_compiled.functions[&"main".into()][0];
 
-        let color;
-        {
-          let mut vars = Vars::new();
+        vars.push();
+        interpret::execute(&main.1, &mut vars, &vert_compiled);
 
-          init_out_vars(&mut vars, frag_out_vars);
+        vars
+      });
 
-          for var in frag_in_vars {
-            vars.insert(var.name.clone(), vert_vars.take(&var.name));
+      // TODO: tesselation
+      // TODO: geometry
+
+      let tf = if Some(primitive) == current.transform_feedback_capture && !current.transform_feedback_paused {
+        let tfv = &program.transform_feedback.as_ref().unwrap();
+
+        let separate = tfv.1;
+
+        let ps = if separate {
+          let mut ps = vec![];
+
+          for i in 0..tfv.0.len() {
+            let binding = &current.indexed_transform_feedback_buffer[i];
+            ps.push(unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _});
           }
 
-          for (ref name, ref data) in frag_uniforms {
-            vars.insert((*name).clone(), (*data).clone());
+          ps
+        } else {
+          let binding = &current.indexed_transform_feedback_buffer[0];
+          vec![unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _}]
+        };
+
+        Some(ps)
+      } else { None };
+
+      let mut pump = PrimitivePump::new(vertex_results, mode);
+
+      while let Some(prim) = pump.next() {
+        if let Some(ref ps) = tf {
+          let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
+
+          if let Some((id, target)) = current.query {
+            if target == GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN {
+              current.queries.get_mut(&id).unwrap().as_mut().unwrap().value += 1;
+            }
           }
+          let tfv = &program.transform_feedback.as_ref().unwrap();
 
-          let main = &frag_compiled.functions[&"main".into()][0];
+          let tf_vars = &tfv.0;
+          let separate = tfv.1;
 
-          vars.push();
-          interpret::execute(&main.1, &mut vars, &frag_compiled);
+          for vert in prim.iter() {
+            for (i, var) in tf_vars.iter().enumerate() {
+              let index = if separate { i } else { 0 };
 
-          if let &Value::Vec4(c) = vars.get(&frag_out_vars[0].name) {
-            color = (c[0], c[1], c[2], c[3]);
-          } else { unreachable!() }
-        } // Fragment
+              let p = ps[index];
+              let offset = &mut tf.offsets[index];
 
-        assert_eq!(draw_framebuffer, 0);
+              fn push<T: Copy>(v: &T, p: *mut u8, offset: &mut isize) {
+                unsafe {
+                  *(p.offset(*offset) as *mut T) = *v;
+                }
+                *offset += mem::size_of::<T>() as isize;
+              }
 
-        draw_surface.set_pixel(x, y, color, color_mask);
-      }
+              fn push_all(value: &Value, p: *mut u8, offset: &mut isize) {
+                match value {
+                  &Value::Float(ref f) => push(f, p, offset),
+                  &Value::Vec2(ref v) => push(v, p, offset),
+                  &Value::Vec3(ref v) => push(v, p, offset),
+                  &Value::Vec4(ref v) => push(v, p, offset),
+                  &Value::Mat2(ref v) => push(v, p, offset),
+                  &Value::Mat2x3(ref v) => push(v, p, offset),
+                  &Value::Mat2x4(ref v) => push(v, p, offset),
+                  &Value::Mat3x2(ref v) => push(v, p, offset),
+                  &Value::Mat3(ref v) => push(v, p, offset),
+                  &Value::Mat3x4(ref v) => push(v, p, offset),
+                  &Value::Mat4x2(ref v) => push(v, p, offset),
+                  &Value::Mat4x3(ref v) => push(v, p, offset),
+                  &Value::Mat4(ref v) => push(v, p, offset),
+                  &Value::Int(ref i) => push(i, p, offset),
+                  &Value::IVec2(ref i) => push(i, p, offset),
+                  &Value::IVec3(ref i) => push(i, p, offset),
+                  &Value::IVec4(ref i) => push(i, p, offset),
+                  &Value::Uint(ref u) => push(u, p, offset),
+                  &Value::UVec2(ref u) => push(u, p, offset),
+                  &Value::UVec3(ref u) => push(u, p, offset),
+                  &Value::UVec4(ref u) => push(u, p, offset),
 
-      match prim {
-        Primitive::Point(p) => {
-          let ndc = ndc(&p);
+                  &Value::Array(ref a) => for i in a {
+                    push_all(i, p, offset);
+                  },
 
-          if ndc[2] < -1.0 || ndc[2] > 1.0 {
-            continue;
+                  x => unimplemented!("{:?}", x),
+                }
+              }
+
+              let (name, array_indices) = parse_variable_name(var);
+
+              let value = vert.get(&name.into());
+              let value = array_indices.iter().fold(value, |v, &i| {
+                if let &Value::Array(ref a) = v {
+                  &a[i as usize]
+                } else { unreachable!() }
+              });
+
+
+              push_all(&value, p, offset);
+
+            }
           }
+        } // transform feedback
 
-          let window_coords = window_coords(ndc, current.viewport, current.depth_range);
+        // RASTERIZATION
 
-          let point_size = if let &Value::Float(f) = p.get(&"gl_PointSize".into()) {
-            f
+        fn ndc(vars: &Vars) -> [f32; 3] {
+          let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".into()) {
+            v
           } else { unreachable!() };
-          let point_size = if point_size <= 0.0 { 1.0 } else { point_size };
+          [clip_coords[0] / clip_coords[3],
+           clip_coords[1] / clip_coords[3],
+           clip_coords[2] / clip_coords[3]]
+        }
 
-          let min_x = window_coords[0] - point_size / 2.0;
-          let max_x = window_coords[0] + point_size / 2.0;
-          let min_y = window_coords[1] - point_size / 2.0;
-          let max_y = window_coords[1] + point_size / 2.0;
+        fn window_coords(ndc: [f32; 3], viewport: Rect, depth_range: (GLfloat, GLfloat)) -> [f32; 3] {
+          let px = viewport.2 as f32;
+          let py = viewport.3 as f32;
+          let ox = viewport.0 as f32 + px / 2.0;
+          let oy = viewport.1 as f32 + py / 2.0;
+          let (n, f) = depth_range;
 
-          let mut x = (min_x + 0.5).ceil() - 0.5;
-          let first_y = (min_y + 0.5).ceil() - 0.5;
+          let window_coords = [
+            px / 2.0 * ndc[0] + ox,
+            py / 2.0 * ndc[1] + oy,
+            (f-n) / 2.0 * ndc[2] + (n+f) / 2.0,
+          ];
 
-          while x < max_x {
-            let mut y = first_y;
+          window_coords
+        }
 
-            while y < max_y {
-              do_fragment(
-                current,
-                (x as i32, y as i32),
-                window_coords[2],
-                true,
-                p.clone(),
-                &frag_in_vars,
-                &frag_out_vars,
-                &frag_uniforms,
-                &frag_compiled,
-              );
+        fn do_fragment(
+          context: &Context,
+          (x, y): (i32, i32),
+          z: f32,
+          front_face: bool,
+          mut vert_vars: Vars,
+          frag_in_vars: &Vec<glsl::Variable>,
+          frag_out_vars: &Vec<glsl::Variable>,
+          frag_uniforms: &HashMap<Atom, Value>,
+          frag_compiled: &Arc<glsl::Shader>,
+        ) {
+          let mut draw_surface = unsafe{ context.draw_surface.as_mut() };
+          let draw_surface = draw_surface.as_mut().unwrap();
 
-              y += 1.0;
+          // TODO: real clipping
+          if x < context.viewport.0
+            || x >= context.viewport.0+context.viewport.2
+            || y < context.viewport.1
+            || y >= context.viewport.1+context.viewport.3 {
+              return;
             }
 
-            x += 1.0;
-          }
-        },
-        Primitive::Line(a, b) => {
-          let ndc_a = ndc(&a);
-          let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
-          let ndc_b = ndc(&b);
-          let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
+          let draw_framebuffer = context.draw_framebuffer;
+          let color_mask = context.color_mask;
 
-          let delta_x = p_b[0]-p_a[0];
-          let delta_y = p_b[1]-p_a[1];
-          let slope = delta_y / delta_x;
+          let stencil_val = draw_surface.get_stencil(x, y);
 
-          let x_major = slope >= -1.0 && slope <= 1.0;
+          let (stencil_func, stencil_ref, stencil_mask) = if front_face { context.stencil_func_front } else { context.stencil_func_back };
+          let (sfail, dpfail, dppass) = if front_face { context.stencil_op_front } else { context.stencil_op_back };
+          let stencil_write_mask = if front_face { context.stencil_mask_front } else { context.stencil_mask_back };
 
-          let width = current.line_width.round().max(1.0);
-          let offset = (width - 1.0) / 2.0;
-          let width = width as i32;
+          let stencil_max = draw_surface.stencil_max();
+          let stencil_ref = cmp::min(stencil_ref, stencil_max);
+          let stencil_mask = stencil_mask & stencil_max;
 
-          let mut x = p_a[0];
-          let mut y = p_a[1];
-          let mut t = 1.0;
-
-
-          fn interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, t: f32) -> Vars {
-            let mut vars = Vars::new();
-
-            for var in frag_in_vars {
-              let a_val = a.get(&var.name).clone();
-              let b_val = b.get(&var.name).clone();
-
-              let val = if var.flat {
-                a_val
-              } else {
-                interpret::add(&interpret::mul(&a_val, t), &interpret::mul(&b_val, 1.0 - t))
+          fn set_stencil(
+            draw_surface: &mut ::egl::Surface,
+            (x, y): (i32, i32),
+            op: GLenum,
+            val: u32,
+            ref_: u32,
+            stencil_max: u32,
+            stencil_write_mask: u32,
+          ) {
+            if op != GL_KEEP {
+              let new_val = match op {
+                GL_REPLACE => ref_,
+                GL_INCR => if val == stencil_max { val } else { val + 1 },
+                GL_DECR => if val == 0 { 0 } else { val - 1 },
+                GL_INCR_WRAP => val.wrapping_add(1) & stencil_max,
+                GL_DECR_WRAP => val.wrapping_sub(1) & stencil_max,
+                GL_ZERO => 0,
+                GL_INVERT => !val,
+                x => unimplemented!("{:x}", x),
               };
 
-              vars.insert(var.name.clone(), val);
+              draw_surface.set_stencil(x, y, new_val, stencil_write_mask);
             }
 
-            vars
-          }
-          fn lerp(a: f32, b: f32, t: f32) -> f32 {
-            a * t + b * (1.0-t)
           }
 
+          if context.stencil_test {
+            if !stencil_func.cmp(stencil_val & stencil_mask, stencil_ref & stencil_mask) {
+              set_stencil(draw_surface, (x, y), sfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
 
-          if x_major {
-            let idx = 1.0 / delta_x.abs();
-
-            y -= offset;
-
-            if p_a[0] < p_b[0] {
-              let first_hop = 1.0 - (x + 0.5).fract();
-              y += slope * first_hop;
-              x += first_hop;
-              t -= idx * first_hop;
-
-              while x < p_b[0] {
-                let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
-                let z = lerp(p_a[2], p_b[2], t);
-
-                for dy in 0..width {
-                  do_fragment(
-                    current,
-                    (x.floor() as i32, y.floor() as i32 + dy),
-                    z,
-                    true,
-                    frag_vals.clone(),
-                    &frag_in_vars,
-                    &frag_out_vars,
-                    &frag_uniforms,
-                    &frag_compiled,
-                  );
-                }
-
-                y += slope;
-                x += 1.0;
-                t -= idx;
-              }
-            } else {
-              let first_hop = 1.0 - (x - 0.5).fract();
-              y -= slope * first_hop;
-              x -= first_hop;
-              t -= idx * first_hop;
-
-              while x > p_b[0] {
-                let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
-                let z = lerp(p_a[2], p_b[2], t);
-
-                for dy in 0..width {
-                  do_fragment(
-                    current,
-                    (x.floor() as i32, y.floor() as i32 + dy),
-                    z,
-                    true,
-                    frag_vals.clone(),
-                    &frag_in_vars,
-                    &frag_out_vars,
-                    &frag_uniforms,
-                    &frag_compiled,
-                  );
-                }
-
-                y -= slope;
-                x -= 1.0;
-                t -= idx;
-              }
+              return;
             }
-          } else {
-            x -= offset;
+          }
 
-            let idy = 1.0 / delta_y.abs();
-            let islope = delta_x / delta_y;
+          if context.depth_test {
+            let old_z = draw_surface.get_depth(x, y);
 
-            if p_a[1] < p_b[1] {
-              let first_hop = 1.0 - (y + 0.5).fract();
-              x += islope * first_hop;
-              y += first_hop;
-              t -= idy * first_hop;
+            let z = draw_surface.encode_depth(z);
 
-              while y < p_b[1] {
-                let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
-                let z = lerp(p_a[2], p_b[2], t);
+            if !context.depth_func.cmp(old_z, z) {
+              if context.stencil_test {
+                set_stencil(draw_surface, (x, y), dpfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+              }
 
-                for dx in 0..width {
-                  do_fragment(
-                    current,
-                    (x.floor() as i32 + dx, y.floor() as i32),
-                    z,
-                    true,
-                    frag_vals.clone(),
-                    &frag_in_vars,
-                    &frag_out_vars,
-                    &frag_uniforms,
-                    &frag_compiled,
-                  );
-                }
+              return;
+            }
 
-                x += islope;
+            if context.depth_mask {
+              draw_surface.set_depth(x, y, z);
+            }
+          }
+
+          if context.stencil_test {
+            set_stencil(draw_surface, (x, y), dppass, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+          }
+
+
+          let color;
+          {
+            let mut vars = Vars::new();
+
+            init_out_vars(&mut vars, frag_out_vars);
+
+            for var in frag_in_vars {
+              vars.insert(var.name.clone(), vert_vars.take(&var.name));
+            }
+
+            for (ref name, ref data) in frag_uniforms {
+              vars.insert((*name).clone(), (*data).clone());
+            }
+
+            let main = &frag_compiled.functions[&"main".into()][0];
+
+            vars.push();
+            interpret::execute(&main.1, &mut vars, &frag_compiled);
+
+            if let &Value::Vec4(c) = vars.get(&frag_out_vars[0].name) {
+              color = (c[0], c[1], c[2], c[3]);
+            } else { unreachable!() }
+          } // Fragment
+
+          assert_eq!(draw_framebuffer, 0);
+
+          draw_surface.set_pixel(x, y, color, color_mask);
+        }
+
+        match prim {
+          Primitive::Point(p) => {
+            let ndc = ndc(&p);
+
+            if ndc[2] < -1.0 || ndc[2] > 1.0 {
+              continue;
+            }
+
+            let window_coords = window_coords(ndc, current.viewport, current.depth_range);
+
+            let point_size = if let &Value::Float(f) = p.get(&"gl_PointSize".into()) {
+              f
+            } else { unreachable!() };
+            let point_size = if point_size <= 0.0 { 1.0 } else { point_size };
+
+            let min_x = window_coords[0] - point_size / 2.0;
+            let max_x = window_coords[0] + point_size / 2.0;
+            let min_y = window_coords[1] - point_size / 2.0;
+            let max_y = window_coords[1] + point_size / 2.0;
+
+            let mut x = (min_x + 0.5).ceil() - 0.5;
+            let first_y = (min_y + 0.5).ceil() - 0.5;
+
+            while x < max_x {
+              let mut y = first_y;
+
+              while y < max_y {
+                do_fragment(
+                  current,
+                  (x as i32, y as i32),
+                  window_coords[2],
+                  true,
+                  p.clone(),
+                  &frag_in_vars,
+                  &frag_out_vars,
+                  &frag_uniforms,
+                  &frag_compiled,
+                );
+
                 y += 1.0;
-                t -= idy;
               }
-            } else {
-              let first_hop = 1.0 - (y - 0.5).fract();
-              x -= islope * first_hop;
-              y -= first_hop;
-              t -= idy * first_hop;
 
-              while y > p_b[1] {
-                let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
-                let z = lerp(p_a[2], p_b[2], t);
+              x += 1.0;
+            }
+          },
+          Primitive::Line(a, b) => {
+            let ndc_a = ndc(&a);
+            let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
+            let ndc_b = ndc(&b);
+            let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
 
-                for dx in 0..width {
-                  do_fragment(
-                    current,
-                    (x.floor() as i32 + dx, y.floor() as i32),
-                    z,
-                    true,
-                    frag_vals.clone(),
-                    &frag_in_vars,
-                    &frag_out_vars,
-                    &frag_uniforms,
-                    &frag_compiled,
-                  );
+            let delta_x = p_b[0]-p_a[0];
+            let delta_y = p_b[1]-p_a[1];
+            let slope = delta_y / delta_x;
+
+            let x_major = slope >= -1.0 && slope <= 1.0;
+
+            let width = current.line_width.round().max(1.0);
+            let offset = (width - 1.0) / 2.0;
+            let width = width as i32;
+
+            let mut x = p_a[0];
+            let mut y = p_a[1];
+            let mut t = 1.0;
+
+
+            fn interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, t: f32) -> Vars {
+              let mut vars = Vars::new();
+
+              for var in frag_in_vars {
+                let a_val = a.get(&var.name).clone();
+                let b_val = b.get(&var.name).clone();
+
+                let val = if var.flat {
+                  a_val
+                } else {
+                  interpret::add(&interpret::mul(&a_val, t), &interpret::mul(&b_val, 1.0 - t))
+                };
+
+                vars.insert(var.name.clone(), val);
+              }
+
+              vars
+            }
+            fn lerp(a: f32, b: f32, t: f32) -> f32 {
+              a * t + b * (1.0-t)
+            }
+
+
+            if x_major {
+              let idx = 1.0 / delta_x.abs();
+
+              y -= offset;
+
+              if p_a[0] < p_b[0] {
+                let first_hop = 1.0 - (x + 0.5).fract();
+                y += slope * first_hop;
+                x += first_hop;
+                t -= idx * first_hop;
+
+                while x < p_b[0] {
+                  let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
+                  let z = lerp(p_a[2], p_b[2], t);
+
+                  for dy in 0..width {
+                    do_fragment(
+                      current,
+                      (x.floor() as i32, y.floor() as i32 + dy),
+                      z,
+                      true,
+                      frag_vals.clone(),
+                      &frag_in_vars,
+                      &frag_out_vars,
+                      &frag_uniforms,
+                      &frag_compiled,
+                    );
+                  }
+
+                  y += slope;
+                  x += 1.0;
+                  t -= idx;
                 }
+              } else {
+                let first_hop = 1.0 - (x - 0.5).fract();
+                y -= slope * first_hop;
+                x -= first_hop;
+                t -= idx * first_hop;
 
-                x -= islope;
-                y -= 1.0;
-                t -= idy;
+                while x > p_b[0] {
+                  let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
+                  let z = lerp(p_a[2], p_b[2], t);
+
+                  for dy in 0..width {
+                    do_fragment(
+                      current,
+                      (x.floor() as i32, y.floor() as i32 + dy),
+                      z,
+                      true,
+                      frag_vals.clone(),
+                      &frag_in_vars,
+                      &frag_out_vars,
+                      &frag_uniforms,
+                      &frag_compiled,
+                    );
+                  }
+
+                  y -= slope;
+                  x -= 1.0;
+                  t -= idx;
+                }
               }
-            }
-          }
-        },
-        Primitive::Triangle(a, b, c) => {
-          let ndc_a = ndc(&a);
-          let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
-          let ndc_b = ndc(&b);
-          let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
-          let ndc_c = ndc(&c);
-          let p_c = window_coords(ndc_c, current.viewport, current.depth_range);
-
-          let front_facing: bool = [(&p_a, &p_b), (&p_b, &p_c), (&p_c, &p_a)].iter()
-            .map(|(i, j)| {
-              i[0] * j[1] - j[0] * i[1]
-            }).sum::<f32>() > 0.0;
-          let front_facing = front_facing ^ current.front_face_cw;
-
-          if current.culling {
-            if current.cull_face == GL_FRONT_AND_BACK
-              || (current.cull_face == GL_FRONT && front_facing)
-              || (current.cull_face == GL_BACK && !front_facing) {
-                continue;
-              }
-          }
-
-          let (mut left, mut middle, mut right) = (p_a, p_b, p_c);
-          if middle[0] < left[0] { mem::swap(&mut left, &mut middle) };
-          if right[0] < middle[0] { mem::swap(&mut middle, &mut right) };
-          if middle[0] < left[0] { mem::swap(&mut left, &mut middle) };
-          let (left, middle, right) = (left, middle, right);
-
-          let slope_lm = (middle[1]-left[1]) / (middle[0]-left[0]);
-          let slope_mr = (right[1]-middle[1]) / (right[0]-middle[0]);
-          let slope_lr = (right[1]-left[1]) / (right[0]-left[0]);
-
-          let lr_top = slope_lr > slope_lm;
-
-          let mut x = left[0];
-          let mut y_lr = left[1];
-          let mut y_lmr = left[1];
-
-
-          let first_hop = 1.0 - ((x + 0.5).fract() + 1.0).fract();
-
-          if x == middle[0] {
-            y_lmr = middle[1];
-          }
-
-          if x + first_hop > middle[0] {
-            let hop_to_mid = middle[0] - x;
-            let hop_from_mid = first_hop - hop_to_mid;
-            if slope_lm.is_infinite() {
-              y_lmr += slope_mr * hop_from_mid;
             } else {
-              y_lmr += slope_lm * hop_to_mid + slope_mr * hop_from_mid;
+              x -= offset;
+
+              let idy = 1.0 / delta_y.abs();
+              let islope = delta_x / delta_y;
+
+              if p_a[1] < p_b[1] {
+                let first_hop = 1.0 - (y + 0.5).fract();
+                x += islope * first_hop;
+                y += first_hop;
+                t -= idy * first_hop;
+
+                while y < p_b[1] {
+                  let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
+                  let z = lerp(p_a[2], p_b[2], t);
+
+                  for dx in 0..width {
+                    do_fragment(
+                      current,
+                      (x.floor() as i32 + dx, y.floor() as i32),
+                      z,
+                      true,
+                      frag_vals.clone(),
+                      &frag_in_vars,
+                      &frag_out_vars,
+                      &frag_uniforms,
+                      &frag_compiled,
+                    );
+                  }
+
+                  x += islope;
+                  y += 1.0;
+                  t -= idy;
+                }
+              } else {
+                let first_hop = 1.0 - (y - 0.5).fract();
+                x -= islope * first_hop;
+                y -= first_hop;
+                t -= idy * first_hop;
+
+                while y > p_b[1] {
+                  let frag_vals = interp_vars(&frag_in_vars, &a, &b, t);
+                  let z = lerp(p_a[2], p_b[2], t);
+
+                  for dx in 0..width {
+                    do_fragment(
+                      current,
+                      (x.floor() as i32 + dx, y.floor() as i32),
+                      z,
+                      true,
+                      frag_vals.clone(),
+                      &frag_in_vars,
+                      &frag_out_vars,
+                      &frag_uniforms,
+                      &frag_compiled,
+                    );
+                  }
+
+                  x -= islope;
+                  y -= 1.0;
+                  t -= idy;
+                }
+              }
             }
-          } else {
-            y_lmr += first_hop * slope_lm;
-          }
-          x += first_hop;
-          y_lr += first_hop * slope_lr;
+          },
+          Primitive::Triangle(a, b, c) => {
+            let ndc_a = ndc(&a);
+            let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
+            let ndc_b = ndc(&b);
+            let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
+            let ndc_c = ndc(&c);
+            let p_c = window_coords(ndc_c, current.viewport, current.depth_range);
 
-          while x < right[0] {
-            let (bottom, top) = if lr_top { (y_lmr, y_lr) } else { (y_lr, y_lmr) };
-            let mut y = bottom.round() + 0.5;
-            while y < top.round() {
-              let barys = barycentric(x, y, p_a, p_b, p_c);
+            let front_facing: bool = [(&p_a, &p_b), (&p_b, &p_c), (&p_c, &p_a)].iter()
+              .map(|(i, j)| {
+                i[0] * j[1] - j[0] * i[1]
+              }).sum::<f32>() > 0.0;
+            let front_facing = front_facing ^ current.front_face_cw;
 
-              let frag_vals = bary_interp_vars(&frag_in_vars, &a, &b, &c, barys);
-
-              let z = p_a[2] * barys.0
-                + p_b[2] * barys.1
-                + p_c[2] * barys.2;
-
-              do_fragment(
-                current,
-                (x.floor() as i32, y.floor() as i32),
-                z,
-                front_facing,
-                frag_vals,
-                &frag_in_vars,
-                &frag_out_vars,
-                &frag_uniforms,
-                &frag_compiled,
-              );
-              y += 1.0;
+            if current.culling {
+              if current.cull_face == GL_FRONT_AND_BACK
+                || (current.cull_face == GL_FRONT && front_facing)
+                || (current.cull_face == GL_BACK && !front_facing) {
+                  continue;
+                }
             }
 
-            if x < middle[0] && x + 1.0 > middle[0] {
+            let (mut left, mut middle, mut right) = (p_a, p_b, p_c);
+            if middle[0] < left[0] { mem::swap(&mut left, &mut middle) };
+            if right[0] < middle[0] { mem::swap(&mut middle, &mut right) };
+            if middle[0] < left[0] { mem::swap(&mut left, &mut middle) };
+            let (left, middle, right) = (left, middle, right);
+
+            let slope_lm = (middle[1]-left[1]) / (middle[0]-left[0]);
+            let slope_mr = (right[1]-middle[1]) / (right[0]-middle[0]);
+            let slope_lr = (right[1]-left[1]) / (right[0]-left[0]);
+
+            let lr_top = slope_lr > slope_lm;
+
+            let mut x = left[0];
+            let mut y_lr = left[1];
+            let mut y_lmr = left[1];
+
+
+            let first_hop = 1.0 - ((x + 0.5).fract() + 1.0).fract();
+
+            if x == middle[0] {
+              y_lmr = middle[1];
+            }
+
+            if x + first_hop > middle[0] {
               let hop_to_mid = middle[0] - x;
-              let hop_from_mid = 1.0 - hop_to_mid;
-              y_lmr += slope_lm * hop_to_mid + slope_mr * hop_from_mid;
-
-            } else if x < middle[0] {
-              y_lmr += slope_lm;
+              let hop_from_mid = first_hop - hop_to_mid;
+              if slope_lm.is_infinite() {
+                y_lmr += slope_mr * hop_from_mid;
+              } else {
+                y_lmr += slope_lm * hop_to_mid + slope_mr * hop_from_mid;
+              }
             } else {
-              y_lmr += slope_mr;
+              y_lmr += first_hop * slope_lm;
             }
+            x += first_hop;
+            y_lr += first_hop * slope_lr;
 
-            x += 1.0;
-            y_lr += slope_lr;
-          }
-        },
+            while x < right[0] {
+              let (bottom, top) = if lr_top { (y_lmr, y_lr) } else { (y_lr, y_lmr) };
+              let mut y = bottom.round() + 0.5;
+              while y < top.round() {
+                let barys = barycentric(x, y, p_a, p_b, p_c);
+
+                let frag_vals = bary_interp_vars(&frag_in_vars, &a, &b, &c, barys);
+
+                let z = p_a[2] * barys.0
+                  + p_b[2] * barys.1
+                  + p_c[2] * barys.2;
+
+                do_fragment(
+                  current,
+                  (x.floor() as i32, y.floor() as i32),
+                  z,
+                  front_facing,
+                  frag_vals,
+                  &frag_in_vars,
+                  &frag_out_vars,
+                  &frag_uniforms,
+                  &frag_compiled,
+                );
+                y += 1.0;
+              }
+
+              if x < middle[0] && x + 1.0 > middle[0] {
+                let hop_to_mid = middle[0] - x;
+                let hop_from_mid = 1.0 - hop_to_mid;
+                y_lmr += slope_lm * hop_to_mid + slope_mr * hop_from_mid;
+
+              } else if x < middle[0] {
+                y_lmr += slope_lm;
+              } else {
+                y_lmr += slope_mr;
+              }
+
+              x += 1.0;
+              y_lr += slope_lr;
+            }
+          },
+        }
+
       }
-
     }
   }
 }
