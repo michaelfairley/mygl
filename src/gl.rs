@@ -5,7 +5,7 @@ use std::thread;
 use std::ptr;
 use std::ffi::{CStr};
 use std::collections::HashMap;
-use std::sync::{Arc,Barrier,RwLock};
+use std::sync::{Arc,Barrier,RwLock,atomic::{AtomicIsize,AtomicU32,Ordering}};
 use std::cell::{RefCell,Ref,Cell};
 use std::mem;
 use std::cmp;
@@ -31,17 +31,17 @@ trace::init_depth_var!();
 pub type Rect = (GLint, GLint, GLsizei, GLsizei);
 pub type ColorMask = (bool, bool, bool, bool);
 
-const MAX_SHADER_STORAGE_BUFFER_BINDINGS: usize = 4;
-const MAX_UNIFORM_BUFFER_BINDINGS: usize = 72;
-const MAX_ATOMIC_COUNTER_BUFFER_BINDINGS: usize = 1;
-const MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: usize = 4;
-const MAX_IMAGE_UNITS: usize = 8;
-const MAX_VERTEX_ATTRIBS: usize = 32; // TODO: try 16 after error handling is better
-const MAX_CUBE_MAP_TEXTURE_SIZE: usize = 2048;
-const MAX_TEXTURE_SIZE: usize = 2048;
-const MAX_3D_TEXTURE_SIZE: usize = 2048;
-const MAX_RENDERBUFFER_SIZE: usize = 2048;
-const MAX_ARRAY_TEXTURE_LAYERS: usize = 256;
+pub const MAX_SHADER_STORAGE_BUFFER_BINDINGS: usize = 4;
+pub const MAX_UNIFORM_BUFFER_BINDINGS: usize = 72;
+pub const MAX_ATOMIC_COUNTER_BUFFER_BINDINGS: usize = 1;
+pub const MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: usize = 4;
+pub const MAX_IMAGE_UNITS: usize = 8;
+pub const MAX_VERTEX_ATTRIBS: usize = 32; // TODO: try 16 after error handling is better
+pub const MAX_CUBE_MAP_TEXTURE_SIZE: usize = 2048;
+pub const MAX_TEXTURE_SIZE: usize = 2048;
+pub const MAX_3D_TEXTURE_SIZE: usize = 2048;
+pub const MAX_RENDERBUFFER_SIZE: usize = 2048;
+pub const MAX_ARRAY_TEXTURE_LAYERS: usize = 256;
 
 
 
@@ -124,7 +124,7 @@ pub struct Context {
   pub transform_feedback_capture: Option<GLenum>,
   pub transform_feedback_paused: bool,
 
-  pub queries: HashMap<GLuint, Option<Query>>,
+  pub queries: HashMap<GLuint, Option<Arc<AtomicU32>>>,
   pub query: Option<(GLuint, GLenum)>,
 
   pub line_width: GLfloat,
@@ -496,15 +496,10 @@ impl BufferBinding{
 
 #[derive(Debug,Clone)]
 pub struct TransformFeedback {
-  pub offsets: [isize; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS],
+  pub offsets: [Arc<AtomicIsize>; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS],
 }
 
-#[derive(Debug)]
-pub struct Query {
-  pub value: u32,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct VertexArray {
   pub attribs: [VertexAttrib; MAX_VERTEX_ATTRIBS],
   pub bindings: [VertexBinding; MAX_VERTEX_ATTRIBS],
@@ -639,9 +634,7 @@ pub extern "C" fn glBeginQuery(
   let current = current();
 
   if current.queries.get(&id).unwrap().is_none() {
-    current.queries.insert(id, Some(Query{
-      value: 0,
-    }));
+    current.queries.insert(id, Some(Arc::new(AtomicU32::new(0))));
   }
 
   current.query = Some((id, target));
@@ -655,7 +648,12 @@ pub extern "C" fn glBeginTransformFeedback(
   let current = current();
 
   current.transform_feedback_capture = Some(primitiveMode);
-  current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap().offsets = [0; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS];
+  current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap().offsets = [
+    Arc::new(AtomicIsize::new(0)),
+    Arc::new(AtomicIsize::new(0)),
+    Arc::new(AtomicIsize::new(0)),
+    Arc::new(AtomicIsize::new(0)),
+  ];
 }
 
 #[allow(unused_variables)]
@@ -807,7 +805,12 @@ pub extern "C" fn glBindTransformFeedback(
   if id > 0 {
     if current.transform_feedbacks[&id].is_none() {
       current.transform_feedbacks.insert(id, Some(TransformFeedback{
-        offsets: [0; MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS],
+        offsets: [
+          Arc::new(AtomicIsize::new(0)),
+          Arc::new(AtomicIsize::new(0)),
+          Arc::new(AtomicIsize::new(0)),
+          Arc::new(AtomicIsize::new(0)),
+        ],
       }));
     }
   }
@@ -2419,7 +2422,7 @@ pub extern "C" fn glGetQueryObjectuiv(
 
   let value = match pname {
     GL_QUERY_RESULT_AVAILABLE => GL_TRUE as GLuint, // TODO
-    GL_QUERY_RESULT => query.value,
+    GL_QUERY_RESULT => query.load(Ordering::Relaxed),
     x => unimplemented!("{:x}", x),
   };
 

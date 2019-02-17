@@ -5,14 +5,17 @@ use conversions::*;
 use std::mem;
 use std::cmp;
 
-use glsl::interpret::{Vars,self};
+use glsl::interpret::{Vars,self,Value};
 use glsl;
-use std::sync::Arc;
+use glsl::{TypeSpecifierNonArray,Interface};
+
+use std::sync::{Arc,atomic::{Ordering,AtomicIsize,AtomicU32}};
 use std::cell::{Ref};
 use string_cache::DefaultAtom as Atom;
 use std::collections::HashMap;
 use std::os::raw::*;
 use gl::{self,Context,Rect,parse_variable_name};
+use std::ops::Deref;
 
 
 pub enum Primitive {
@@ -291,6 +294,31 @@ struct Draw {
   vertex_ids: VertexIdGenerator,
   instances: GLsizei,
   baseinstance: GLuint,
+
+  viewport: Rect,
+  depth_range: (GLfloat, GLfloat),
+
+  line_width: GLfloat,
+
+  cull_face: Option<GLenum>,
+  front_face_cw: bool,
+
+
+  vert_shader: Arc<glsl::Shader>,
+  frag_shader: Arc<glsl::Shader>,
+
+  vert_uniforms: HashMap<Atom, Value>,
+  frag_uniforms: HashMap<Atom, Value>,
+
+  transform_feedback: Option<(Vec<*mut u8>, Vec<String>, bool, [Arc<AtomicIsize>; gl::MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS])>,
+  transform_feedback_query: Option<Arc<AtomicU32>>,
+
+  vertex_array: gl::VertexArray,
+
+  vertex_attrib_locs: Vec<(Atom, usize)>,
+
+  current_vertex_attribs: [[GLfloat; 4]; gl::MAX_VERTEX_ATTRIBS],
+  vertex_attrib_buffers: [Option<*const u8>; gl::MAX_VERTEX_ATTRIBS],
 }
 
 pub fn draw(
@@ -300,7 +328,91 @@ pub fn draw(
   instances: GLsizei,
   baseinstance: GLuint,
 ) {
+
+  let vert_shader;
+  let frag_shader;
+  let vert_uniforms;
+  let frag_uniforms;
+  let transform_feedback;
+  let vertex_attrib_locs;
+  {
+    let program = current.programs.get(&current.program).unwrap();
+    vert_shader = get_shader(&program, GL_VERTEX_SHADER);
+    frag_shader = get_shader(&program, GL_FRAGMENT_SHADER);
+
+    vert_uniforms = setup_uniforms(current, program, &vert_shader);
+    frag_uniforms = setup_uniforms(current, program, &frag_shader);
+
+    transform_feedback = if Some(primitive_from_mode(mode)) == current.transform_feedback_capture && !current.transform_feedback_paused {
+      let tfv = &program.transform_feedback.as_ref().unwrap();
+
+      let separate = tfv.1;
+
+      let pointers = if separate {
+        let mut pointers = vec![];
+
+        for i in 0..tfv.0.len() {
+          let binding = &current.indexed_transform_feedback_buffer[i];
+          pointers.push(unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _});
+        }
+
+        pointers
+      } else {
+        let binding = &current.indexed_transform_feedback_buffer[0];
+        vec![unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _}]
+      };
+
+      let offsets = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_ref().unwrap().offsets.clone();
+
+      Some((pointers, tfv.0.clone(), tfv.1, offsets))
+    } else { None };
+
+    vertex_attrib_locs = program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|n| (n.clone(), i))).collect();
+
+  }
+
+  let vertex_array = current.vertex_arrays.get(&current.vertex_array).unwrap().unwrap();
+  let current_vertex_attribs = current.current_vertex_attrib;
+
+  let mut vab = [None; gl::MAX_VERTEX_ATTRIBS];
+  for i in 0..gl::MAX_VERTEX_ATTRIBS {
+    vab[i] = current.buffers.get(&vertex_array.bindings[i].buffer).and_then(|x| x.as_ref()).map(|b| b.as_ptr());
+  }
+
+
+  let transform_feedback_query = if let Some((id, target)) = current.query {
+    if target == GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN {
+      Some(Arc::clone(current.queries.get_mut(&id).unwrap().as_mut().unwrap()))
+    } else { None }
+  } else { None };
+
+  let cull_face = if current.culling {
+    Some(current.cull_face)
+  } else { None };
+
   Draw{
+    viewport: current.viewport,
+    depth_range: current.depth_range,
+
+    line_width: current.line_width,
+
+    vert_shader,
+    frag_shader,
+
+    vert_uniforms,
+    frag_uniforms,
+
+    transform_feedback,
+    transform_feedback_query,
+
+    vertex_attrib_locs,
+    vertex_array,
+    current_vertex_attribs,
+    vertex_attrib_buffers: vab,
+
+    cull_face,
+    front_face_cw: current.front_face_cw,
+
     current,
     mode,
     vertex_ids,
@@ -309,15 +421,97 @@ pub fn draw(
   }.draw()
 }
 
+fn get_shader(
+  program: &gl::Program,
+  type_: GLenum,
+) -> Arc<glsl::Shader> {
+  let shader = program.shaders.iter().find(|s| s.type_ == type_).unwrap();
+  Arc::clone(Ref::map(shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref())
+}
+
+fn setup_uniforms(
+  context: &Context,
+  program: &gl::Program,
+  shader: &glsl::Shader,
+) -> HashMap<Atom, Value> {
+  let mut uniforms = HashMap::new();
+
+  for iface in &shader.interfaces {
+    match iface {
+      &Interface::Uniform(ref info) => {
+        let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
+        let val = &program.uniform_values[index];
+        let val = match val {
+          &Value::UImage2DUnit(unit) => {
+            let unit_target = context.images[unit];
+            let texture = context.textures.get(&unit_target).expect("No texture for unit");
+            let texture = texture.as_ref().expect("No texture in slot");
+
+            Value::UImage2D(Arc::clone(texture))
+          },
+          x => x.clone(),
+        };
+        if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
+        uniforms.insert(info.name.clone(), val);
+      },
+      _ => {},
+    }
+  }
+
+  uniforms
+}
+
+fn primitive_from_mode(mode: GLenum) -> GLenum {
+  match mode {
+    GL_POINTS => GL_POINTS,
+    GL_LINE_STRIP | GL_LINE_LOOP | GL_LINES => GL_LINES,
+    GL_TRIANGLE_STRIP | GL_TRIANGLE_FAN | GL_TRIANGLES => GL_TRIANGLES,
+    x => unimplemented!("{:x}", x),
+  }
+}
+
+fn init_out_vars(vars: &mut Vars, out_vars: &[glsl::Variable]) {
+  for var in out_vars {
+    let value = match &var.type_ {
+      &TypeSpecifierNonArray::Float => Value::Float(Default::default()),
+      &TypeSpecifierNonArray::Vec2 => Value::Vec2(Default::default()),
+      &TypeSpecifierNonArray::Vec3 => Value::Vec3(Default::default()),
+      &TypeSpecifierNonArray::Vec4 => Value::Vec4(Default::default()),
+      &TypeSpecifierNonArray::Mat2 => Value::Mat2(Default::default()),
+      &TypeSpecifierNonArray::Mat2x3 => Value::Mat2x3(Default::default()),
+      &TypeSpecifierNonArray::Mat2x4 => Value::Mat2x4(Default::default()),
+      &TypeSpecifierNonArray::Mat3x2 => Value::Mat3x2(Default::default()),
+      &TypeSpecifierNonArray::Mat3 => Value::Mat3(Default::default()),
+      &TypeSpecifierNonArray::Mat3x4 => Value::Mat3x4(Default::default()),
+      &TypeSpecifierNonArray::Mat4x2 => Value::Mat4x2(Default::default()),
+      &TypeSpecifierNonArray::Mat4x3 => Value::Mat4x3(Default::default()),
+      &TypeSpecifierNonArray::Mat4 => Value::Mat4(Default::default()),
+      &TypeSpecifierNonArray::Int => Value::Int(Default::default()),
+      &TypeSpecifierNonArray::IVec2 => Value::IVec2(Default::default()),
+      &TypeSpecifierNonArray::IVec3 => Value::IVec3(Default::default()),
+      &TypeSpecifierNonArray::IVec4 => Value::IVec4(Default::default()),
+      &TypeSpecifierNonArray::Uint => Value::Uint(Default::default()),
+      &TypeSpecifierNonArray::UVec2 => Value::UVec2(Default::default()),
+      &TypeSpecifierNonArray::UVec3 => Value::UVec3(Default::default()),
+      &TypeSpecifierNonArray::UVec4 => Value::UVec4(Default::default()),
+
+      x => unimplemented!("{:?}", x),
+    };
+
+    let value = var.array.iter().rev().fold(value, |val, &size| {
+      let size = size as usize;
+      let mut v = Vec::with_capacity(size);
+      v.resize(size, val);
+      Value::Array(v)
+    });
+
+    vars.insert(var.name.clone(), value);
+  }
+}
 
 impl Draw {
   fn draw(&mut self) {
     use draw::*;
-
-    use std::ops::Deref;
-
-    use glsl::interpret::{self,Vars,Value};
-    use glsl::{TypeSpecifierNonArray,Interface};
 
     let current = &mut self.current;
     let mode = self.mode;
@@ -326,143 +520,39 @@ impl Draw {
 
     assert_eq!(baseinstance, 0);
 
-    fn init_out_vars(vars: &mut Vars, out_vars: &[glsl::Variable]) {
-      for var in out_vars {
-        let value = match &var.type_ {
-          &TypeSpecifierNonArray::Float => Value::Float(Default::default()),
-          &TypeSpecifierNonArray::Vec2 => Value::Vec2(Default::default()),
-          &TypeSpecifierNonArray::Vec3 => Value::Vec3(Default::default()),
-          &TypeSpecifierNonArray::Vec4 => Value::Vec4(Default::default()),
-          &TypeSpecifierNonArray::Mat2 => Value::Mat2(Default::default()),
-          &TypeSpecifierNonArray::Mat2x3 => Value::Mat2x3(Default::default()),
-          &TypeSpecifierNonArray::Mat2x4 => Value::Mat2x4(Default::default()),
-          &TypeSpecifierNonArray::Mat3x2 => Value::Mat3x2(Default::default()),
-          &TypeSpecifierNonArray::Mat3 => Value::Mat3(Default::default()),
-          &TypeSpecifierNonArray::Mat3x4 => Value::Mat3x4(Default::default()),
-          &TypeSpecifierNonArray::Mat4x2 => Value::Mat4x2(Default::default()),
-          &TypeSpecifierNonArray::Mat4x3 => Value::Mat4x3(Default::default()),
-          &TypeSpecifierNonArray::Mat4 => Value::Mat4(Default::default()),
-          &TypeSpecifierNonArray::Int => Value::Int(Default::default()),
-          &TypeSpecifierNonArray::IVec2 => Value::IVec2(Default::default()),
-          &TypeSpecifierNonArray::IVec3 => Value::IVec3(Default::default()),
-          &TypeSpecifierNonArray::IVec4 => Value::IVec4(Default::default()),
-          &TypeSpecifierNonArray::Uint => Value::Uint(Default::default()),
-          &TypeSpecifierNonArray::UVec2 => Value::UVec2(Default::default()),
-          &TypeSpecifierNonArray::UVec3 => Value::UVec3(Default::default()),
-          &TypeSpecifierNonArray::UVec4 => Value::UVec4(Default::default()),
+    let vert_in_vars = self.vert_shader.interfaces.iter().filter_map(|i| if let &glsl::Interface::Input(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
+    let vert_out_vars = self.vert_shader.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
 
-          x => unimplemented!("{:?}", x),
-        };
-
-        let value = var.array.iter().rev().fold(value, |val, &size| {
-          let size = size as usize;
-          let mut v = Vec::with_capacity(size);
-          v.resize(size, val);
-          Value::Array(v)
-        });
-
-        vars.insert(var.name.clone(), value);
-      }
-    }
+    let frag_in_vars = self.frag_shader.interfaces.iter().filter_map(|i| if let &glsl::Interface::Input(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
+    let frag_out_vars = self.frag_shader.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
 
 
-    let primitive = match mode {
-      GL_POINTS => GL_POINTS,
-      GL_LINE_STRIP | GL_LINE_LOOP | GL_LINES => GL_LINES,
-      GL_TRIANGLE_STRIP | GL_TRIANGLE_FAN | GL_TRIANGLES => GL_TRIANGLES,
-      x => unimplemented!("{:x}", x),
-    };
+    let vert_uniforms = &self.vert_uniforms;
 
-    let program = current.programs.get(&current.program).unwrap();
-
-    let vert_shader = program.shaders.iter().find(|s| s.type_ == GL_VERTEX_SHADER).unwrap();
-    let vert_compiled = Arc::clone(Ref::map(vert_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
-
-    let frag_shader = program.shaders.iter().find(|s| s.type_ == GL_FRAGMENT_SHADER).unwrap();
-    let frag_compiled = Arc::clone(Ref::map(frag_shader.compiled.borrow(), |s| s.as_ref().unwrap()).deref());
-
-    let vert_in_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Input(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
-    let vert_out_vars = vert_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
-
-    let frag_in_vars = frag_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Input(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
-    let frag_out_vars = frag_compiled.interfaces.iter().filter_map(|i| if let &glsl::Interface::Output(ref v) = i { Some(v.clone()) } else { None }).collect::<Vec<_>>();
-
-
-    // TODO: do something about these
-    let mut vert_uniforms = HashMap::new();
-    for iface in &vert_compiled.interfaces {
-      match iface {
-        &Interface::Uniform(ref info) => {
-          let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
-          let val = &program.uniform_values[index];
-          let val = match val {
-            &Value::UImage2DUnit(unit) => {
-              let unit_target = current.images[unit];
-              let texture = current.textures.get(&unit_target).expect("No texture for unit");
-              let texture = texture.as_ref().expect("No texture in slot");
-
-              Value::UImage2D(Arc::clone(texture))
-            },
-            x => x.clone(),
-          };
-          if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
-          vert_uniforms.insert(info.name.clone(), val);
-        },
-        _ => {},
-      }
-    }
-    let mut frag_uniforms = HashMap::new();
-    for iface in &frag_compiled.interfaces {
-      match iface {
-        &Interface::Uniform(ref info) => {
-          let index = program.uniforms.iter().position(|i| i.name == info.name).unwrap();
-          let val = &program.uniform_values[index];
-          let val = match val {
-            &Value::UImage2DUnit(unit) => {
-              let unit_target = current.images[unit];
-              let texture = current.textures.get(&unit_target).expect("No texture for unit");
-              let texture = texture.as_ref().expect("No texture in slot");
-
-              Value::UImage2D(Arc::clone(texture))
-            },
-            x => x.clone(),
-          };
-          if info.typ == GL_UNSIGNED_INT_ATOMIC_COUNTER { continue; }
-          frag_uniforms.insert(info.name.clone(), val);
-        },
-        _ => {},
-      }
-    }
-
-    assert_eq!(current.vertex_array, 0);
-
-    let vertex_array = current.vertex_arrays.get(&current.vertex_array).unwrap().as_ref().unwrap();
-    let current_vertex_attrib = &current.current_vertex_attrib;
+    let current_vertex_attrib = &self.current_vertex_attribs;
 
     // TODO: thread
     gl::glFinish();
 
-    let buffers = &current.buffers;
+    let vert_shader = &self.vert_shader;
+    let vertex_attrib_locs = &self.vertex_attrib_locs;
+    let vertex_array = &self.vertex_array;
+    let vertex_attrib_buffers = &self.vertex_attrib_buffers;
 
     for instance in 0..self.instances {
       // TODO: LRU cache with indexed drawing
       let vertex_results = vertex_ids.iter().map(|i| {
         let mut vars = Vars::new();
 
-        for (loc, name) in program.attrib_locations.iter().enumerate().filter_map(|(i, ref n)| n.as_ref().map(|ref n| (i, n.clone()))) {
+        for (name, loc) in vertex_attrib_locs {
           let in_var = vert_in_vars.iter().find(|v| &v.name == name).unwrap();
           let type_ = &in_var.type_;
 
-          let attrib = &vertex_array.attribs[loc as usize];
-          let binding = &vertex_array.bindings[loc as usize];
+          let attrib = &vertex_array.attribs[*loc];
+          let binding = &vertex_array.bindings[*loc];
+          let buffer_pointer = vertex_attrib_buffers[*loc];
 
           let value = if attrib.enabled {
-            let buffer_pointer = if binding.buffer == 0 {
-              None
-            } else {
-              Some(buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr())
-            };
-
             let attrib_index = if binding.divisor == 0 {
               i
             } else {
@@ -704,7 +794,7 @@ impl Draw {
               (i, t) => unimplemented!("{:?} {:?}", i, t),
             }
           } else {
-            let attrib = current_vertex_attrib[loc as usize];
+            let attrib = current_vertex_attrib[*loc];
 
             let val = match type_ {
               TypeSpecifierNonArray::Float => Value::Float(attrib[0]),
@@ -730,14 +820,14 @@ impl Draw {
 
         init_out_vars(&mut vars, &vert_out_vars);
 
-        for (ref name, ref data) in &vert_uniforms {
+        for (ref name, ref data) in vert_uniforms {
           vars.insert((*name).clone(), (*data).clone());
         }
 
-        let main = &vert_compiled.functions[&"main".into()][0];
+        let main = &vert_shader.functions[&"main".into()][0];
 
         vars.push();
-        interpret::execute(&main.1, &mut vars, &vert_compiled);
+        interpret::execute(&main.1, &mut vars, &vert_shader);
 
         vars
       });
@@ -745,59 +835,29 @@ impl Draw {
       // TODO: tesselation
       // TODO: geometry
 
-      let tf = if Some(primitive) == current.transform_feedback_capture && !current.transform_feedback_paused {
-        let tfv = &program.transform_feedback.as_ref().unwrap();
-
-        let separate = tfv.1;
-
-        let ps = if separate {
-          let mut ps = vec![];
-
-          for i in 0..tfv.0.len() {
-            let binding = &current.indexed_transform_feedback_buffer[i];
-            ps.push(unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _});
-          }
-
-          ps
-        } else {
-          let binding = &current.indexed_transform_feedback_buffer[0];
-          vec![unsafe{ current.buffers.get(&binding.buffer).unwrap().as_ref().unwrap().as_ptr().offset(binding.offset) as *mut _}]
-        };
-
-        Some(ps)
-      } else { None };
-
       let mut pump = PrimitivePump::new(vertex_results, mode);
 
       while let Some(prim) = pump.next() {
-        if let Some(ref ps) = tf {
-          let tf = current.transform_feedbacks.get_mut(&current.transform_feedback).unwrap().as_mut().unwrap();
-
-          if let Some((id, target)) = current.query {
-            if target == GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN {
-              current.queries.get_mut(&id).unwrap().as_mut().unwrap().value += 1;
-            }
+        if let Some((ref ps, ref tf_vars, separate, ref offsets)) = self.transform_feedback {
+          if let Some(query) = &self.transform_feedback_query {
+            query.fetch_add(1, Ordering::Relaxed);
           }
-          let tfv = &program.transform_feedback.as_ref().unwrap();
-
-          let tf_vars = &tfv.0;
-          let separate = tfv.1;
 
           for vert in prim.iter() {
             for (i, var) in tf_vars.iter().enumerate() {
               let index = if separate { i } else { 0 };
 
               let p = ps[index];
-              let offset = &mut tf.offsets[index];
+              let offset = &offsets[index];
 
-              fn push<T: Copy>(v: &T, p: *mut u8, offset: &mut isize) {
+              fn push<T: Copy>(v: &T, p: *mut u8, offset: &AtomicIsize) {
+                let old = offset.fetch_add(mem::size_of::<T>() as isize, Ordering::Relaxed);
                 unsafe {
-                  *(p.offset(*offset) as *mut T) = *v;
+                  *(p.offset(old) as *mut T) = *v;
                 }
-                *offset += mem::size_of::<T>() as isize;
               }
 
-              fn push_all(value: &Value, p: *mut u8, offset: &mut isize) {
+              fn push_all(value: &Value, p: *mut u8, offset: &AtomicIsize) {
                 match value {
                   &Value::Float(ref f) => push(f, p, offset),
                   &Value::Vec2(ref v) => push(v, p, offset),
@@ -839,7 +899,7 @@ impl Draw {
               });
 
 
-              push_all(&value, p, offset);
+              push_all(&value, p, &offset);
 
             }
           }
@@ -872,126 +932,6 @@ impl Draw {
           window_coords
         }
 
-        fn do_fragment(
-          context: &Context,
-          (x, y): (i32, i32),
-          z: f32,
-          front_face: bool,
-          mut vert_vars: Vars,
-          frag_in_vars: &Vec<glsl::Variable>,
-          frag_out_vars: &Vec<glsl::Variable>,
-          frag_uniforms: &HashMap<Atom, Value>,
-          frag_compiled: &Arc<glsl::Shader>,
-        ) {
-          let mut draw_surface = unsafe{ context.draw_surface.as_mut() };
-          let draw_surface = draw_surface.as_mut().unwrap();
-
-          // TODO: real clipping
-          if x < context.viewport.0
-            || x >= context.viewport.0+context.viewport.2
-            || y < context.viewport.1
-            || y >= context.viewport.1+context.viewport.3 {
-              return;
-            }
-
-          let draw_framebuffer = context.draw_framebuffer;
-          let color_mask = context.color_mask;
-
-          let stencil_val = draw_surface.get_stencil(x, y);
-
-          let (stencil_func, stencil_ref, stencil_mask) = if front_face { context.stencil_func_front } else { context.stencil_func_back };
-          let (sfail, dpfail, dppass) = if front_face { context.stencil_op_front } else { context.stencil_op_back };
-          let stencil_write_mask = if front_face { context.stencil_mask_front } else { context.stencil_mask_back };
-
-          let stencil_max = draw_surface.stencil_max();
-          let stencil_ref = cmp::min(stencil_ref, stencil_max);
-          let stencil_mask = stencil_mask & stencil_max;
-
-          fn set_stencil(
-            draw_surface: &mut ::egl::Surface,
-            (x, y): (i32, i32),
-            op: GLenum,
-            val: u32,
-            ref_: u32,
-            stencil_max: u32,
-            stencil_write_mask: u32,
-          ) {
-            if op != GL_KEEP {
-              let new_val = match op {
-                GL_REPLACE => ref_,
-                GL_INCR => if val == stencil_max { val } else { val + 1 },
-                GL_DECR => if val == 0 { 0 } else { val - 1 },
-                GL_INCR_WRAP => val.wrapping_add(1) & stencil_max,
-                GL_DECR_WRAP => val.wrapping_sub(1) & stencil_max,
-                GL_ZERO => 0,
-                GL_INVERT => !val,
-                x => unimplemented!("{:x}", x),
-              };
-
-              draw_surface.set_stencil(x, y, new_val, stencil_write_mask);
-            }
-
-          }
-
-          if context.stencil_test {
-            if !stencil_func.cmp(stencil_val & stencil_mask, stencil_ref & stencil_mask) {
-              set_stencil(draw_surface, (x, y), sfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
-
-              return;
-            }
-          }
-
-          if context.depth_test {
-            let old_z = draw_surface.get_depth(x, y);
-
-            let z = draw_surface.encode_depth(z);
-
-            if !context.depth_func.cmp(old_z, z) {
-              if context.stencil_test {
-                set_stencil(draw_surface, (x, y), dpfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
-              }
-
-              return;
-            }
-
-            if context.depth_mask {
-              draw_surface.set_depth(x, y, z);
-            }
-          }
-
-          if context.stencil_test {
-            set_stencil(draw_surface, (x, y), dppass, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
-          }
-
-
-          let color;
-          {
-            let mut vars = Vars::new();
-
-            init_out_vars(&mut vars, frag_out_vars);
-
-            for var in frag_in_vars {
-              vars.insert(var.name.clone(), vert_vars.take(&var.name));
-            }
-
-            for (ref name, ref data) in frag_uniforms {
-              vars.insert((*name).clone(), (*data).clone());
-            }
-
-            let main = &frag_compiled.functions[&"main".into()][0];
-
-            vars.push();
-            interpret::execute(&main.1, &mut vars, &frag_compiled);
-
-            if let &Value::Vec4(c) = vars.get(&frag_out_vars[0].name) {
-              color = (c[0], c[1], c[2], c[3]);
-            } else { unreachable!() }
-          } // Fragment
-
-          assert_eq!(draw_framebuffer, 0);
-
-          draw_surface.set_pixel(x, y, color, color_mask);
-        }
 
         match prim {
           Primitive::Point(p) => {
@@ -1001,7 +941,7 @@ impl Draw {
               continue;
             }
 
-            let window_coords = window_coords(ndc, current.viewport, current.depth_range);
+            let window_coords = window_coords(ndc, self.viewport, self.depth_range);
 
             let point_size = if let &Value::Float(f) = p.get(&"gl_PointSize".into()) {
               f
@@ -1020,7 +960,7 @@ impl Draw {
               let mut y = first_y;
 
               while y < max_y {
-                do_fragment(
+                Self::do_fragment(
                   current,
                   (x as i32, y as i32),
                   window_coords[2],
@@ -1028,8 +968,8 @@ impl Draw {
                   p.clone(),
                   &frag_in_vars,
                   &frag_out_vars,
-                  &frag_uniforms,
-                  &frag_compiled,
+                  &self.frag_uniforms,
+                  &self.frag_shader,
                 );
 
                 y += 1.0;
@@ -1040,9 +980,9 @@ impl Draw {
           },
           Primitive::Line(a, b) => {
             let ndc_a = ndc(&a);
-            let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
+            let p_a = window_coords(ndc_a, self.viewport, self.depth_range);
             let ndc_b = ndc(&b);
-            let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
+            let p_b = window_coords(ndc_b, self.viewport, self.depth_range);
 
             let delta_x = p_b[0]-p_a[0];
             let delta_y = p_b[1]-p_a[1];
@@ -1050,7 +990,7 @@ impl Draw {
 
             let x_major = slope >= -1.0 && slope <= 1.0;
 
-            let width = current.line_width.round().max(1.0);
+            let width = self.line_width.round().max(1.0);
             let offset = (width - 1.0) / 2.0;
             let width = width as i32;
 
@@ -1098,7 +1038,7 @@ impl Draw {
                   let z = lerp(p_a[2], p_b[2], t);
 
                   for dy in 0..width {
-                    do_fragment(
+                    Self::do_fragment(
                       current,
                       (x.floor() as i32, y.floor() as i32 + dy),
                       z,
@@ -1106,8 +1046,8 @@ impl Draw {
                       frag_vals.clone(),
                       &frag_in_vars,
                       &frag_out_vars,
-                      &frag_uniforms,
-                      &frag_compiled,
+                      &self.frag_uniforms,
+                      &self.frag_shader,
                     );
                   }
 
@@ -1126,7 +1066,7 @@ impl Draw {
                   let z = lerp(p_a[2], p_b[2], t);
 
                   for dy in 0..width {
-                    do_fragment(
+                    Self::do_fragment(
                       current,
                       (x.floor() as i32, y.floor() as i32 + dy),
                       z,
@@ -1134,8 +1074,8 @@ impl Draw {
                       frag_vals.clone(),
                       &frag_in_vars,
                       &frag_out_vars,
-                      &frag_uniforms,
-                      &frag_compiled,
+                      &self.frag_uniforms,
+                      &self.frag_shader,
                     );
                   }
 
@@ -1161,7 +1101,7 @@ impl Draw {
                   let z = lerp(p_a[2], p_b[2], t);
 
                   for dx in 0..width {
-                    do_fragment(
+                    Self::do_fragment(
                       current,
                       (x.floor() as i32 + dx, y.floor() as i32),
                       z,
@@ -1169,8 +1109,8 @@ impl Draw {
                       frag_vals.clone(),
                       &frag_in_vars,
                       &frag_out_vars,
-                      &frag_uniforms,
-                      &frag_compiled,
+                      &self.frag_uniforms,
+                      &self.frag_shader,
                     );
                   }
 
@@ -1189,7 +1129,7 @@ impl Draw {
                   let z = lerp(p_a[2], p_b[2], t);
 
                   for dx in 0..width {
-                    do_fragment(
+                    Self::do_fragment(
                       current,
                       (x.floor() as i32 + dx, y.floor() as i32),
                       z,
@@ -1197,8 +1137,8 @@ impl Draw {
                       frag_vals.clone(),
                       &frag_in_vars,
                       &frag_out_vars,
-                      &frag_uniforms,
-                      &frag_compiled,
+                      &self.frag_uniforms,
+                      &self.frag_shader,
                     );
                   }
 
@@ -1211,22 +1151,22 @@ impl Draw {
           },
           Primitive::Triangle(a, b, c) => {
             let ndc_a = ndc(&a);
-            let p_a = window_coords(ndc_a, current.viewport, current.depth_range);
+            let p_a = window_coords(ndc_a, self.viewport, self.depth_range);
             let ndc_b = ndc(&b);
-            let p_b = window_coords(ndc_b, current.viewport, current.depth_range);
+            let p_b = window_coords(ndc_b, self.viewport, self.depth_range);
             let ndc_c = ndc(&c);
-            let p_c = window_coords(ndc_c, current.viewport, current.depth_range);
+            let p_c = window_coords(ndc_c, self.viewport, self.depth_range);
 
             let front_facing: bool = [(&p_a, &p_b), (&p_b, &p_c), (&p_c, &p_a)].iter()
               .map(|(i, j)| {
                 i[0] * j[1] - j[0] * i[1]
               }).sum::<f32>() > 0.0;
-            let front_facing = front_facing ^ current.front_face_cw;
+            let front_facing = front_facing ^ self.front_face_cw;
 
-            if current.culling {
-              if current.cull_face == GL_FRONT_AND_BACK
-                || (current.cull_face == GL_FRONT && front_facing)
-                || (current.cull_face == GL_BACK && !front_facing) {
+            if let Some(cull_face) = self.cull_face {
+              if cull_face == GL_FRONT_AND_BACK
+                || (cull_face == GL_FRONT && front_facing)
+                || (cull_face == GL_BACK && !front_facing) {
                   continue;
                 }
             }
@@ -1280,7 +1220,7 @@ impl Draw {
                   + p_b[2] * barys.1
                   + p_c[2] * barys.2;
 
-                do_fragment(
+                Self::do_fragment(
                   current,
                   (x.floor() as i32, y.floor() as i32),
                   z,
@@ -1288,8 +1228,8 @@ impl Draw {
                   frag_vals,
                   &frag_in_vars,
                   &frag_out_vars,
-                  &frag_uniforms,
-                  &frag_compiled,
+                  &self.frag_uniforms,
+                  &self.frag_shader,
                 );
                 y += 1.0;
               }
@@ -1313,6 +1253,130 @@ impl Draw {
 
       }
     }
+  }
+
+  fn do_fragment(
+    // &self,
+    context: &Context,
+    (x, y): (i32, i32),
+    z: f32,
+    front_face: bool,
+    mut vert_vars: Vars,
+    frag_in_vars: &Vec<glsl::Variable>,
+    frag_out_vars: &Vec<glsl::Variable>,
+    frag_uniforms: &HashMap<Atom, Value>,
+    frag_shader: &Arc<glsl::Shader>,
+  ) {
+    // let context = &self.current;
+
+    let mut draw_surface = unsafe{ context.draw_surface.as_mut() };
+    let draw_surface = draw_surface.as_mut().unwrap();
+
+    // TODO: real clipping
+    if x < context.viewport.0
+      || x >= context.viewport.0+context.viewport.2
+      || y < context.viewport.1
+      || y >= context.viewport.1+context.viewport.3 {
+        return;
+      }
+
+    let draw_framebuffer = context.draw_framebuffer;
+    let color_mask = context.color_mask;
+
+    let stencil_val = draw_surface.get_stencil(x, y);
+
+    let (stencil_func, stencil_ref, stencil_mask) = if front_face { context.stencil_func_front } else { context.stencil_func_back };
+    let (sfail, dpfail, dppass) = if front_face { context.stencil_op_front } else { context.stencil_op_back };
+    let stencil_write_mask = if front_face { context.stencil_mask_front } else { context.stencil_mask_back };
+
+    let stencil_max = draw_surface.stencil_max();
+    let stencil_ref = cmp::min(stencil_ref, stencil_max);
+    let stencil_mask = stencil_mask & stencil_max;
+
+    fn set_stencil(
+      draw_surface: &mut ::egl::Surface,
+      (x, y): (i32, i32),
+      op: GLenum,
+      val: u32,
+      ref_: u32,
+      stencil_max: u32,
+      stencil_write_mask: u32,
+    ) {
+      if op != GL_KEEP {
+        let new_val = match op {
+          GL_REPLACE => ref_,
+          GL_INCR => if val == stencil_max { val } else { val + 1 },
+          GL_DECR => if val == 0 { 0 } else { val - 1 },
+          GL_INCR_WRAP => val.wrapping_add(1) & stencil_max,
+          GL_DECR_WRAP => val.wrapping_sub(1) & stencil_max,
+          GL_ZERO => 0,
+          GL_INVERT => !val,
+          x => unimplemented!("{:x}", x),
+        };
+
+        draw_surface.set_stencil(x, y, new_val, stencil_write_mask);
+      }
+
+    }
+
+    if context.stencil_test {
+      if !stencil_func.cmp(stencil_val & stencil_mask, stencil_ref & stencil_mask) {
+        set_stencil(draw_surface, (x, y), sfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+
+        return;
+      }
+    }
+
+    if context.depth_test {
+      let old_z = draw_surface.get_depth(x, y);
+
+      let z = draw_surface.encode_depth(z);
+
+      if !context.depth_func.cmp(old_z, z) {
+        if context.stencil_test {
+          set_stencil(draw_surface, (x, y), dpfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+        }
+
+        return;
+      }
+
+      if context.depth_mask {
+        draw_surface.set_depth(x, y, z);
+      }
+    }
+
+    if context.stencil_test {
+      set_stencil(draw_surface, (x, y), dppass, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
+    }
+
+
+    let color;
+    {
+      let mut vars = Vars::new();
+
+      init_out_vars(&mut vars, frag_out_vars);
+
+      for var in frag_in_vars {
+        vars.insert(var.name.clone(), vert_vars.take(&var.name));
+      }
+
+      for (ref name, ref data) in frag_uniforms {
+        vars.insert((*name).clone(), (*data).clone());
+      }
+
+      let main = &frag_shader.functions[&"main".into()][0];
+
+      vars.push();
+      interpret::execute(&main.1, &mut vars, &frag_shader);
+
+      if let &Value::Vec4(c) = vars.get(&frag_out_vars[0].name) {
+        color = (c[0], c[1], c[2], c[3]);
+      } else { unreachable!() }
+    } // Fragment
+
+    assert_eq!(draw_framebuffer, 0);
+
+    draw_surface.set_pixel(x, y, color, color_mask);
   }
 }
 
