@@ -289,7 +289,6 @@ pub(crate) fn instanced_vidg(
 }
 
 struct Draw {
-  current: &'static mut Context,
   mode: GLenum,
   vertex_ids: VertexIdGenerator,
   instances: GLsizei,
@@ -302,6 +301,21 @@ struct Draw {
 
   cull_face: Option<GLenum>,
   front_face_cw: bool,
+
+
+  color_mask: gl::ColorMask,
+  depth_mask: bool,
+  stencil_mask_front: u32,
+  stencil_mask_back: u32,
+
+  stencil_test: bool,
+  stencil_func_front: (gl::CmpFunc, GLuint, GLuint),
+  stencil_func_back: (gl::CmpFunc, GLuint, GLuint),
+  stencil_op_front: (GLenum, GLenum, GLenum),
+  stencil_op_back: (GLenum, GLenum, GLenum),
+
+  depth_test: bool,
+  depth_func: gl::CmpFunc,
 
 
   vert_shader: Arc<glsl::Shader>,
@@ -319,6 +333,8 @@ struct Draw {
 
   current_vertex_attribs: [[GLfloat; 4]; gl::MAX_VERTEX_ATTRIBS],
   vertex_attrib_buffers: [Option<*const u8>; gl::MAX_VERTEX_ATTRIBS],
+
+  draw_surface: *mut super::egl::Surface,
 }
 
 pub fn draw(
@@ -328,6 +344,9 @@ pub fn draw(
   instances: GLsizei,
   baseinstance: GLuint,
 ) {
+
+  assert_eq!(current.draw_framebuffer, 0);
+
 
   let vert_shader;
   let frag_shader;
@@ -396,6 +415,21 @@ pub fn draw(
 
     line_width: current.line_width,
 
+    color_mask: current.color_mask,
+    depth_mask: current.depth_mask,
+    stencil_mask_front: current.stencil_mask_front,
+    stencil_mask_back: current.stencil_mask_back,
+
+    stencil_test: current.stencil_test,
+    stencil_func_front: current.stencil_func_front,
+    stencil_func_back: current.stencil_func_back,
+    stencil_op_front: current.stencil_op_front,
+    stencil_op_back: current.stencil_op_back,
+
+    depth_test: current.depth_test,
+    depth_func: current.depth_func,
+
+
     vert_shader,
     frag_shader,
 
@@ -413,7 +447,8 @@ pub fn draw(
     cull_face,
     front_face_cw: current.front_face_cw,
 
-    current,
+    draw_surface: current.draw_surface,
+
     mode,
     vertex_ids,
     instances,
@@ -513,7 +548,6 @@ impl Draw {
   fn draw(&mut self) {
     use draw::*;
 
-    let current = &mut self.current;
     let mode = self.mode;
     let vertex_ids = &self.vertex_ids;
     let baseinstance = self.baseinstance;
@@ -960,8 +994,7 @@ impl Draw {
               let mut y = first_y;
 
               while y < max_y {
-                Self::do_fragment(
-                  current,
+                self.do_fragment(
                   (x as i32, y as i32),
                   window_coords[2],
                   true,
@@ -1038,8 +1071,7 @@ impl Draw {
                   let z = lerp(p_a[2], p_b[2], t);
 
                   for dy in 0..width {
-                    Self::do_fragment(
-                      current,
+                    self.do_fragment(
                       (x.floor() as i32, y.floor() as i32 + dy),
                       z,
                       true,
@@ -1066,8 +1098,7 @@ impl Draw {
                   let z = lerp(p_a[2], p_b[2], t);
 
                   for dy in 0..width {
-                    Self::do_fragment(
-                      current,
+                    self.do_fragment(
                       (x.floor() as i32, y.floor() as i32 + dy),
                       z,
                       true,
@@ -1101,8 +1132,7 @@ impl Draw {
                   let z = lerp(p_a[2], p_b[2], t);
 
                   for dx in 0..width {
-                    Self::do_fragment(
-                      current,
+                    self.do_fragment(
                       (x.floor() as i32 + dx, y.floor() as i32),
                       z,
                       true,
@@ -1129,8 +1159,7 @@ impl Draw {
                   let z = lerp(p_a[2], p_b[2], t);
 
                   for dx in 0..width {
-                    Self::do_fragment(
-                      current,
+                    self.do_fragment(
                       (x.floor() as i32 + dx, y.floor() as i32),
                       z,
                       true,
@@ -1220,8 +1249,7 @@ impl Draw {
                   + p_b[2] * barys.1
                   + p_c[2] * barys.2;
 
-                Self::do_fragment(
-                  current,
+                self.do_fragment(
                   (x.floor() as i32, y.floor() as i32),
                   z,
                   front_facing,
@@ -1256,8 +1284,7 @@ impl Draw {
   }
 
   fn do_fragment(
-    // &self,
-    context: &Context,
+    &self,
     (x, y): (i32, i32),
     z: f32,
     front_face: bool,
@@ -1267,27 +1294,24 @@ impl Draw {
     frag_uniforms: &HashMap<Atom, Value>,
     frag_shader: &Arc<glsl::Shader>,
   ) {
-    // let context = &self.current;
-
-    let mut draw_surface = unsafe{ context.draw_surface.as_mut() };
+    let mut draw_surface = unsafe{ self.draw_surface.as_mut() };
     let draw_surface = draw_surface.as_mut().unwrap();
 
     // TODO: real clipping
-    if x < context.viewport.0
-      || x >= context.viewport.0+context.viewport.2
-      || y < context.viewport.1
-      || y >= context.viewport.1+context.viewport.3 {
+    if x < self.viewport.0
+      || x >= self.viewport.0+self.viewport.2
+      || y < self.viewport.1
+      || y >= self.viewport.1+self.viewport.3 {
         return;
       }
 
-    let draw_framebuffer = context.draw_framebuffer;
-    let color_mask = context.color_mask;
+    let color_mask = self.color_mask;
 
     let stencil_val = draw_surface.get_stencil(x, y);
 
-    let (stencil_func, stencil_ref, stencil_mask) = if front_face { context.stencil_func_front } else { context.stencil_func_back };
-    let (sfail, dpfail, dppass) = if front_face { context.stencil_op_front } else { context.stencil_op_back };
-    let stencil_write_mask = if front_face { context.stencil_mask_front } else { context.stencil_mask_back };
+    let (stencil_func, stencil_ref, stencil_mask) = if front_face { self.stencil_func_front } else { self.stencil_func_back };
+    let (sfail, dpfail, dppass) = if front_face { self.stencil_op_front } else { self.stencil_op_back };
+    let stencil_write_mask = if front_face { self.stencil_mask_front } else { self.stencil_mask_back };
 
     let stencil_max = draw_surface.stencil_max();
     let stencil_ref = cmp::min(stencil_ref, stencil_max);
@@ -1319,7 +1343,7 @@ impl Draw {
 
     }
 
-    if context.stencil_test {
+    if self.stencil_test {
       if !stencil_func.cmp(stencil_val & stencil_mask, stencil_ref & stencil_mask) {
         set_stencil(draw_surface, (x, y), sfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
 
@@ -1327,25 +1351,25 @@ impl Draw {
       }
     }
 
-    if context.depth_test {
+    if self.depth_test {
       let old_z = draw_surface.get_depth(x, y);
 
       let z = draw_surface.encode_depth(z);
 
-      if !context.depth_func.cmp(old_z, z) {
-        if context.stencil_test {
+      if !self.depth_func.cmp(old_z, z) {
+        if self.stencil_test {
           set_stencil(draw_surface, (x, y), dpfail, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
         }
 
         return;
       }
 
-      if context.depth_mask {
+      if self.depth_mask {
         draw_surface.set_depth(x, y, z);
       }
     }
 
-    if context.stencil_test {
+    if self.stencil_test {
       set_stencil(draw_surface, (x, y), dppass, stencil_val, stencil_ref, stencil_max, stencil_write_mask);
     }
 
@@ -1373,8 +1397,6 @@ impl Draw {
         color = (c[0], c[1], c[2], c[3]);
       } else { unreachable!() }
     } // Fragment
-
-    assert_eq!(draw_framebuffer, 0);
 
     draw_surface.set_pixel(x, y, color, color_mask);
   }
