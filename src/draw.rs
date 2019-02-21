@@ -18,6 +18,7 @@ use gl::{self,Context,Rect,parse_variable_name};
 use std::ops::Deref;
 
 
+#[derive(Debug)]
 pub enum Primitive {
   Point(Vars),
   Line(Vars, Vars),
@@ -890,9 +891,80 @@ impl Draw {
       while let Some(prim) = pump.next() {
         self.do_transform_feedback(&prim);
 
-        // RASTERIZATION
+        // Clipping
+        match prim {
+          Primitive::Point(p) => {
+            let ndc = ndc(&p);
 
-        self.do_rasterization(prim);
+            if ndc[2] < -1.0 || ndc[2] > 1.0 { continue; }
+
+            self.do_rasterization(Primitive::Point(p));
+          },
+          Primitive::Line(mut a, mut b) => {
+            let mut pos_a = if let &Value::Vec4(ref v) = a.get(&"gl_Position".into()) {
+              *v
+            } else { unreachable!() };
+            let mut pos_b = if let &Value::Vec4(ref v) = b.get(&"gl_Position".into()) {
+              *v
+            } else { unreachable!() };
+
+            if pos_a[2] < -pos_a[3] && pos_b[2] < -pos_b[3] {
+              continue;
+            } else if pos_a[2] > pos_a[3] && pos_b[2] > pos_b[3] {
+              continue;
+            }
+
+            fn intercept(a: f32, b: f32, i: f32) -> f32 {
+              (a - i) / (a - b)
+            }
+
+            fn interp_pos(a: [f32; 4], b: [f32; 4], t: f32) -> [f32; 4] {
+              [
+                lerp(a[0], b[0], t),
+                lerp(a[1], b[1], t),
+                lerp(a[2], b[2], t),
+                a[3],
+              ]
+            }
+
+            let w_a = pos_a[3];
+            let w_b = pos_b[3];
+
+            for i in 0..3 {
+              let w_a = if i == 2 { w_a } else { w_a * 1.01 };
+              let w_b = if i == 2 { w_b } else { w_b * 1.01 };
+
+              if pos_a[i] > w_a {
+                let t = intercept(pos_a[i], pos_b[i], w_a);
+                a = interp_vars(&self.frag_in_vars, &a, &b, t);
+                pos_a = interp_pos(pos_a, pos_b, t);
+                a.insert("gl_Position".into(), Value::Vec4(pos_a));
+              } else if pos_a[i] < -w_a {
+                let t = intercept(pos_a[i], pos_b[i], -w_a);
+                a = interp_vars(&self.frag_in_vars, &a, &b, t);
+                pos_a = interp_pos(pos_a, pos_b, t);
+                a.insert("gl_Position".into(), Value::Vec4(pos_a));
+              }
+
+              if pos_b[i] > w_b {
+                let t = intercept(pos_b[i], pos_a[i], w_b);
+                b = interp_vars(&self.frag_in_vars, &b, &a, t);
+                pos_b = interp_pos(pos_b, pos_a, t);
+                b.insert("gl_Position".into(), Value::Vec4(pos_b));
+              } else if pos_b[i] < -w_b {
+                let t = intercept(pos_b[i], pos_a[i], -w_b);
+                b = interp_vars(&self.frag_in_vars, &b, &a, t);
+                pos_b = interp_pos(pos_b, pos_a, t);
+                b.insert("gl_Position".into(), Value::Vec4(pos_b));
+              }
+            }
+
+            self.do_rasterization(Primitive::Line(a, b));
+          },
+          Primitive::Triangle(a, b, c) => {
+            self.do_rasterization(Primitive::Triangle(a, b, c));
+          },
+        }
       }
     }
   }
@@ -901,15 +973,6 @@ impl Draw {
     &self,
     prim: Primitive,
   ) {
-    fn ndc(vars: &Vars) -> [f32; 3] {
-      let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".into()) {
-        v
-      } else { unreachable!() };
-      [clip_coords[0] / clip_coords[3],
-       clip_coords[1] / clip_coords[3],
-       clip_coords[2] / clip_coords[3]]
-    }
-
     fn window_coords(ndc: [f32; 3], viewport: Rect, depth_range: (GLfloat, GLfloat)) -> [f32; 3] {
       let px = viewport.2 as f32;
       let py = viewport.3 as f32;
@@ -930,10 +993,6 @@ impl Draw {
     match prim {
       Primitive::Point(p) => {
         let ndc = ndc(&p);
-
-        if ndc[2] < -1.0 || ndc[2] > 1.0 {
-          return;
-        }
 
         let window_coords = window_coords(ndc, self.viewport, self.depth_range);
 
@@ -987,30 +1046,8 @@ impl Draw {
 
         let mut x = p_a[0];
         let mut y = p_a[1];
-        let mut t = 1.0;
+        let mut t = 0.0;
 
-
-        fn interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, t: f32) -> Vars {
-          let mut vars = Vars::new();
-
-          for var in frag_in_vars {
-            let a_val = a.get(&var.name).clone();
-            let b_val = b.get(&var.name).clone();
-
-            let val = if var.flat {
-              a_val
-            } else {
-              interpret::add(&interpret::mul(&a_val, t), &interpret::mul(&b_val, 1.0 - t))
-            };
-
-            vars.insert(var.name.clone(), val);
-          }
-
-          vars
-        }
-        fn lerp(a: f32, b: f32, t: f32) -> f32 {
-          a * t + b * (1.0-t)
-        }
 
 
         if x_major {
@@ -1022,7 +1059,7 @@ impl Draw {
             let first_hop = 1.0 - (x + 0.5).fract();
             y += slope * first_hop;
             x += first_hop;
-            t -= idx * first_hop;
+            t += idx * first_hop;
 
             while x < p_b[0] {
               let frag_vals = interp_vars(&self.frag_in_vars, &a, &b, t);
@@ -1041,13 +1078,13 @@ impl Draw {
 
               y += slope;
               x += 1.0;
-              t -= idx;
+              t += idx;
             }
           } else {
             let first_hop = 1.0 - (x - 0.5).fract();
             y -= slope * first_hop;
             x -= first_hop;
-            t -= idx * first_hop;
+            t += idx * first_hop;
 
             while x > p_b[0] {
               let frag_vals = interp_vars(&self.frag_in_vars, &a, &b, t);
@@ -1066,7 +1103,7 @@ impl Draw {
 
               y -= slope;
               x -= 1.0;
-              t -= idx;
+              t += idx;
             }
           }
         } else {
@@ -1079,7 +1116,7 @@ impl Draw {
             let first_hop = 1.0 - (y + 0.5).fract();
             x += islope * first_hop;
             y += first_hop;
-            t -= idy * first_hop;
+            t += idy * first_hop;
 
             while y < p_b[1] {
               let frag_vals = interp_vars(&self.frag_in_vars, &a, &b, t);
@@ -1098,13 +1135,13 @@ impl Draw {
 
               x += islope;
               y += 1.0;
-              t -= idy;
+              t += idy;
             }
           } else {
             let first_hop = 1.0 - (y - 0.5).fract();
             x -= islope * first_hop;
             y -= first_hop;
-            t -= idy * first_hop;
+            t += idy * first_hop;
 
             while y > p_b[1] {
               let frag_vals = interp_vars(&self.frag_in_vars, &a, &b, t);
@@ -1123,7 +1160,7 @@ impl Draw {
 
               x -= islope;
               y -= 1.0;
-              t -= idy;
+              t += idy;
             }
           }
         }
@@ -1461,4 +1498,36 @@ fn bary_interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, c: &
   }
 
   vars
+}
+
+fn ndc(vars: &Vars) -> [f32; 3] {
+  let clip_coords = if let &Value::Vec4(ref v) = vars.get(&"gl_Position".into()) {
+    v
+  } else { unreachable!() };
+  [clip_coords[0] / clip_coords[3],
+   clip_coords[1] / clip_coords[3],
+   clip_coords[2] / clip_coords[3]]
+}
+
+fn interp_vars(frag_in_vars: &Vec<glsl::Variable>, a: &Vars, b: &Vars, t: f32) -> Vars {
+  let mut vars = Vars::new();
+
+  for var in frag_in_vars {
+    let a_val = a.get(&var.name).clone();
+    let b_val = b.get(&var.name).clone();
+
+    let val = if var.flat {
+      a_val
+    } else {
+      interpret::add(&interpret::mul(&a_val, 1.0 - t), &interpret::mul(&b_val, t))
+    };
+
+    vars.insert(var.name.clone(), val);
+  }
+
+  vars
+}
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+  a * (1.0-t) + b * t
 }
