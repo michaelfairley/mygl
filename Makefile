@@ -1,5 +1,7 @@
-FILTER=dEQP-GLES3.functional.draw.draw_elements.points.single_attribute
-FILTER=dEQP-GLES3.functional.draw.draw_arrays.*
+FILTER=dEQP-GLES3.functional.vertex_arrays.single_attribute.strides.fixed.*
+FILTER=dEQP-GLES3.functional.vertex_arrays.single_attribute.strides.fixed.user_ptr_stride8_components2_quads1
+FILTER=dEQP-GLES3.functional.clipping.*
+FILTER=dEQP-GLES3.functional.clipping.polygon.poly_z_clip
 
 FAST=--deqp-log-images=disable --deqp-log-shader-sources=disable --deqp-log-flush=disable
 
