@@ -1,4 +1,4 @@
-A software implementation of OpenGL ES 3.2 (and EGL 1.5) written in Rust.
+A software implementation of OpenGL ES 3.2 (and EGL 1.5) written in Rust, validated against the Khronos's [conformance test suite](https://github.com/KhronosGroup/VK-GL-CTS),
 
 Currently working:
 - Compute shaders
